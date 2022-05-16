@@ -293,8 +293,8 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
   const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
   const subtitleTrack = useMemo(
-    () => currentSubtitleTrack ? tracks.find(({ number }) => number === currentSubtitleTrack) : undefined,
-    [currentSubtitleTrack, currentSubtitleTrack && tracks.find(({ number }) => number === currentSubtitleTrack)?.content]
+    () => currentSubtitleTrack ? tracks?.find(({ number }) => number === currentSubtitleTrack) : undefined,
+    [currentSubtitleTrack, currentSubtitleTrack && tracks?.find(({ number }) => number === currentSubtitleTrack)?.content]
   )
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
     setHidden(false)
@@ -367,9 +367,9 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
   }, [canvasElement, attachments, subtitleTrack?.content])
 
   useEffect(() => {
-    if (!tracks.length) return
+    if (!tracks?.length) return
     setCurrentSubtitleTrack(tracks.sort(({ number }) => number)[0]?.number)
-  }, [tracks.length])
+  }, [tracks?.length])
 
   useEffect(() => {
     if (!subtitleTrack || !subtitlesOctopusInstance) return
