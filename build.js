@@ -60,6 +60,13 @@ esbuild.build({
 
 esbuild.build({
   ...config,
+  entryPoints: ['./src/test.tsx'],
+  outfile: './build/test.js',
+  inject: ['./src/react-shim.ts']
+}).catch(err => console.error(err))
+
+esbuild.build({
+  ...config,
   entryPoints: ['./src/worker.ts'],
   outfile: './build/worker.js',
   inject: ['./src/worker-shim.ts']

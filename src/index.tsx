@@ -1,12 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { Attachment, Chunk, Resolvers as WorkerResolvers, Subtitle, VideoDB } from './worker'
 
-import { ClassAttributes, forwardRef, HTMLAttributes, MouseEventHandler, ReactEventHandler, SyntheticEvent, useCallback, useEffect, useMemo, useRef, useState, VideoHTMLAttributes } from 'react'
-import { createRoot } from 'react-dom/client'
+import { ClassAttributes, forwardRef, HTMLAttributes, MouseEventHandler, SyntheticEvent, useEffect, useMemo, useRef, useState, VideoHTMLAttributes } from 'react'
 import SubtitlesOctopus from 'libass-wasm'
 import { call } from 'osra'
-import { css, Global } from '@emotion/react'
-import { appendBuffer, updateSourceBuffer as _updateSourceBuffer } from './utils'
+import { css } from '@emotion/react'
+import { updateSourceBuffer as _updateSourceBuffer } from './utils'
 import { openDB } from 'idb'
 
 
@@ -563,6 +562,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     setIsPlaying(playing)
   }
 
+  // todo: implement subtitles in PiP using https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/captureStream
   const pictureInPicture = () => {
     if (document.pictureInPictureElement) return document.exitPictureInPicture()
     videoRef.current?.requestPictureInPicture()
@@ -655,87 +655,3 @@ const FKNMediaPlayer = ({ id, size, stream }: { id?: string, size?: number, stre
 }
 
 export default FKNMediaPlayer
-
-
-const mountStyle = css`
-  display: grid;
-  height: 100%;
-  width: 100%;
-`
-
-const Mount = () => {
-  const [size, setSize] = useState<number>()
-  const [stream, setStream] = useState<ReadableStream<Uint8Array>>()
-
-  useEffect(() => {
-    fetch('./video2.mkv')
-      .then(({ headers, body }) => {
-        if (!body || !headers.get('Content-Length')) throw new Error('no stream or Content-Length returned from the response')
-        setSize(Number(headers.get('Content-Length')))
-        setStream(body)
-      })
-  }, [])
-
-  return (
-    <div css={mountStyle}>
-      <FKNMediaPlayer id={'test'} size={size} stream={stream}/>
-    </div>
-  )
-}
-
-const globalStyle = css`
-  @import '/index.css';
-  @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Fira+Sans:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,500;1,600;1,700;1,800;1,900&family=Montserrat:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&display=swap');
-
-  *, *::before, *::after {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  html {
-    font-size: 62.5%;
-    height: 100%;
-    width: 100%;
-  }
-
-  body {
-    margin: 0;
-    height: 100%;
-    width: 100%;
-    font-size: 1.6rem;
-    font-family: Fira Sans;
-    color: #fff;
-    
-    font-family: Montserrat;
-    // font-family: "Segoe UI", Roboto, "Fira Sans",  "Helvetica Neue", Arial, sans-serif;
-  }
-
-  body > div {
-    height: 100%;
-    width: 100%;
-  }
-
-  a {
-    color: #777777;
-    text-decoration: none;
-  }
-
-  a:hover {
-    color: #fff;
-    text-decoration: underline;
-  }
-
-  ul {
-    list-style: none;
-  }
-`
-
-createRoot(
-  document.body.appendChild(document.createElement('div'))
-).render(
-  <>
-    <Global styles={globalStyle}/>
-    <Mount/>
-  </>
-)
