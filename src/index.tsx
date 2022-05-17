@@ -69,17 +69,16 @@ const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: num
       setAttachments(data.attachments)
       return
     }
-    setTracks(tracks => {
-      let newTracks
-      for (const subtitle of data.subtitles) {
-        newTracks = tracks.map((track) =>
-          track.number === subtitle.stream
-            ? { ...track, content: track.content += `\n${subtitle.content}` }
-            : track
-        )
-      }
-      return newTracks
-    })
+    setTracks(tracks =>
+      tracks.map(track =>
+        data.subtitles.reduce((track, subtitleLine) =>
+          track.number === subtitleLine.stream
+            ? { ...track, content: track.content += `\n${subtitleLine.content}` }
+            : track,
+          track
+        )  
+      )
+    )
   }
 
   useEffect(() => {
@@ -293,8 +292,8 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
   const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
   const subtitleTrack = useMemo(
-    () => currentSubtitleTrack ? tracks?.find(({ number }) => number === currentSubtitleTrack) : undefined,
-    [currentSubtitleTrack, currentSubtitleTrack && tracks?.find(({ number }) => number === currentSubtitleTrack)?.content]
+    () => currentSubtitleTrack ? tracks.find(({ number }) => number === currentSubtitleTrack) : undefined,
+    [currentSubtitleTrack, currentSubtitleTrack && tracks.find(({ number }) => number === currentSubtitleTrack)?.content]
   )
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
     setHidden(false)
@@ -367,9 +366,9 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
   }, [canvasElement, attachments, subtitleTrack?.content])
 
   useEffect(() => {
-    if (!tracks?.length) return
+    if (!tracks.length) return
     setCurrentSubtitleTrack(tracks.sort(({ number }) => number)[0]?.number)
-  }, [tracks?.length])
+  }, [tracks.length])
 
   useEffect(() => {
     if (!subtitleTrack || !subtitlesOctopusInstance) return
