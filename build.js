@@ -55,7 +55,26 @@ esbuild.build({
   ...config,
   entryPoints: ['./src/index.tsx'],
   outfile: './build/index.js',
-  inject: ['./src/react-shim.ts']
+  inject: ['./src/react-shim.ts'],
+  external: [
+    'react',
+    '@emotion/react',
+    'react-dom'
+  ]
+  // plugins: [
+  //   ...config.plugins,
+  //   {
+  //     name: 'make-all-packages-external',
+  //     setup(build) {
+  //       let filter = /^[^.\/]|^\.[^.\/]|^\.\.[^\/]/ // Must not start with "/" or "./" or "../"
+  //       build.onResolve({ filter }, async args => {
+  //         const resolvedPath = await esbuildResolve(args.path, '.')
+  //         const result = resolvedPath ? path.relative('./node_modules', resolvedPath).replaceAll('\\', '/') : args.path
+  //         return ({ path: result, external: true })
+  //       })
+  //     },
+  //   }
+  // ]
 }).catch(err => console.error(err))
 
 esbuild.build({
