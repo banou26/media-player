@@ -76,7 +76,7 @@ const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: num
             ? { ...track, content: track.content += `\n${subtitleLine.content}` }
             : track,
           track
-        )  
+        )
       )
     )
   }
@@ -300,7 +300,7 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
     if (autoHide.current) clearInterval(autoHide.current)
     const timeout = setTimeout(() => {
       setHidden(true)
-    }, 5_000) as unknown as number
+    }, 3_000) as unknown as number
     autoHide.current = timeout
   }
 
