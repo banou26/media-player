@@ -86,6 +86,7 @@ esbuild.build({
 
 esbuild.build({
   ...config,
+  format: 'iife',
   entryPoints: ['./src/worker.ts'],
   outfile: './build/worker.js',
   inject: ['./src/worker-shim.ts']
