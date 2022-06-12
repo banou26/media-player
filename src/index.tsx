@@ -135,6 +135,7 @@ const useSourceBuffer = ({ id, info, mime, chunks, video, currentTime }: { id?: 
     const registerSourceBuffer = async () => {
       mediaSource.duration = info.input.duration
       const sourceBuffer = mediaSource.addSourceBuffer(mime)
+      sourceBuffer.addEventListener('error', (err) => console.log('source buffer error', err))
       sourceBuffer.mode = 'segments'
       setSourceBuffer(sourceBuffer)
       setDuration(info.input.duration)
@@ -615,42 +616,4 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   )
 })
 
-const FKNMediaPlayer = ({ id, size, stream }: { id?: string, size?: number, stream?: ReadableStream<Uint8Array> }) => {
-  // const { loadedTime, mime, info, headerChunk } = useTransmuxer({ id, size, stream: inStream })
-  // const [transmuxer, setTransmuxer] = useState<Awaited<ReturnType<typeof makeTransmuxer>>>()
-  // const [duration, setDuration] = useState<number>()
-  // const [mediaSource] = useState(new MediaSource())
-  // const [sourceBuffer, setSourceBuffer] = useState<SourceBuffer>()
-
-  // useEffect(() => {
-  //   if (!info) return
-  //   setDuration(info.input.duration)
-  //   mediaSource.duration = info.input.duration
-  // }, [info])
-
-  // useEffect(() => {
-  //   if (!info || !mime || !headerChunk) return
-  //   mediaSource.addEventListener(
-  //     'sourceopen',
-  //     () => {
-  //       mediaSource.duration = info.input.duration
-  //       const sourceBuffer = mediaSource.addSourceBuffer(mime)
-  //       sourceBuffer.mode = 'segments'
-  //       setSourceBuffer(sourceBuffer)
-  //       sourceBuffer.appendBuffer(headerChunk)
-  //       setDuration(info.input.duration)
-  //     },
-  //     { once: true }
-  //   )
-  // }, [info, mime, headerChunk])
-
-  // useEffect(() => {
-  //   if (!id || !size || !inStream) return
-  //   makeTransmuxer({ id, size, stream: inStream }).then(setTransmuxer)
-  // }, [size, inStream])
-
-  return <FKNVideo id={id} size={size} stream={stream}/>
-  // return <FKNVideo duration={duration} loadedTime={loadedTime} mediaSource={mime && headerChunk ? mediaSource : undefined}/>
-}
-
-export default FKNMediaPlayer
+export default FKNVideo
