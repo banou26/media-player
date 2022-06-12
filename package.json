@@ -37,7 +37,7 @@
     "libass-wasm": "^4.0.0",
     "matroska-subtitles": "^3.3.2",
     "mp4box": "^0.5.2",
-    "osra": "file:../osra"
+    "osra": "^0.0.4"
   },
   "peerDependencies": {
     "@emotion/react": "^11.9.0",
