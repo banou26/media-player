@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { Attachment, Chunk, Resolvers as WorkerResolvers, Subtitle, VideoDB } from './worker'
 
-import { ClassAttributes, forwardRef, HTMLAttributes, MouseEventHandler, SyntheticEvent, useEffect, useMemo, useRef, useState, VideoHTMLAttributes } from 'react'
+import { ClassAttributes, forwardRef, HTMLAttributes, MouseEvent, MouseEventHandler, SyntheticEvent, useEffect, useMemo, useRef, useState, VideoHTMLAttributes } from 'react'
 import SubtitlesOctopus from 'libass-wasm'
 import { call } from 'osra'
 import { css } from '@emotion/react'
@@ -252,7 +252,7 @@ const chromeStyle = css`
       height: 100%;
       display: grid;
       align-items: center;
-      grid-template-columns: 5rem fit-content(4.8rem) 20rem auto 5rem 5rem;
+      grid-template-columns: 5rem fit-content(4.8rem) 20rem auto fit-content(10rem) 5rem 5rem;
       grid-gap: 1rem;
       color: #fff;
       user-select: none;
@@ -354,6 +354,40 @@ const chromeStyle = css`
         font-family: Roboto;
         padding-bottom: .5rem;
       }
+
+      .subtitle-area {
+        position: relative;
+        height: 100%;
+
+        .subtitle-menu {
+          position: absolute;
+          bottom: 4.8rem;
+          left: -1rem;
+          /* background: rgba(0, 0, 0, .2); */
+          /* background: rgb(35, 35, 35); */
+          padding: 1rem;
+          text-shadow: 0px 0px 4px #000;
+
+          button {
+            width: 100%;
+            padding: 0.5rem 0;
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            text-shadow: 2px 2px #000;
+          }
+        }
+        
+        .subtitle-menu-button {
+          height: 100%;
+          width: 100%;
+          cursor: pointer;
+          color: #fff;
+          background: none;
+          border: none;
+        }
+      }
     }
   }
 `
@@ -396,6 +430,7 @@ const Chrome = (({
   const [hidden, setHidden] = useState(false)
   const autoHide = useRef<number>()
   const [hiddenVolumeArea, setHiddenVolumeArea] = useState(false)
+  const [isSubtitleMenuHidden, setIsSubtitleMenuHidden] = useState(true)
   const isPictureInPictureEnabled = useMemo(() => document.pictureInPictureEnabled, [])
   const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
@@ -438,6 +473,7 @@ const Chrome = (({
   }
 
   const clickPlay = (ev) => {
+    if (!isSubtitleMenuHidden) return
     play(ev)
   }
 
@@ -470,8 +506,11 @@ const Chrome = (({
   }, [tracks.length])
 
   useEffect(() => {
-    if (!subtitleTrack || !subtitlesOctopusInstance) return
-    // console.log('setTrack', `${subtitleTrack.header}${subtitleTrack.content}`)
+    if (!subtitlesOctopusInstance) return
+    if (!subtitleTrack) {
+      subtitlesOctopusInstance.freeTrack()
+      return
+    }
     subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.content}`)
   }, [subtitlesOctopusInstance, subtitleTrack])
 
@@ -515,10 +554,31 @@ const Chrome = (({
     setHiddenVolumeArea(true)
   }
 
-  const clickMuteButton: MouseEventHandler<HTMLButtonElement> = () => {
+  const clickMuteButton: MouseEventHandler<HTMLButtonElement> = (ev) => {
     setIsMuted(value => !value)
   }
- 
+
+  const setSubtitleTrack = (ev: MouseEvent<HTMLButtonElement, globalThis.MouseEvent>, track: Subtitle | undefined) => {
+    setCurrentSubtitleTrack(track?.number)
+  }
+
+  const subtitleMenuButtonClick: MouseEventHandler<HTMLButtonElement> = (ev) => {
+    if (!isSubtitleMenuHidden && ev.relatedTarget === null) {
+      setIsSubtitleMenuHidden(value => !value)
+      return
+    }
+    setIsSubtitleMenuHidden(false)
+    const clickListener = (ev: MouseEvent) => {
+      ev.stopPropagation()
+      setIsSubtitleMenuHidden(true)
+      document.removeEventListener('click', clickListener)
+    }
+    setTimeout(() => {
+      document.addEventListener('click', clickListener)
+    }, 0)
+  }
+
+  // console.log('tracks', tracks)
    return (
     <div {...rest} css={chromeStyle} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <div className="overlay" onClick={clickPlay}>
@@ -614,6 +674,32 @@ const Chrome = (({
             <span>{duration ? new Date(duration * 1000).toISOString().substr(11, 8) : ''}</span>
           </div>
           <div></div>
+          <div className="subtitle-area">
+            {
+              tracks.length
+              ? (
+                <>
+                  <div className="subtitle-menu">
+                    {
+                      isSubtitleMenuHidden
+                      ? null
+                      : (
+                        [undefined, ...tracks].map(track =>
+                          <button key={track?.number ?? 'disabled'} onClick={ev => setSubtitleTrack(ev, track)}>
+                            {track?.name.replace('subs', '') ?? 'Disabled'}
+                          </button>
+                        )
+                      )
+                    }
+                  </div>
+                  <button className="subtitle-menu-button" onClick={subtitleMenuButtonClick}>
+                    {subtitleTrack?.name.replace('subs', '') ?? 'Disabled'}
+                  </button>
+                </>
+              )
+              : null
+            }
+          </div>
           {
             isPictureInPictureEnabled
               ? (
