@@ -7,6 +7,8 @@ import { call } from 'osra'
 import { css } from '@emotion/react'
 import { updateSourceBuffer as _updateSourceBuffer } from './utils'
 import { openDB } from 'idb'
+import { Volume, Volume1, Volume2 } from 'react-feather'
+import useScrub from './use-scrub'
 
 
 const useThrottle = (func: (...args: any[]) => any, limit: number, deps: any[] = []) =>
@@ -250,7 +252,7 @@ const chromeStyle = css`
       height: 100%;
       display: grid;
       align-items: center;
-      grid-template-columns: 5rem 20rem auto 5rem 5rem;
+      grid-template-columns: 5rem fit-content(4.8rem) 20rem auto 5rem 5rem;
       grid-gap: 1rem;
       color: #fff;
       user-select: none;
@@ -268,10 +270,84 @@ const chromeStyle = css`
       }
 
       .play-button {
+        height: 100%;
         color: #fff;
         background-color: transparent;
         border: none;
         cursor: pointer;
+      }
+
+      .volume-area {
+        display: flex;
+        /* grid-template-columns: 4.8rem fit-content(0rem); */
+        height: 100%;
+        cursor: pointer;
+
+        .mute-button {
+          color: #fff;
+          border: none;
+          background: none;
+          height: 100%;
+          width: 4.8rem;
+          cursor: pointer;
+        }
+
+        .volume-panel {
+          display: inline-block;
+          width: 0;
+          /* width: 100%; */
+          /* width: 12rem; */
+          height: 100%;
+          -webkit-transition: margin .2s cubic-bezier(0.4,0,1,1),width .2s cubic-bezier(0.4,0,1,1);
+          transition: margin .2s cubic-bezier(0.4,0,1,1),width .2s cubic-bezier(0.4,0,1,1);
+          cursor: pointer;
+          outline: 0;
+
+          &.volume-control-hover {
+            width: 6rem;
+            /* width: 52px; */
+            margin-right: 3px;
+            -webkit-transition: margin .2s cubic-bezier(0,0,0.2,1),width .2s cubic-bezier(0,0,0.2,1);
+            transition: margin .2s cubic-bezier(0,0,0.2,1),width .2s cubic-bezier(0,0,0.2,1);
+          }
+
+          .slider {
+            height: 100%;
+            min-height: 36px;
+            position: relative;
+            overflow: hidden;
+
+            .slider-handle {
+              /* left: 40px; */
+              position: absolute;
+              top: 50%;
+              width: 12px;
+              height: 12px;
+              border-radius: 6px;
+              margin-top: -6px;
+              margin-left: -5px;
+              /* background: #fff; */
+            }
+            .slider-handle::before, .slider-handle::after {
+              content: "";
+              position: absolute;
+              display: block;
+              top: 50%;
+              left: 0;
+              height: 3px;
+              margin-top: -2px;
+              width: 64px;
+            }
+            .slider-handle::before {
+              left: -58px;
+              background: #fff;
+            }
+            .slider-handle::after {
+              left: 6px;
+              background: rgba(255,255,255,.2);
+            }
+          }
+        }
       }
 
       .time {
@@ -282,20 +358,71 @@ const chromeStyle = css`
   }
 `
 
-const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictureInPicture, fullscreen, play, seek, attachments, tracks, video, ...rest }: { isPlaying?: boolean, loading?: boolean, duration?: number, loadedTime?: number, currentTime?: number, pictureInPicture: MouseEventHandler<HTMLDivElement>, fullscreen: MouseEventHandler<HTMLDivElement>, play: MouseEventHandler<HTMLDivElement>, seek: (time: number) => void, attachments: Attachment[], tracks: Subtitle[] } & HTMLAttributes<HTMLDivElement>) => {
+const Chrome = (({
+  isPlaying,
+  loading,
+  duration,
+  loadedTime,
+  currentTime,
+  pictureInPicture,
+  fullscreen,
+  play,
+  seek,
+  getVolume,
+  setVolume,
+  attachments,
+  tracks,
+  video,
+  ...rest
+}: {
+  isPlaying?: boolean,
+  loading?: boolean,
+  duration?: number,
+  loadedTime?: number,
+  currentTime?: number,
+  pictureInPicture: MouseEventHandler<HTMLDivElement>,
+  fullscreen: MouseEventHandler<HTMLDivElement>,
+  play: MouseEventHandler<HTMLDivElement>,
+  seek: (time: number) => void,
+  getVolume: () => number,
+  setVolume: (volume: number) => void,
+  attachments: Attachment[],
+  tracks: Subtitle[]
+} & HTMLAttributes<HTMLDivElement>) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
   const progressBarRef = useRef<HTMLDivElement>(null)
+  const volumeBarRef = useRef<HTMLDivElement>(null)
   const [isFullscreen, setFullscreen] = useState(false)
-  const [hidden, setHidden] = useState(true)
+  const [hidden, setHidden] = useState(false)
   const autoHide = useRef<number>()
+  const [hiddenVolumeArea, setHiddenVolumeArea] = useState(false)
   const isPictureInPictureEnabled = useMemo(() => document.pictureInPictureEnabled, [])
-  const [scrubbing, setScrubbing] = useState(false)
   const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
   const subtitleTrack = useMemo(
     () => currentSubtitleTrack ? tracks.find(({ number }) => number === currentSubtitleTrack) : undefined,
     [currentSubtitleTrack, currentSubtitleTrack && tracks.find(({ number }) => number === currentSubtitleTrack)?.content]
   )
+  const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
+
+  // todo: make volume persistent
+  const [isMuted, setIsMuted] = useState(false)
+  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: 1 })
+
+  useEffect(() => {
+    if (seekScrubValue === undefined) return
+    seek(seekScrubValue * (duration ?? 0))
+  }, [seekScrubValue])
+
+  useEffect(() => {
+    if (isMuted) {
+      setVolume(0)
+      return
+    }
+    if (volumeScrubValue === undefined) return
+    setVolume(volumeScrubValue ** 2)
+  }, [volumeScrubValue, isMuted])
+
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
     setHidden(false)
     if (autoHide.current) clearInterval(autoHide.current)
@@ -321,35 +448,6 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
     canvasElement.width = window.screen.width * window.devicePixelRatio
     subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
   }
-
-  const scrub = (ev) => {
-    setScrubbing(true)
-    if (!progressBarRef.current || !duration) return
-    const { clientX: x } = ev
-    const { left, right } = progressBarRef.current.getBoundingClientRect()
-    const time = Math.min(((x - left) / (right - left)) * duration, duration)
-    seek(time)
-  }
-
-  useEffect(() => {
-    if (!scrubbing) return
-    const mouseUp = (ev: MouseEvent) => {
-      setScrubbing(false)
-    }
-    const mouseMove = (ev: MouseEvent) => {
-      if (!progressBarRef.current || !duration) return
-      const { clientX: x } = ev
-      const { left, right } = progressBarRef.current.getBoundingClientRect()
-      const time = Math.min(((x - left) / (right - left)) * duration, duration)
-      seek(time)
-    }
-    document.addEventListener('mousemove', mouseMove)
-    document.addEventListener('mouseup', mouseUp)
-    return () => {
-      document.removeEventListener('mousemove', mouseMove)
-      document.removeEventListener('mouseup', mouseUp)
-    }
-  }, [scrubbing])
 
   useEffect(() => {
     if (!video.current || !canvasElement || !attachments.length || subtitlesOctopusInstance || !subtitleTrack?.content) return
@@ -408,6 +506,19 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
     setCanvasElement(canvasElem)
   }
 
+  const hoverVolumeArea: React.DOMAttributes<HTMLDivElement>['onMouseOver'] = () => {
+    setHiddenVolumeArea(false)
+  }
+
+  const mouseOutBottom: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
+    if (ev.currentTarget !== ev.relatedTarget && ev.relatedTarget !== null) return
+    setHiddenVolumeArea(true)
+  }
+
+  const clickMuteButton: MouseEventHandler<HTMLButtonElement> = () => {
+    setIsMuted(value => !value)
+  }
+ 
    return (
     <div {...rest} css={chromeStyle} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <div className="overlay" onClick={clickPlay}>
@@ -452,7 +563,7 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
             : null
         }
       </div>
-      <div className="bottom">
+      <div className="bottom" onMouseOut={mouseOutBottom}>
         <div className="preview"></div>
         <div className="progress-bar" ref={progressBarRef}>
           <div className="progress"></div>
@@ -471,7 +582,7 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
           </div>
           <div className="chapters"></div>
           <div className="scrubber"></div>
-          <div className="padding" onMouseDown={scrub}></div>
+          <div className="padding" onMouseDown={seekScrub}></div>
         </div>
         <div className="controls">
           <button className="play-button" type="button" onClick={clickPlay}>
@@ -481,6 +592,20 @@ const Chrome = (({ isPlaying, loading, duration, loadedTime, currentTime, pictur
                 : <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-play"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             }
           </button>
+          <div className="volume-area" onMouseOver={hoverVolumeArea}>
+            <button className="mute-button" onClick={clickMuteButton}>
+              {
+                (volumeScrubValue ?? 0) > 0.7 ? <Volume2/>
+                : (volumeScrubValue ?? 0) > 0.4 ? <Volume1/>
+                : <Volume/>
+              }
+            </button>
+            <div ref={volumeBarRef} className={`volume-panel${hiddenVolumeArea ? '' : ' volume-control-hover'}`} onMouseDown={volumeScrub}>
+              <div className="slider">
+                <div className="slider-handle" style={{ left: `${(volumeScrubValue ?? 0) * 100}%` }}></div>
+              </div>
+            </div>
+          </div>
           <div className="time">
             <span>{new Date((currentTime ?? 0) * 1000).toISOString().substr(11, 8)}</span>
             <span> / </span>
@@ -579,6 +704,16 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     else await videoRef.current?.pause()
   }
 
+  const setVolume = (volume: number) => {
+    if (!videoRef.current) return
+    videoRef.current.volume = volume
+  }
+
+  const getVolume = () => {
+    if (!videoRef.current) return
+    return videoRef.current.volume
+  }
+
   const refFunction: ClassAttributes<HTMLVideoElement>['ref'] = (element) => {
     if (typeof ref === 'function') ref(element)
     if (ref && 'current' in ref) ref.current = element
@@ -609,6 +744,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         fullscreen={fullscreen}
         play={play}
         seek={seek}
+        getVolume={getVolume}
+        setVolume={setVolume}
         attachments={attachments}
         tracks={tracks}
       />
