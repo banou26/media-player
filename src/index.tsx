@@ -7,7 +7,7 @@ import { call } from 'osra'
 import { css } from '@emotion/react'
 import { updateSourceBuffer as _updateSourceBuffer } from './utils'
 import { openDB } from 'idb'
-import { Volume, Volume1, Volume2 } from 'react-feather'
+import { Volume, Volume1, Volume2, VolumeX } from 'react-feather'
 import useScrub from './use-scrub'
 
 
@@ -595,9 +595,11 @@ const Chrome = (({
           <div className="volume-area" onMouseOver={hoverVolumeArea}>
             <button className="mute-button" onClick={clickMuteButton}>
               {
-                (volumeScrubValue ?? 0) > 0.7 ? <Volume2/>
-                : (volumeScrubValue ?? 0) > 0.4 ? <Volume1/>
-                : <Volume/>
+                isMuted ? <VolumeX/>
+                : (volumeScrubValue ?? 0) > 0.66 ? <Volume2/>
+                : (volumeScrubValue ?? 0) > 0.33 ? <Volume1/>
+                : (volumeScrubValue ?? 0) > 0 ? <Volume/>
+                : <VolumeX/>
               }
             </button>
             <div ref={volumeBarRef} className={`volume-panel${hiddenVolumeArea ? '' : ' volume-control-hover'}`} onMouseDown={volumeScrub}>
