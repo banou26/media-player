@@ -61,8 +61,6 @@ const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: num
 
   const newChunk = (chunk: Chunk) => {
     setChunks(chunks => [...chunks, chunk])
-    // console.log('new chunk', chunk)
-    // setLoadedTime(chunk.endTime)
   }
 
   const newSubtitles = (data: { attachments: Attachment[], tracks: Subtitle[] } | { subtitles: { content: string, stream: number }[] }) => {
@@ -440,9 +438,8 @@ const Chrome = (({
   )
   const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
 
-  // todo: make volume persistent
-  const [isMuted, setIsMuted] = useState(false)
-  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: 1 })
+  const [isMuted, setIsMuted] = useState(localStorage.getItem('muted') === 'true' ? true : false)
+  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: Number(localStorage.getItem('volume') || 1) })
 
   useEffect(() => {
     if (seekScrubValue === undefined) return
@@ -452,10 +449,12 @@ const Chrome = (({
   useEffect(() => {
     if (isMuted) {
       setVolume(0)
+      localStorage.setItem('muted', isMuted.toString())
       return
     }
     if (volumeScrubValue === undefined) return
     setVolume(volumeScrubValue ** 2)
+    localStorage.setItem('volume', volumeScrubValue.toString())
   }, [volumeScrubValue, isMuted])
 
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
@@ -578,7 +577,6 @@ const Chrome = (({
     }, 0)
   }
 
-  // console.log('tracks', tracks)
    return (
     <div {...rest} css={chromeStyle} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <div className="overlay" onClick={clickPlay}>
