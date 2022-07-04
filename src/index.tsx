@@ -450,11 +450,13 @@ const Chrome = (({
     if (isMuted) {
       setVolume(0)
       localStorage.setItem('muted', isMuted.toString())
+      if (volumeScrubValue) localStorage.setItem('volume', volumeScrubValue.toString())
       return
     }
     if (volumeScrubValue === undefined) return
     setVolume(volumeScrubValue ** 2)
     localStorage.setItem('volume', volumeScrubValue.toString())
+    localStorage.setItem('muted', isMuted.toString())
   }, [volumeScrubValue, isMuted])
 
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
