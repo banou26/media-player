@@ -513,6 +513,11 @@ const Chrome = (({
       return
     }
     subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.content}`)
+    const parent = canvasElement?.parentElement
+    if (!parent) return
+    canvasElement.height = parent.getBoundingClientRect().height
+    canvasElement.width = parent.getBoundingClientRect().width
+    subtitlesOctopusInstance.resize(parent.getBoundingClientRect().width, parent.getBoundingClientRect().height)
   }, [subtitlesOctopusInstance, subtitleTrack])
 
   useEffect(() => {
