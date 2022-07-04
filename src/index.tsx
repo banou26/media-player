@@ -9,6 +9,7 @@ import { updateSourceBuffer as _updateSourceBuffer } from './utils'
 import { openDB } from 'idb'
 import { Volume, Volume1, Volume2, VolumeX } from 'react-feather'
 import useScrub from './use-scrub'
+import { tagToLanguage } from './languages'
 
 
 const useThrottle = (func: (...args: any[]) => any, limit: number, deps: any[] = []) =>
@@ -355,7 +356,7 @@ const chromeStyle = css`
 
       .subtitle-area {
         position: relative;
-        height: 100%;
+        height: 3.8rem;
 
         .subtitle-menu {
           position: absolute;
@@ -364,7 +365,11 @@ const chromeStyle = css`
           /* background: rgba(0, 0, 0, .2); */
           /* background: rgb(35, 35, 35); */
           padding: 1rem;
-          text-shadow: 0px 0px 4px #000;
+          background-color: rgb(51, 51, 51);
+
+          &.hide {
+            display: none;
+          }
 
           button {
             width: 100%;
@@ -584,7 +589,28 @@ const Chrome = (({
     }, 0)
   }
 
-   return (
+  const SubtitleTrackToName = ({ subtitleTrack: subtitle }: { subtitleTrack: Subtitle | undefined }) => {
+    if (!subtitle) return <>Disabled</>
+
+    if (!subtitle.name && !subtitle.language) return <>Default</>
+    const language = subtitle.language === 'jpn' ? 'ja' : subtitle.language
+
+    if (subtitle.name) {
+      return (
+        <>
+          {subtitle.name?.replace('subs', '')}{language ? `(${(tagToLanguage(language))})` : ''}
+        </>
+      )
+    }
+
+    return (
+      <>
+        {tagToLanguage(language)}
+      </>
+    )
+  }
+
+  return (
     <div {...rest} css={chromeStyle} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <div className="overlay" onClick={clickPlay}>
         <canvas ref={setCanvasRef}/>
@@ -684,21 +710,21 @@ const Chrome = (({
               tracks.length
               ? (
                 <>
-                  <div className="subtitle-menu">
+                  <div className={`subtitle-menu ${isSubtitleMenuHidden ? 'hide' : ''}`}>
                     {
                       isSubtitleMenuHidden
                       ? null
                       : (
                         [undefined, ...tracks].map(track =>
                           <button key={track?.number ?? 'disabled'} onClick={ev => setSubtitleTrack(ev, track)}>
-                            {track?.name.replace('subs', '') ?? 'Disabled'}
+                            <SubtitleTrackToName subtitleTrack={track}/>
                           </button>
                         )
                       )
                     }
                   </div>
                   <button className="subtitle-menu-button" onClick={subtitleMenuButtonClick}>
-                    {subtitleTrack?.name.replace('subs', '') ?? 'Disabled'}
+                    <SubtitleTrackToName subtitleTrack={subtitleTrack}/>
                   </button>
                 </>
               )
