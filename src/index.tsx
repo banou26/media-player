@@ -74,7 +74,7 @@ const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: num
       tracks.map(track =>
         data.subtitles.reduce((track, subtitleLine) =>
           track.number === subtitleLine.stream
-            ? { ...track, content: track.content += `\n${subtitleLine.content}` }
+            ? { ...track, content: `${track.content}\n${subtitleLine.content}` }
             : track,
           track
         )
@@ -427,6 +427,7 @@ const Chrome = (({
   tracks: Subtitle[]
 } & HTMLAttributes<HTMLDivElement>) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
+  const [canvasInitialized, setCanvasInitialized] = useState(false)
   const progressBarRef = useRef<HTMLDivElement>(null)
   const volumeBarRef = useRef<HTMLDivElement>(null)
   const [isFullscreen, setFullscreen] = useState(false)
@@ -497,7 +498,7 @@ const Chrome = (({
   }
 
   useEffect(() => {
-    if (!video.current || !canvasElement || !attachments.length || subtitlesOctopusInstance || !subtitleTrack?.content) return
+    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.content) return
     const fonts = attachments.map(({ filename, data }) => [filename, URL.createObjectURL(new Blob([data], {type : 'application/javascript'} ))])
     const _subtitlesOctopusInstance = new SubtitlesOctopus({
       // video: video.current,
@@ -524,11 +525,12 @@ const Chrome = (({
     }
     subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.content}`)
     const parent = canvasElement?.parentElement
-    if (!parent) return
+    if (!parent || canvasInitialized) return
+    setCanvasInitialized(true)
     canvasElement.height = parent.getBoundingClientRect().height
     canvasElement.width = parent.getBoundingClientRect().width
     subtitlesOctopusInstance.resize(parent.getBoundingClientRect().width, parent.getBoundingClientRect().height)
-  }, [subtitlesOctopusInstance, subtitleTrack])
+  }, [subtitlesOctopusInstance, subtitleTrack, canvasInitialized])
 
   useEffect(() => {
     if (!subtitlesOctopusInstance) return
