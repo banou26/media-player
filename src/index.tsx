@@ -474,6 +474,11 @@ const Chrome = (({
   }
 
   const mouseOut: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
+    const root = canvasElement?.parentElement?.parentElement
+    if (!root?.contains(ev?.relatedTarget as Element)) {
+      setHidden(true)
+      return
+    }
     if (ev.currentTarget.parentElement !== ev.relatedTarget && ev.relatedTarget !== null) return
     setHidden(true)
   }
