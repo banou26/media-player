@@ -28,8 +28,10 @@ const Mount = () => {
 
     // fetch(`http://localhost:4001/v0/torrent/${encodeURIComponent(magnet)}`)
     // fetch('./video.mkv')
-    fetch('./video5.mkv')
+    // fetch('./video5.mkv')
     // fetch('./video4.mkv')
+    fetch('fucked-subtitles-and-FF-playback.mkv')
+    // fetch('wrong-dts-3.mkv')
       .then(({ headers, body }) => {
         if (!body || !headers.get('Content-Length')) throw new Error('no stream or Content-Length returned from the response')
         setSize(Number(headers.get('Content-Length')))
@@ -97,5 +99,6 @@ createRoot(
   <>
     <Global styles={globalStyle}/>
     <Mount/>
+    <div>foo bar baz</div>
   </>
 )

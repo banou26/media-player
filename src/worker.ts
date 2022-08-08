@@ -362,16 +362,23 @@ const resolvers = {
     size,
     stream: inStream,
     newChunk,
-    newSubtitles
+    newSubtitles,
+    error
   }: {
     id: string
     size: number
     stream: ReadableStream<Uint8Array>
     newChunk: (chunk: Chunk) => void
     newSubtitles: (data: { attachments, tracks } | { subtitles }) => void
+    error: (critical: boolean, message: string) => any
   }, extra) => {
     const mkvStream = makeSubtitleExtractor({ id, stream: inStream, newSubtitles })
-    const { stream, info } = await remux({ size, stream: mkvStream, autoStart: true })
+    const { stream, info } = await remux({
+      size,
+      stream: mkvStream,
+      autoStart: true,
+      error
+    })
     // const reader = stream.getReader()
     const { mime, info: mp4info } = await makeMp4Extractor({ id, stream, size, newChunk })
     return {
