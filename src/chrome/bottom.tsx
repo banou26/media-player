@@ -353,7 +353,7 @@ export default ({
     }, 0)
   }
   
-  const errorMenuButtonClick: MouseEventHandler<HTMLButtonElement> = (ev) => {
+  const errorMenuButtonClick = (ev: MouseEvent<HTMLDivElement, globalThis.MouseEvent> | undefined) => {
     if (!isErrorMenuHidden && ev?.relatedTarget === null) {
       setIsErrorMenuHidden(value => !value)
       return
@@ -389,6 +389,25 @@ export default ({
       </>
     )
   }
+
+  const shownErrors = useMemo(() =>
+    [
+      ...new Set(
+        errors
+          .map(error =>
+            error.message === 'non monotonicaly increasing DTS values'
+              ? (
+                error.count > 2
+                  ? 'The video seems malformatted and might have issues(skipped frames) during playback'
+                  : null
+              )
+              : 'An unexpected error occured while trying to play the video'
+          )
+      )
+    ]
+      .filter(Boolean)
+      .map(str => <div key={str} className="error-menu-message">{str}</div>)
+  , [errors])
 
   return (
     <div css={style} onMouseOut={mouseOutBottom}>
@@ -443,21 +462,15 @@ export default ({
         </div>
         <div></div>
         <div className="error-area">
-          {/* {
-            errors.length
+          {
+            shownErrors.length
               ? (
                 <>
                   <div className={`error-menu ${isErrorMenuHidden ? 'hide' : ''}`}>
                     {
                       isErrorMenuHidden
                         ? null
-                        : (
-                          errors.map(error =>
-                            error.message === 'non monotonicaly increasing DTS values'
-                              ? <div key={error.message} className="error-menu-message">The video seems malformatted and might have issues(skipped frames) during playback</div>
-                              : <div key={error.message} className="error-menu-message">An unexpected error occured while trying to play the video</div>
-                          )
-                        )
+                        : shownErrors
                     }
                   </div>
                   <div className="error-menu-button" onClick={errorMenuButtonClick}>
@@ -467,7 +480,7 @@ export default ({
                 </>
               )
               : null
-          } */}
+          }
         </div>
         <div className="subtitle-area">
           {

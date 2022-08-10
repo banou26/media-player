@@ -48,6 +48,7 @@ const useThrottle = (func: (...args: any[]) => any, limit: number, deps: any[] =
 export type TransmuxError = {
   critical: boolean
   message: string
+  count: number
 }
 
 const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: number, stream?: ReadableStream }) => {
@@ -89,8 +90,8 @@ const useTransmuxer = ({ id, size, stream: inStream }: { id?: string, size?: num
 
   const error = (critical: boolean, message: string) => {
     const errors = errorsRef.current
-    if (errors.some(({ critical: _critical, message: _message }) => critical === _critical && message === _message)) return
-    setErrors([...errors, { critical, message }])
+    const foundError = errors.find(({ critical: _critical, message: _message }) => critical === _critical && message === _message)
+    setErrors([...errors, { ...foundError, critical, message, count: foundError ? foundError.count + 1 : 1 }])
   }
 
   useEffect(() => {
