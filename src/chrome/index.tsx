@@ -2,7 +2,7 @@
 import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObject } from 'react'
 
 import type { Attachment, Subtitle } from '../worker'
-import type { TransmuxError } from '..'
+import type { FKNVideoControl, TransmuxError } from '..'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import SubtitlesOctopus from 'libass-wasm'
@@ -42,6 +42,7 @@ export type ChromeOptions = {
   tracks: Subtitle[]
   video: MutableRefObject<HTMLVideoElement | undefined>
   errors: TransmuxError[]
+  customControls?: FKNVideoControl[]
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
@@ -60,6 +61,7 @@ export default ({
   tracks,
   video,
   errors,
+  customControls,
   ...rest
 }: ChromeOptions) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
@@ -197,6 +199,7 @@ export default ({
         isPlaying={isPlaying}
         loadedTime={loadedTime}
         errors={errors}
+        customControls={customControls}
       />
     </div>
   )

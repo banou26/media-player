@@ -195,7 +195,20 @@ const style = css`
   }
 `
 
-const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & { id?: string, size?: number, stream?: ReadableStream<Uint8Array> }>(({ id, size, stream: inStream }, ref) => {
+export type FKNVideoControlOptions = {
+
+}
+
+export type FKNVideoControl = (args: FKNVideoControlOptions) => JSX.Element
+
+export type FKNVideoOptions = {
+  id?: string
+  size?: number
+  stream?: ReadableStream<Uint8Array>
+  customControls?: FKNVideoControl[]
+}
+
+const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({ id, size, stream: inStream, customControls }, ref) => {
   const { loadedTime, mime, info, headerChunk, chunks, attachments, tracks, errors } = useTransmuxer({ id, size, stream: inStream })
   const [loading, setLoading] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -290,6 +303,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         attachments={attachments}
         tracks={tracks}
         errors={errors}
+        customControls={customControls}
       />
     </div>
   )

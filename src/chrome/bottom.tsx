@@ -2,7 +2,7 @@
 import type { Dispatch, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
 
 import type { ChromeOptions } from '.'
-import type { TransmuxError } from '..'
+import type { FKNVideoControl, TransmuxError } from '..'
 
 import { css } from '@emotion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -265,6 +265,7 @@ export type BottomOptions = {
   clickFullscreen: (ev: any) => void
   subtitleTrack: Subtitle | undefined
   errors: TransmuxError[]
+  customControls?: FKNVideoControl[]
 } & Pick<ChromeOptions, 'seek' | 'setVolume' | 'loadedTime' | 'isPlaying' | 'tracks' | 'pictureInPicture'>
 
 export default ({
@@ -285,7 +286,8 @@ export default ({
   clickFullscreen,
   subtitleTrack,
   pictureInPicture,
-  errors
+  errors,
+  customControls
 }: BottomOptions) => {
   const progressBarRef = useRef<HTMLDivElement>(null)
   const volumeBarRef = useRef<HTMLDivElement>(null)
@@ -460,7 +462,13 @@ export default ({
           <span> / </span>
           <span>{duration ? new Date(duration * 1000).toISOString().substr(11, 8) : ''}</span>
         </div>
-        <div></div>
+        <div className="custom-controls">
+          {
+            customControls?.length
+              ? customControls.map((Control, i) => <Control key={i}/>)
+              : null
+          }
+        </div>
         <div className="error-area">
           {
             shownErrors.length
