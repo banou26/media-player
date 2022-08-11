@@ -102,13 +102,23 @@ export default ({
     play(ev)
   }
 
+  const resizeSubtitles = () => {
+    if (!canvasElement) return
+    canvasElement.height = window.screen.height * window.devicePixelRatio
+    canvasElement.width = window.screen.width * window.devicePixelRatio
+    subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
+    setTimeout(() => {
+      canvasElement.height = window.screen.height * window.devicePixelRatio
+      canvasElement.width = window.screen.width * window.devicePixelRatio
+      subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
+    }, 10)
+  }
+
   const clickFullscreen = (ev) => {
     if (!canvasElement || !subtitlesOctopusInstance) return
     setFullscreen(value => !value)
     fullscreen(ev)
-    canvasElement.height = window.screen.height * window.devicePixelRatio
-    canvasElement.width = window.screen.width * window.devicePixelRatio
-    subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
+    resizeSubtitles()
   }
 
   useEffect(() => {
@@ -161,10 +171,12 @@ export default ({
     const observer = new ResizeObserver(() => {
       const parent = canvasElement.parentElement
       if (!parent || !subtitlesOctopusInstance || isFullscreen) return
-      canvasElement.height = parent.getBoundingClientRect().height
-      canvasElement.width = parent.getBoundingClientRect().width
-      subtitlesOctopusInstance.resize(parent.getBoundingClientRect().width, parent.getBoundingClientRect().height)
+      resizeSubtitles()
     })
+    const parent = canvasElement.parentElement
+    if (parent && subtitlesOctopusInstance) {
+      resizeSubtitles()
+    }
     observer.observe(canvasElement)
     return () => {
       observer.disconnect()
