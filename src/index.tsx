@@ -185,8 +185,8 @@ const style = css`
     grid-row: 1;
 
     height: 100%;
-    max-width: 100vw;
     max-height: 100vh;
+    max-width: 100%;
     background-color: black;
   }
 
