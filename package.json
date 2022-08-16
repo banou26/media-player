@@ -38,7 +38,8 @@
     "matroska-subtitles": "^3.3.2",
     "mp4box": "^0.5.2",
     "osra": "^0.0.4",
-    "react-feather": "^2.0.10"
+    "react-feather": "^2.0.10",
+    "react-tooltip": "^4.2.21"
   },
   "peerDependencies": {
     "@emotion/react": "^11.9.0",
