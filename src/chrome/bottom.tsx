@@ -4,6 +4,7 @@ import type { Dispatch, MouseEvent, MouseEventHandler, SetStateAction } from 're
 import type { ChromeOptions } from '.'
 import type { FKNVideoControl, TransmuxError } from '..'
 
+import ReactTooltip from 'react-tooltip'
 import { css } from '@emotion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
@@ -11,7 +12,6 @@ import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
 import useScrub from '../use-scrub'
 import { Subtitle } from '../worker'
 import { tagToLanguage } from '../languages'
-import ReactTooltip from 'react-tooltip'
 
 const style = css`
   position: relative;
@@ -151,6 +151,11 @@ const style = css`
     .time {
       font-family: Roboto;
       padding-bottom: .5rem;
+    }
+
+    .custom-controls {
+      display: flex;
+      justify-content: end;
     }
 
     .error-area {
@@ -443,14 +448,14 @@ export default ({
         <div className="padding" onMouseDown={seekScrub}></div>
       </div>
       <div className="controls">
-        <ReactTooltip id='play-button-tooltip' effect='solid' place='top'>
+        <ReactTooltip id="play-button-tooltip" effect="solid" place="top">
           {
             isPlaying
               ? 'Pause (k)'
               : 'Play (k)'
           }
         </ReactTooltip>
-        <button className="play-button" type="button" data-tip data-for='play-button-tooltip' onClick={togglePlay}>
+        <button className="play-button" type="button" data-tip data-for="play-button-tooltip" onClick={togglePlay}>
           {
             isPlaying
               ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-pause"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
@@ -458,14 +463,14 @@ export default ({
           }
         </button>
         <div className="volume-area" onMouseOver={hoverVolumeArea}>
-          <ReactTooltip id='mute-button-tooltip' effect='solid' place='top'>
+          <ReactTooltip id="mute-button-tooltip" effect="solid" place="top">
             {
               isMuted
                 ? 'Unmute (m)'
                 : 'Mute (m)'
             }
           </ReactTooltip>
-          <button className="mute-button" data-tip data-for='mute-button-tooltip' onClick={toggleMuteButton}>
+          <button className="mute-button" data-tip data-for="mute-button-tooltip" onClick={toggleMuteButton}>
             {
               isMuted ? <VolumeX/>
               : (volumeScrubValue ?? 0) > 0.66 ? <Volume2/>
