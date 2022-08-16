@@ -255,7 +255,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }
 
   const play = async () => {
-    if (!isPlaying) await videoRef.current?.play()
+    const isPaused = videoRef.current?.paused
+    if (isPaused) await videoRef.current?.play()
     else await videoRef.current?.pause()
   }
 

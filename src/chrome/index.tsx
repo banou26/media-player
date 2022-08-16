@@ -32,9 +32,9 @@ export type ChromeOptions = {
   duration?: number
   loadedTime?: number
   currentTime?: number
-  pictureInPicture: MouseEventHandler<HTMLDivElement>
-  fullscreen: MouseEventHandler<HTMLDivElement>
-  play: MouseEventHandler<HTMLDivElement>
+  pictureInPicture: () => void
+  fullscreen: () => void
+  play: () => void
   seek: (time: number) => void
   getVolume: () => number | undefined
   setVolume: (volume: number) => void
@@ -97,9 +97,9 @@ export default ({
     setHidden(true)
   }
 
-  const clickPlay = (ev) => {
+  const togglePlay = () => {
     if (!isSubtitleMenuHidden) return
-    play(ev)
+    play()
   }
 
   const resizeSubtitles = () => {
@@ -114,10 +114,10 @@ export default ({
     }, 10)
   }
 
-  const clickFullscreen = (ev) => {
+  const toggleFullscreen = () => {
     if (!canvasElement || !subtitlesOctopusInstance) return
     setFullscreen(value => !value)
-    fullscreen(ev)
+    fullscreen()
     resizeSubtitles()
   }
 
@@ -191,10 +191,10 @@ export default ({
 
   return (
     <div {...rest} css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
-      <Overlay loading={loading} clickPlay={clickPlay} setCanvasRef={setCanvasRef}/>
+      <Overlay loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
       <Bottom
-        clickFullscreen={clickFullscreen}
-        clickPlay={clickPlay}
+        toggleFullscreen={toggleFullscreen}
+        togglePlay={togglePlay}
         isFullscreen={isFullscreen}
         pictureInPicture={pictureInPicture}
         seek={seek}

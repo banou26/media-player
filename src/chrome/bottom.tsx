@@ -210,8 +210,10 @@ const style = css`
         left: -1rem;
         /* background: rgba(0, 0, 0, .2); */
         /* background: rgb(35, 35, 35); */
-        padding: 1rem;
-        background-color: rgb(51, 51, 51);
+        padding: 1rem 0;
+        background-color: rgb(17, 17, 17);
+        /* background-color: rgb(51, 51, 51); */
+        border-radius: .3rem;
 
         &.hide {
           display: none;
@@ -219,12 +221,17 @@ const style = css`
 
         button {
           width: 100%;
-          padding: 0.5rem 0;
+          padding: 1rem;
+          /* padding: 0.5rem 0; */
           background: none;
           border: none;
           color: #fff;
           cursor: pointer;
           text-shadow: 2px 2px #000;
+
+          &:hover {
+            background-color: rgb(51, 51, 51);
+          }
         }
       }
       
@@ -243,14 +250,14 @@ const style = css`
 export type BottomOptions = {
   duration?: number
   currentTime?: number
-  clickPlay: (ev: any) => void
+  togglePlay: () => void
   isSubtitleMenuHidden: boolean
   setIsSubtitleMenuHidden: Dispatch<SetStateAction<boolean>>
   isErrorMenuHidden: boolean
   setIsErrorMenuHidden: Dispatch<SetStateAction<boolean>>
   setCurrentSubtitleTrack: Dispatch<SetStateAction<number | undefined>>
   isFullscreen: boolean
-  clickFullscreen: (ev: any) => void
+  toggleFullscreen: () => void
   subtitleTrack: Subtitle | undefined
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
@@ -259,7 +266,7 @@ export type BottomOptions = {
 export default ({
   duration,
   currentTime,
-  clickPlay,
+  togglePlay,
   seek,
   setVolume,
   isSubtitleMenuHidden,
@@ -271,7 +278,7 @@ export default ({
   isPlaying,
   tracks,
   isFullscreen,
-  clickFullscreen,
+  toggleFullscreen,
   subtitleTrack,
   pictureInPicture,
   errors,
@@ -319,7 +326,7 @@ export default ({
     setHiddenVolumeArea(true)
   }
 
-  const clickMuteButton: MouseEventHandler<HTMLButtonElement> = (ev) => {
+  const toggleMuteButton = () => {
     setIsMuted(value => !value)
   }
 
@@ -399,6 +406,20 @@ export default ({
       .map(str => <div key={str} className="error-menu-message">{str}</div>)
   , [errors])
 
+  useEffect(() => {
+    ReactTooltip.rebuild()
+  }, [tracks.length])
+
+  useEffect(() => {
+    const eventListener = (ev) => {
+      if (ev.key === 'f') toggleFullscreen()
+      if (ev.key === 'k') togglePlay()
+      if (ev.key === 'm') toggleMuteButton()
+    }
+    window.addEventListener('keydown', eventListener)
+    return () => window.removeEventListener('keydown', eventListener)
+  }, [toggleFullscreen, togglePlay, toggleMuteButton])
+
   return (
     <div css={style} onMouseOut={mouseOutBottom}>
       <div className="preview"></div>
@@ -423,15 +444,13 @@ export default ({
       </div>
       <div className="controls">
         <ReactTooltip id='play-button-tooltip' effect='solid' place='top'>
-          <span>
-            {
-              isPlaying
-                ? 'Pause (k)'
-                : 'Play (k)'
-            }
-          </span>
+          {
+            isPlaying
+              ? 'Pause (k)'
+              : 'Play (k)'
+          }
         </ReactTooltip>
-        <button className="play-button" type="button" data-tip data-for='play-button-tooltip' onClick={clickPlay}>
+        <button className="play-button" type="button" data-tip data-for='play-button-tooltip' onClick={togglePlay}>
           {
             isPlaying
               ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-pause"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
@@ -440,15 +459,13 @@ export default ({
         </button>
         <div className="volume-area" onMouseOver={hoverVolumeArea}>
           <ReactTooltip id='mute-button-tooltip' effect='solid' place='top'>
-            <span>
-              {
-                isMuted
-                  ? 'Unmute (m)'
-                  : 'Mute (m)'
-              }
-            </span>
+            {
+              isMuted
+                ? 'Unmute (m)'
+                : 'Mute (m)'
+            }
           </ReactTooltip>
-          <button className="mute-button" data-tip data-for='mute-button-tooltip' onClick={clickMuteButton}>
+          <button className="mute-button" data-tip data-for='mute-button-tooltip' onClick={toggleMuteButton}>
             {
               isMuted ? <VolumeX/>
               : (volumeScrubValue ?? 0) > 0.66 ? <Volume2/>
@@ -496,8 +513,8 @@ export default ({
               : null
           }
         </div>
-        <ReactTooltip id='subtitle-button-tooltip' effect='solid' place='top'>
-          <span>Subtitles</span>
+        <ReactTooltip id="subtitle-button-tooltip" globalEventOff="click" effect="solid" place="top" disable={!isSubtitleMenuHidden}>
+          Subtitles
         </ReactTooltip>
         <div className="subtitle-area">
           {
@@ -507,17 +524,17 @@ export default ({
                 <div className={`subtitle-menu ${isSubtitleMenuHidden ? 'hide' : ''}`}>
                   {
                     isSubtitleMenuHidden
-                    ? null
-                    : (
-                      [undefined, ...tracks].map(track =>
-                        <button key={track?.number ?? 'disabled'} onClick={ev => setSubtitleTrack(ev, track)}>
-                          <SubtitleTrackToName subtitleTrack={track}/>
-                        </button>
+                      ? null
+                      : (
+                        [undefined, ...tracks].map(track =>
+                          <button key={track?.number ?? 'disabled'} onClick={ev => setSubtitleTrack(ev, track)}>
+                            <SubtitleTrackToName subtitleTrack={track}/>
+                          </button>
+                        )
                       )
-                    )
                   }
                 </div>
-                <button className="subtitle-menu-button" data-tip data-for='subtitle-button-tooltip' onClick={subtitleMenuButtonClick}>
+                <button className="subtitle-menu-button" data-tip data-for="subtitle-button-tooltip" onClick={subtitleMenuButtonClick}>
                   <SubtitleTrackToName subtitleTrack={subtitleTrack}/>
                 </button>
               </>
@@ -525,25 +542,26 @@ export default ({
             : null
           }
         </div>
+        <ReactTooltip id="pip-button-tooltip" effect="solid" place="top">
+          Picture in Picture
+        </ReactTooltip>
         {
           isPictureInPictureEnabled
             ? (
-              <button className="picture-in-picture" onClick={pictureInPicture}>
+              <button className="picture-in-picture" data-tip data-for="pip-button-tooltip" onClick={pictureInPicture}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="21" height="14" rx="2" ry="2"></rect><rect x="12.5" y="8.5" width="8" height="6" rx="2" ry="2"></rect></svg>
               </button>
             )
             : null
         }
-        <ReactTooltip id='fullscreen-button-tooltip' effect='solid' place='top'>
-          <span>
-            {
-              isFullscreen
-                ? 'Exit full screen (f)'
-                : 'Full screen (f)'
-            }
-          </span>
+        <ReactTooltip id="fullscreen-button-tooltip" effect="solid" place="top">
+          {
+            isFullscreen
+              ? 'Exit full screen (f)'
+              : 'Full screen (f)'
+          }
         </ReactTooltip>
-        <button className="fullscreen" data-tip data-for='fullscreen-button-tooltip' onClick={clickFullscreen}>
+        <button className="fullscreen" data-tip data-for="fullscreen-button-tooltip" onClick={toggleFullscreen}>
           {
             isFullscreen
               ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-minimize"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path></svg>

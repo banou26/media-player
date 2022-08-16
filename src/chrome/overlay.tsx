@@ -32,13 +32,13 @@ const style = css`
 
 export type OverlayOptions = {
   loading?: boolean
-  clickPlay: (ev: any) => void
+  togglePlay: (ev: any) => void
   setCanvasRef: ClassAttributes<HTMLCanvasElement>['ref']
 }
 
-export default ({ loading, clickPlay, setCanvasRef }: OverlayOptions) => {
+export default ({ loading, togglePlay, setCanvasRef }: OverlayOptions) => {
   return (
-    <div css={style} onClick={clickPlay}>
+    <div css={style} onClick={togglePlay}>
       <canvas ref={setCanvasRef}/>
       {
         loading
