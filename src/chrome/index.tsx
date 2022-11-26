@@ -30,7 +30,7 @@ export type ChromeOptions = {
   isPlaying?: boolean
   loading?: boolean
   duration?: number
-  loadedTime?: number
+  loadedTime?: [number, number]
   currentTime?: number
   pictureInPicture: () => void
   fullscreen: () => void

@@ -259,15 +259,15 @@ const useTransmuxer = (
   }
 }
 
-const useSourceBuffer = ({ info, mime }: { info?: any, mime?: string }) => {
+const useSourceBuffer = ({ info, mime, duration }: { info?: any, mime?: string, duration?: number }) => {
   const [queue] = useState(new PQueue({ concurrency: 1 }))
   const [mediaSource] = useState(new MediaSource())
   const [sourceUrl] = useState(URL.createObjectURL(mediaSource))
   const [sourceBuffer, setSourceBuffer] = useState<SourceBuffer>()
-
   useEffect(() => {
-    if (!info || !mime || sourceBuffer) return
+    if (!info || !mime || !duration || sourceBuffer) return
     const registerSourceBuffer = () => {
+      mediaSource.duration = duration
       const sourceBuffer = mediaSource.addSourceBuffer(mime)
       sourceBuffer.addEventListener('error', (err) => console.log('source buffer error', err))
       sourceBuffer.mode = 'segments'
@@ -282,7 +282,7 @@ const useSourceBuffer = ({ info, mime }: { info?: any, mime?: string }) => {
     } else {
       registerSourceBuffer()
     }
-  }, [info, mime])
+  }, [info, mime, duration])
 
   const setupListeners = (resolve: (value: Event) => void, reject: (reason: Event) => void) => {
     if (!sourceBuffer) throw new Error('Source buffer not initialized')
@@ -425,7 +425,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     mediaSource,
     removeChunk,
     unbufferChunk
-  } = useSourceBuffer({ mime, info })
+  } = useSourceBuffer({ mime, info, duration })
 
   const waiting: React.DOMAttributes<HTMLVideoElement>['onWaiting'] = (ev) => {
     setLoading(true)
@@ -441,14 +441,11 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       process
         ? (
           throttleWithLastCall(100, async () => {
-            console.log('processNeededBufferRange')
             if (!videoRef.current) return
             const currentTime = videoRef.current.currentTime
             let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
             while (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS))) {
-              console.log('processNeededBufferRange while loop')
               const newChunks = await process()
-              console.log('processNeededBufferRange while loop newChunks', newChunks)
               const lastProcessedChunk = newChunks.at(-1)
               if (!lastProcessedChunk) break
               lastPts = lastProcessedChunk.pts
@@ -460,7 +457,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   )
 
   const updateBufferedRanges = async () => {
-    console.log('updateBufferedRanges')
     const video = videoRef.current
     if (!video) throw new Error('Trying to seek before video element has ref')
     const { currentTime } = video
@@ -507,7 +503,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const seek = useMemo<(time: number) => Promise<void>>(
     () =>
       (time: number) => throttleWithLastCall(500, async (time: number) => {
-        console.log('seek')
         const video = videoRef.current
         if (!video) throw new Error('Trying to seek before video element has ref')
         video.currentTime = time
@@ -527,7 +522,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         await processNeededBufferRange()
         await updateBufferedRanges()
       })(time),
-    []
+    [process]
   )
 
   const timeUpdate: React.DOMAttributes<HTMLVideoElement>['onTimeUpdate'] = (ev) => {
@@ -575,17 +570,20 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
   useEffect(() => {
     if (!headerChunk || !sourceBuffer || !process) return
-    console.log('headerChunk', headerChunk)
     ;(async () => {
-      console.log('appendBuffer')
       await appendBuffer(headerChunk.buffer)
 
-      console.log('call processNeededBufferRange')
       await processNeededBufferRange()
-      console.log('call updateBufferedRanges')
       await updateBufferedRanges()
     })()
   }, [headerChunk, sourceBuffer, process])
+
+  const currentLoadedRange = useMemo(() => {
+    let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
+    let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+    console.log('firstPts', firstPts, 'lastPts', lastPts)
+    return [firstPts, lastPts] as [number, number]
+  }, [chunks])
   
   return (
     <div css={style} ref={containerRef}>
@@ -606,7 +604,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         loading={loading}
         duration={duration}
         currentTime={currentTime}
-        loadedTime={1200}
+        loadedTime={currentLoadedRange}
         pictureInPicture={pictureInPicture}
         fullscreen={fullscreen}
         play={play}

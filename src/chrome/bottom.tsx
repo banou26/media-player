@@ -30,9 +30,30 @@ const style = css`
   .progress-bar {
     position: relative;
     height: .4rem;
-    background-color: hsla(0, 100%, 100%, .2);
     cursor: pointer;
     user-select: none;
+    transition: transform .2s ease-in-out;
+
+
+    &:hover {
+      .background-bar {
+        transform: scaleY(1.5);
+      }
+    }
+    .background-bar {
+      position: absolute;
+      inset: 0;
+      background-color: hsla(0, 100%, 100%, .2);
+    }
+
+    .cursor-time {
+      position: absolute;
+      top: -2rem;
+      width: 5rem;
+      margin-left: -2.5rem;
+      display: flex;
+      justify-content: center;
+    }
 
     .load {
       transform-origin: 0 0;
@@ -425,13 +446,41 @@ export default ({
     return () => window.removeEventListener('keydown', eventListener)
   }, [toggleFullscreen, togglePlay, toggleMuteButton])
 
+  const [progressBarOverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
+
+  const onProgressBarOver = (ev) => {
+    const percentage = ev.nativeEvent.offsetX / ev.currentTarget.offsetWidth
+    const time = percentage * (duration ?? 0)
+    setProgressBarOverTime(time)
+  }
+
+  const hideProgressBarTime = () => {
+    if (!progressBarRef.current) return
+    setProgressBarOverTime(undefined)
+  }
+
   return (
     <div css={style} onMouseOut={mouseOutBottom}>
       <div className="preview"></div>
-      <div className="progress-bar" ref={progressBarRef}>
+      <div
+        ref={progressBarRef}
+        className="progress-bar"
+        onMouseMove={onProgressBarOver}
+        onMouseOut={hideProgressBarTime}
+      >
+        <div className="background-bar"></div>
+        {
+          progressBarOverTime
+            ? (
+              <div className="cursor-time" data-tip={progressBarOverTime} style={{ left: `${1 / ((duration ?? 0) / (progressBarOverTime ?? 1)) * 100}%` }}>
+                {new Date((progressBarOverTime ?? 0) * 1000).toISOString().substr(11, 8)}
+              </div>
+            )
+            : undefined
+        }
         <div className="progress"></div>
         {/* bar showing the currently loaded progress */}
-        <div className="load" style={{ transform: `scaleX(${1 / ((duration ?? 0) / (loadedTime ?? 0))})` }}></div>
+        <div className="load" style={{ transform: `scaleX(${1 / ((duration ?? 0) / (loadedTime?.[1] ?? 0))})` }}></div>
         {/* bar to show when hovering to potentially seek */}
         <div className="hover"></div>
         {/* bar displaying the current playback progress */}
