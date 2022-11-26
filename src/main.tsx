@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
-import { updateSourceBuffer as _updateSourceBuffer } from './utils'
 
 import FKNMediaPlayer from './index'
 

@@ -98,12 +98,13 @@ const useTransmuxer = (
 
     const transmuxerPromise = makeTransmuxer({
       publicPath: '/build/',
-      workerPath: '/build/oz-libav-worker.js',
+      workerPath: '/node_modules/@banou26/oz-libav/build/index2.js',
       bufferSize: BASE_BUFFER_SIZE,
       sharedArrayBufferSize: BASE_BUFFER_SIZE + 1_000_000,
       length: contentLength,
       read: (offset, size) =>
-        fetch(offset, Math.min(offset + size, contentLength))
+        console.log('fetch data', offset, size) ||
+        fetch(offset, Math.min(offset + size, contentLength) - 1)
           .then(res => res.arrayBuffer())
           .then(arrayBuffer => new Uint8Array(arrayBuffer))
           .then(buffer => {
@@ -143,6 +144,7 @@ const useTransmuxer = (
         ])
       },
       write: ({ isHeader, offset, buffer, pts, duration, pos }) => {
+        console.log('write')
         if (isHeader) {
           if (!headerChunk) {
             headerChunk = {
@@ -241,10 +243,19 @@ const useTransmuxer = (
         await transmuxer.seek(Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS))
       })(time)
     },
-    process: () => {
-      if (!transmuxer) throw new Error('Transmuxer.process() called before transmuxer was initialized')
-      return transmuxer.process(BASE_BUFFER_SIZE)
-    }
+    process:
+      transmuxer
+        ? (
+          () => {
+            console.log('transmuxer process', transmuxer)
+            if (!transmuxer) throw new Error('Transmuxer.process() called before transmuxer was initialized')
+            console.log('foo')
+            const res = transmuxer.process(BASE_BUFFER_SIZE)
+            console.log('transmuxer process RESULT', res)
+            return res
+          }
+        )
+        : undefined
   }
 }
 
@@ -257,7 +268,6 @@ const useSourceBuffer = ({ info, mime }: { info?: any, mime?: string }) => {
   useEffect(() => {
     if (!info || !mime || sourceBuffer) return
     const registerSourceBuffer = () => {
-      mediaSource.duration = info.input.duration
       const sourceBuffer = mediaSource.addSourceBuffer(mime)
       sourceBuffer.addEventListener('error', (err) => console.log('source buffer error', err))
       sourceBuffer.mode = 'segments'
@@ -394,6 +404,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     mime,
     info,
     attachments,
+    duration,
     tracks,
     errors,
     chunks,
@@ -427,21 +438,29 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
   const processNeededBufferRange = useMemo(
     () =>
-      throttleWithLastCall(100, async () => {
-        if (!videoRef.current) return
-        const currentTime = videoRef.current.currentTime
-        let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
-        while (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS))) {
-          const newChunks = await process()
-          const lastProcessedChunk = newChunks.at(-1)
-          if (!lastProcessedChunk) break
-          lastPts = lastProcessedChunk.pts
-        }
-      }),
-    []
+      process
+        ? (
+          throttleWithLastCall(100, async () => {
+            console.log('processNeededBufferRange')
+            if (!videoRef.current) return
+            const currentTime = videoRef.current.currentTime
+            let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+            while (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS))) {
+              console.log('processNeededBufferRange while loop')
+              const newChunks = await process()
+              console.log('processNeededBufferRange while loop newChunks', newChunks)
+              const lastProcessedChunk = newChunks.at(-1)
+              if (!lastProcessedChunk) break
+              lastPts = lastProcessedChunk.pts
+            }
+          })
+        )
+        : undefined,
+    [process]
   )
 
   const updateBufferedRanges = async () => {
+    console.log('updateBufferedRanges')
     const video = videoRef.current
     if (!video) throw new Error('Trying to seek before video element has ref')
     const { currentTime } = video
@@ -488,6 +507,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const seek = useMemo<(time: number) => Promise<void>>(
     () =>
       (time: number) => throttleWithLastCall(500, async (time: number) => {
+        console.log('seek')
         const video = videoRef.current
         if (!video) throw new Error('Trying to seek before video element has ref')
         video.currentTime = time
@@ -554,15 +574,18 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }
 
   useEffect(() => {
-    if (!headerChunk) return
+    if (!headerChunk || !sourceBuffer || !process) return
     console.log('headerChunk', headerChunk)
     ;(async () => {
+      console.log('appendBuffer')
       await appendBuffer(headerChunk.buffer)
 
+      console.log('call processNeededBufferRange')
       await processNeededBufferRange()
+      console.log('call updateBufferedRanges')
       await updateBufferedRanges()
-    })
-  }, [headerChunk])
+    })()
+  }, [headerChunk, sourceBuffer, process])
   
   return (
     <div css={style} ref={containerRef}>
@@ -581,7 +604,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         isPlaying={isPlaying}
         video={videoRef}
         loading={loading}
-        duration={1200}
+        duration={duration}
         currentTime={currentTime}
         loadedTime={1200}
         pictureInPicture={pictureInPicture}
