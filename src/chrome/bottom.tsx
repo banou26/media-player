@@ -47,6 +47,7 @@ const style = css`
     }
 
     .cursor-time {
+      pointer-events: none;
       position: absolute;
       top: -2rem;
       width: 5rem;
@@ -473,7 +474,19 @@ export default ({
           progressBarOverTime
             ? (
               <div className="cursor-time" data-tip={progressBarOverTime} style={{ left: `${1 / ((duration ?? 0) / (progressBarOverTime ?? 1)) * 100}%` }}>
-                {new Date((progressBarOverTime ?? 0) * 1000).toISOString().substr(11, 8)}
+                {
+                new Date((progressBarOverTime ?? 0) * 1000)
+                  .toISOString()
+                  .substr(
+                    (duration ?? 0) >= 3600
+                      ? 11
+                      : 14,
+                    (duration ?? 0) >= 3600
+                      ? 8
+                      : 5
+                    
+                  )
+                }
               </div>
             )
             : undefined

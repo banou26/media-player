@@ -103,7 +103,6 @@ const useTransmuxer = (
       sharedArrayBufferSize: BASE_BUFFER_SIZE + 1_000_000,
       length: contentLength,
       read: (offset, size) =>
-        console.log('fetch data', offset, size) ||
         fetch(offset, Math.min(offset + size, contentLength) - 1)
           .then(res => res.arrayBuffer())
           .then(arrayBuffer => new Uint8Array(arrayBuffer))
@@ -144,7 +143,6 @@ const useTransmuxer = (
         ])
       },
       write: ({ isHeader, offset, buffer, pts, duration, pos }) => {
-        console.log('write')
         if (isHeader) {
           if (!headerChunk) {
             headerChunk = {
@@ -172,10 +170,7 @@ const useTransmuxer = (
       }
     })
 
-    console.log('startup transmuxer')
-
     transmuxerPromise.then(async transmuxer => {
-      console.log('startup transmuxer then')
       await transmuxer.init()
       initDoneRef.current = true
 
@@ -247,12 +242,8 @@ const useTransmuxer = (
       transmuxer
         ? (
           () => {
-            console.log('transmuxer process', transmuxer)
             if (!transmuxer) throw new Error('Transmuxer.process() called before transmuxer was initialized')
-            console.log('foo')
-            const res = transmuxer.process(BASE_BUFFER_SIZE)
-            console.log('transmuxer process RESULT', res)
-            return res
+            return transmuxer.process(BASE_BUFFER_SIZE)
           }
         )
         : undefined
@@ -581,7 +572,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const currentLoadedRange = useMemo(() => {
     let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
     let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
-    console.log('firstPts', firstPts, 'lastPts', lastPts)
+    console.log('firstPts', firstPts, 'lastPts', lastPts, chunks)
     return [firstPts, lastPts] as [number, number]
   }, [chunks])
   
