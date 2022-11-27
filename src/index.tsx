@@ -195,6 +195,18 @@ const useTransmuxer = (
     }
   }, [contentLength, fetch])
 
+  const process = useMemo(() =>
+    transmuxer
+      ? (
+        () => {
+          if (!transmuxer) throw new Error('Transmuxer.process() called before transmuxer was initialized')
+          return transmuxer.process(BASE_BUFFER_SIZE)
+        }
+      )
+      : undefined,
+    [transmuxer]
+  )
+
   return {
     headerChunk,
     chunks,
@@ -238,15 +250,7 @@ const useTransmuxer = (
         await transmuxer.seek(Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS))
       })(time)
     },
-    process:
-      transmuxer
-        ? (
-          () => {
-            if (!transmuxer) throw new Error('Transmuxer.process() called before transmuxer was initialized')
-            return transmuxer.process(BASE_BUFFER_SIZE)
-          }
-        )
-        : undefined
+    process
   }
 }
 
@@ -318,7 +322,6 @@ const useSourceBuffer = ({ info, mime, duration }: { info?: any, mime?: string, 
 
   const unbufferChunk = async (chunks: Chunk[], chunk: Chunk) => {
     if (!sourceBuffer) throw new Error('Source buffer not initialized')
-
     return (
       queue.add(() =>
         new Promise((resolve, reject) => {
@@ -333,18 +336,10 @@ const useSourceBuffer = ({ info, mime, duration }: { info?: any, mime?: string, 
     )
   }
 
-  const removeChunk = async (chunks: Chunk[], chunk: Chunk) => {
-    const chunkIndex = chunks.indexOf(chunk)
-    if (chunkIndex === -1) throw new RangeError('No chunk found')
-    await unbufferChunk(chunks, chunk)
-    chunks = chunks.filter(_chunk => _chunk !== chunk)
-  }
-
   return {
     appendBuffer,
     bufferChunk,
     unbufferChunk,
-    removeChunk,
     mediaSource,
     sourceUrl,
     sourceBuffer
@@ -414,7 +409,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     appendBuffer,
     bufferChunk,
     mediaSource,
-    removeChunk,
     unbufferChunk
   } = useSourceBuffer({ mime, info, duration })
 
@@ -446,6 +440,13 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         : undefined,
     [process]
   )
+
+  const removeChunk = async (chunks: Chunk[], chunk: Chunk) => {
+    const chunkIndex = chunks.indexOf(chunk)
+    if (chunkIndex === -1) throw new RangeError('No chunk found')
+    await unbufferChunk(chunks, chunk)
+    setChunks(chunks.filter(_chunk => _chunk !== chunk))
+  }
 
   const updateBufferedRanges = async () => {
     const video = videoRef.current
@@ -561,6 +562,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
   useEffect(() => {
     if (!headerChunk || !sourceBuffer || !process) return
+    console.log('INIT PROCESS', processNeededBufferRange)
     ;(async () => {
       await appendBuffer(headerChunk.buffer)
 
