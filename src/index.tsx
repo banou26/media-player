@@ -2,12 +2,12 @@
 import type { ClassAttributes, SyntheticEvent, VideoHTMLAttributes } from 'react'
 import type { MP4Info } from './mp4box'
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { createFile } from 'mp4box'
 import { makeTransmuxer, SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
 
-import { throttleWithLastCall, updateSourceBuffer as _updateSourceBuffer } from './utils'
+import { queuedDebounceWithLastCall } from './utils'
 import Chrome from './chrome'
 import PQueue from 'p-queue'
 
@@ -102,10 +102,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     ;(async () => {
       let mp4boxfile = createFile()
       mp4boxfile.onError = (error: Error) => console.error('mp4box error', error)
-  
+
       let _resolveInfo: (value: unknown) => void
       const infoPromise = new Promise((resolve) => { _resolveInfo = resolve })
-  
+
       let mime = 'video/mp4; codecs=\"'
       let info: any | undefined
       mp4boxfile.onReady = (_info: MP4Info) => {
@@ -117,7 +117,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         mime += '\"'
         _resolveInfo(info)
       }
-  
+
       let headerChunk: Chunk
       let chunks: Chunk[] = []
       let initDone = false
@@ -267,18 +267,34 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       }
 
       const appendBuffer = (buffer: ArrayBuffer) =>
-        queue.add(() =>
-          new Promise<Event>((resolve, reject) => {
-            setupListeners(resolve, reject)
-            sourceBuffer.appendBuffer(buffer)
-          })
-        )
+      queue.add(() =>
+        new Promise<Event>((resolve, reject) => {
+          setupListeners(resolve, reject)
+          sourceBuffer.appendBuffer(buffer)
+        })
+      )
 
       const bufferChunk = async (chunk: Chunk) => {
         await appendBuffer(chunk.buffer.buffer)
         chunk.buffered = true
       }
 
+      const getTimeRanges = () =>
+        Array(sourceBuffer.buffered.length)
+          .fill(undefined)
+          .map((_, index) => ({
+            index,
+            start: sourceBuffer.buffered.start(index),
+            end: sourceBuffer.buffered.end(index)
+          }))
+      
+      const unbufferRange = async (start: number, end: number) =>
+        queue.add(() =>
+          new Promise((resolve, reject) => {
+            setupListeners(resolve, reject)
+            sourceBuffer.remove(start, end)
+          })
+        )
       
       const unbufferChunk = async (chunk: Chunk) =>
         queue.add(() =>
@@ -299,22 +315,36 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         chunks = chunks.filter(_chunk => _chunk !== chunk)
       }
 
-      const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
-      const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 30
+      const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 5
+      const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
       const POST_SEEK_REMOVE_BUFFERS_IN_SECONDS = 60
 
-      const processNeededBufferRange = throttleWithLastCall(100, async () => {
+      const processNeededBufferRange = queuedDebounceWithLastCall(0, async (maxPts?: number) => {
         const currentTime = video.currentTime
         let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
-        while (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS))) {
+        while (
+          (maxPts === undefined ? true : (lastPts ?? 0) < maxPts)
+          && (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)))
+        ) {
           const newChunks = await process()
           const lastProcessedChunk = newChunks.at(-1)
-          if (!lastProcessedChunk) break
-          lastPts = lastProcessedChunk.pts
+          if (!lastProcessedChunk && ((lastPts ?? 0) + 10) >= duration) break
+          if (lastProcessedChunk) {
+            lastPts = lastProcessedChunk.pts
+          }
         }
       })
 
-      const seek = throttleWithLastCall(500, async (time: number) => {
+      let skipSeek = false
+      // todo: add error checker & retry to seek a bit earlier
+      const seek = queuedDebounceWithLastCall(500, async (time: number) => {
+        const ranges = getTimeRanges()
+        if (ranges.some(({ start, end }) => time >= start && time <= end)) {
+          return
+        }
+        for (const range of ranges) {
+          await unbufferRange(range.start, range.end)
+        }
         const isPlaying = !video.paused
         if (isPlaying) video.pause()
         const allTasksDone = new Promise(resolve => {
@@ -333,27 +363,25 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         processingQueue.pause()
         processingQueue.clear()
         await allTasksDone
-        initDone = false
-        await transmuxer.destroy()
-        await transmuxer.init()
-        initDone = true
         processingQueue.start()
-        await process()
-        await process()
+        const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
+        if (seekTime > POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
+          chunks = []
+          await transmuxer.seek(seekTime)
+        } else {
+          chunks = []
+          await transmuxer.destroy()
+          await transmuxer.init()
+          await process()
+          await process()
+        }
 
-        chunks = []
+        await new Promise(resolve => setTimeout(resolve, 0))
 
-        await transmuxer.seek(Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS))
-
-        await processNeededBufferRange()
+        await processNeededBufferRange(time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await updateBufferedRanges()
 
         if (isPlaying) await video.play()
-
-        await new Promise(resolve => setTimeout(resolve, 100))
-
-        await processNeededBufferRange()
-        await updateBufferedRanges()
       })
 
       const processingQueue = new PQueue({ concurrency: 1 })
@@ -412,17 +440,22 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await updateBufferedRanges()
 
       video.addEventListener('seeking', () => {
+        if (skipSeek) return
         seek(video.currentTime)
       })
 
-      video.addEventListener('timeupdate', throttleWithLastCall(500, async () => {
-        await processNeededBufferRange()
+      const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
+        await processNeededBufferRange(time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await updateBufferedRanges()
-      }))
+      })
+
+      video.addEventListener('timeupdate', () => {
+        timeUpdateWork(video.currentTime)
+      })
     })()
 
-    return async () => {
-      (await _transmuxer).destroy(true)
+    return () => {
+      _transmuxer.then(transmuxer => transmuxer.destroy(true))
     }
   }, [contentLength, videoElement])
 
