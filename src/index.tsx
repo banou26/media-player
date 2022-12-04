@@ -267,12 +267,12 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       }
 
       const appendBuffer = (buffer: ArrayBuffer) =>
-      queue.add(() =>
-        new Promise<Event>((resolve, reject) => {
-          setupListeners(resolve, reject)
-          sourceBuffer.appendBuffer(buffer)
-        })
-      )
+        queue.add(() =>
+          new Promise<Event>((resolve, reject) => {
+            setupListeners(resolve, reject)
+            sourceBuffer.appendBuffer(buffer)
+          })
+        )
 
       const bufferChunk = async (chunk: Chunk) => {
         await appendBuffer(chunk.buffer.buffer)
@@ -287,7 +287,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             start: sourceBuffer.buffered.start(index),
             end: sourceBuffer.buffered.end(index)
           }))
-      
+
       const unbufferRange = async (start: number, end: number) =>
         queue.add(() =>
           new Promise((resolve, reject) => {
