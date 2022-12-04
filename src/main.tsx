@@ -53,6 +53,9 @@ const Mount = () => {
         ref={setVideoElemRef}
         size={size}
         fetch={onFetch}
+        publicPath={'/build/'}
+        workerPath={'/node_modules/@banou26/oz-libav/build/index2.js'}
+        libassPath={'/build/subtitles-octopus-worker.js'}
       />
     </div>
   )

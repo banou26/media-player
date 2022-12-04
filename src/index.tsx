@@ -75,12 +75,18 @@ export type FKNVideoOptions = {
   size?: number
   fetch: (offset: number, size: number) => Promise<Response>
   customControls?: FKNVideoControl[]
+  publicPath: string
+  workerPath: string
+  libassPath: string
 }
 
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
   size: contentLength,
   fetch,
-  customControls
+  customControls,
+  publicPath,
+  workerPath,
+  libassPath,
 }, ref) => {
   const [loading, setLoading] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -130,8 +136,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       }, 200)
       
       _transmuxer = makeTransmuxer({
-        publicPath: '/build/',
-        workerPath: '/node_modules/@banou26/oz-libav/build/index2.js',
+        publicPath,
+        workerPath,
         bufferSize: BASE_BUFFER_SIZE,
         sharedArrayBufferSize: BASE_BUFFER_SIZE + 1_000_000,
         length: contentLength,
@@ -549,6 +555,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         tracks={tracks}
         errors={errors}
         customControls={customControls}
+        libassPath={libassPath}
       />
     </div>
   )

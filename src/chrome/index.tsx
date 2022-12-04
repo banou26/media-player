@@ -43,6 +43,7 @@ export type ChromeOptions = {
   video: MutableRefObject<HTMLVideoElement | undefined>
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
+  libassPath: string
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
@@ -62,6 +63,7 @@ export default ({
   video,
   errors,
   customControls,
+  libassPath,
   ...rest
 }: ChromeOptions) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
@@ -131,7 +133,7 @@ export default ({
       subContent: `${subtitleTrack.header}\n${subtitleTrack.data}`,
       fonts: fonts.map(([,filename]) => filename),
       availableFonts:  Object.fromEntries(fonts),
-      workerUrl: '/build/subtitles-octopus-worker.js', // Link to WebAssembly-based file "libassjs-worker.js"
+      workerUrl: libassPath, // Link to WebAssembly-based file "libassjs-worker.js"
     })
     setSubtitlesOctopusInstance(_subtitlesOctopusInstance)
   }, [canvasElement, attachments, subtitleTrack?.data])
