@@ -73,8 +73,8 @@ export default ({
   const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState<any>()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
   const subtitleTrack = useMemo(
-    () => currentSubtitleTrack ? tracks.find(({ number }) => number === currentSubtitleTrack) : undefined,
-    [currentSubtitleTrack, currentSubtitleTrack && tracks.find(({ number }) => number === currentSubtitleTrack)?.content]
+    () => currentSubtitleTrack !== undefined ? tracks[currentSubtitleTrack] : undefined,
+    [currentSubtitleTrack, currentSubtitleTrack !== undefined && tracks[currentSubtitleTrack]?.data]
   )
   const [isErrorMenuHidden, setIsErrorMenuHidden] = useState(true)
 
@@ -122,23 +122,23 @@ export default ({
   }
 
   useEffect(() => {
-    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.content) return
+    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.data) return
     const fonts = attachments.map(({ filename, data }) => [filename, URL.createObjectURL(new Blob([data], {type : 'application/javascript'} ))])
     const _subtitlesOctopusInstance = new SubtitlesOctopus({
       // video: video.current,
       canvas: canvasElement,
       // video: document.body.appendChild(document.createElement('video')),
-      subContent: `${subtitleTrack.header}\n${subtitleTrack.content}`,
+      subContent: `${subtitleTrack.header}\n${subtitleTrack.data}`,
       fonts: fonts.map(([,filename]) => filename),
       availableFonts:  Object.fromEntries(fonts),
-      workerUrl: '/subtitles-octopus-worker.js', // Link to WebAssembly-based file "libassjs-worker.js"
+      workerUrl: '/build/subtitles-octopus-worker.js', // Link to WebAssembly-based file "libassjs-worker.js"
     })
     setSubtitlesOctopusInstance(_subtitlesOctopusInstance)
-  }, [canvasElement, attachments, subtitleTrack?.content])
+  }, [canvasElement, attachments, subtitleTrack?.data])
 
   useEffect(() => {
     if (!tracks.length) return
-    setCurrentSubtitleTrack(tracks.sort(({ number }) => number)[0]?.number)
+    setCurrentSubtitleTrack(0)
   }, [tracks.length])
 
   useEffect(() => {
@@ -147,7 +147,7 @@ export default ({
       subtitlesOctopusInstance.freeTrack()
       return
     }
-    subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.content}`)
+    subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.data}`)
     const parent = canvasElement?.parentElement
     if (!parent || canvasInitialized) return
     setCanvasInitialized(true)
@@ -159,7 +159,7 @@ export default ({
   useEffect(() => {
     if (!subtitlesOctopusInstance) return
     subtitlesOctopusInstance.setCurrentTime(currentTime)
-  }, [currentTime])
+  }, [subtitlesOctopusInstance, currentTime])
 
   useEffect(() => {
     if (!canvasElement || isFullscreen) return

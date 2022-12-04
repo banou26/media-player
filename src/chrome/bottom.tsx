@@ -357,8 +357,8 @@ export default ({
     setIsMuted(value => !value)
   }
 
-  const setSubtitleTrack = (ev: MouseEvent<HTMLButtonElement, globalThis.MouseEvent>, track: Subtitle | undefined) => {
-    setCurrentSubtitleTrack(track?.number)
+  const setSubtitleTrack = (ev: MouseEvent<HTMLButtonElement, globalThis.MouseEvent>, track: Subtitle | undefined, trackIndex: number) => {
+    setCurrentSubtitleTrack(track === undefined ? track : trackIndex)
   }
 
   const subtitleMenuButtonClick: MouseEventHandler<HTMLButtonElement> = (ev) => {
@@ -396,20 +396,23 @@ export default ({
   const SubtitleTrackToName = ({ subtitleTrack: subtitle }: { subtitleTrack: Subtitle | undefined }) => {
     if (!subtitle) return <>Disabled</>
 
-    if (!subtitle.name && !subtitle.language) return <>Default</>
-    const language = subtitle.language === 'jpn' ? 'ja' : subtitle.language
+    if (!subtitle.title && !subtitle.language) return <>Default</>
+    const language =
+      subtitle.language === 'jpn' ? 'ja'
+      : tagToLanguage(subtitle.language) ? tagToLanguage(subtitle.language)
+      : subtitle.language
 
-    if (subtitle.name) {
+    if (subtitle.title) {
       return (
         <>
-          {subtitle.name?.replace('subs', '')}{language ? `(${(tagToLanguage(language))})` : ''}
+          {subtitle.title?.replace('subs', '')}{language ? `(${language})` : ''}
         </>
       )
     }
 
     return (
       <>
-        {tagToLanguage(language)}
+        {language}
       </>
     )
   }
@@ -593,8 +596,8 @@ export default ({
                     isSubtitleMenuHidden
                       ? null
                       : (
-                        [undefined, ...tracks].map(track =>
-                          <button key={track?.number ?? 'disabled'} onClick={ev => setSubtitleTrack(ev, track)}>
+                        [...tracks, undefined].map((track, i) =>
+                          <button key={!track ? 'disabled' : i} onClick={ev => setSubtitleTrack(ev, track, i)}>
                             <SubtitleTrackToName subtitleTrack={track}/>
                           </button>
                         )
