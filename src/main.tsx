@@ -21,13 +21,8 @@ const Mount = () => {
   }, [videoElemRef])
 
   const onFetch = (offset: number, end: number) =>
-    // fetch('./video.mkv')
-    // fetch('./video5.mkv')
-    // fetch('./video4.mkv')
-    // fetch('fucked-subtitles-and-FF-playback.mkv')
-    // fetch('wrong-dts-3.mkv')
     fetch(
-      '../build/video5.mkv',
+      '../video2.mkv',
       {
         headers: {
           Range: `bytes=${offset}-${end}`
