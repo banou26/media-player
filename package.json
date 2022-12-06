@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "dev": "vite --port 1234",
-    "build": "vite build && npm run copy-dependencies",
+    "build": "vite build && npm run copy-dependencies && tsc",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-deps && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/@banou26/oz-libav/build/worker.js build/worker.js",
     "copy-worker-deps": "copyfiles -u 4 node_modules/@banou26/oz-libav/build/shared-memory-api_pb.*.js build",
