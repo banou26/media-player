@@ -12,7 +12,7 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      external: ['@banou26/oz-libav', 'react']
+      external: ['@banou26/oz-libav', 'react', '@emotion/react']
     }
   },
   plugins: [
