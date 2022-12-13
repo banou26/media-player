@@ -49,7 +49,7 @@ const Mount = () => {
         size={size}
         fetch={onFetch}
         publicPath={'/build/'}
-        workerPath={'/node_modules/@banou26/oz-libav/build/index2.js'}
+        workerPath={'/node_modules/@banou26/oz-libav/build/worker.js'}
         libassPath={'/build/subtitles-octopus-worker.js'}
       />
     </div>

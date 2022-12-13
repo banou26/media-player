@@ -5,7 +5,7 @@ import type { MP4Info } from './mp4box'
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { createFile } from 'mp4box'
-import { makeTransmuxer, SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
+import { makeTransmuxer as libavMakeTransmuxer, SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
 
 import { queuedDebounceWithLastCall } from './utils'
 import Chrome from './chrome'
@@ -39,8 +39,8 @@ type Chunk = {
 }
 
 const BASE_BUFFER_SIZE = 5_000_000
-const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
-const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 30
+const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 5
+const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
 const POST_SEEK_REMOVE_BUFFERS_IN_SECONDS = 60
 
 const style = css`
@@ -78,6 +78,7 @@ export type FKNVideoOptions = {
   publicPath: string
   workerPath: string
   libassPath: string
+  makeTransmuxer: typeof libavMakeTransmuxer
 }
 
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
@@ -87,6 +88,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   publicPath,
   workerPath,
   libassPath,
+  makeTransmuxer = libavMakeTransmuxer
 }, ref) => {
   const [loading, setLoading] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -139,16 +141,14 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         publicPath,
         workerPath,
         bufferSize: BASE_BUFFER_SIZE,
-        sharedArrayBufferSize: BASE_BUFFER_SIZE + 1_000_000,
         length: contentLength,
       read: (offset, size) =>
         fetch(offset, Math.min(offset + size, contentLength) - 1)
             .then(res => res.arrayBuffer())
-          .then(arrayBuffer => new Uint8Array(arrayBuffer))
-          .then(buffer => {
-            setCurrentOffset(Math.min(offset + size, contentLength))
-            return buffer
-          }),
+            .then(arrayBuffer => {
+              setCurrentOffset(Math.min(offset + size, contentLength))
+              return arrayBuffer
+            }),
         seek: async (currentOffset, offset, whence) => {
           if (whence === SEEK_WHENCE_FLAG.SEEK_CUR) {
           setCurrentOffset(currentOffset + offset)
@@ -320,10 +320,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         await unbufferChunk(chunk)
         chunks = chunks.filter(_chunk => _chunk !== chunk)
       }
-
-      const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 5
-      const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
-      const POST_SEEK_REMOVE_BUFFERS_IN_SECONDS = 60
 
       const processNeededBufferRange = queuedDebounceWithLastCall(0, async (maxPts?: number) => {
         const currentTime = video.currentTime

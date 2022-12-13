@@ -1,13 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObject } from 'react'
 
-import type { Attachment, Subtitle } from '../worker'
-import type { FKNVideoControl, TransmuxError } from '..'
+import type { Attachment, FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import SubtitlesOctopus from 'libass-wasm'
 import { css } from '@emotion/react'
-import { updateSourceBuffer as _updateSourceBuffer } from '../utils'
 import Overlay from './overlay'
 import Bottom from './bottom'
 
@@ -124,7 +122,7 @@ export default ({
   }
 
   useEffect(() => {
-    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.data) return
+    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.data || !attachments) return
     const fonts = attachments.map(({ filename, data }) => [filename, URL.createObjectURL(new Blob([data], {type : 'application/javascript'} ))])
     const _subtitlesOctopusInstance = new SubtitlesOctopus({
       // video: video.current,
@@ -132,7 +130,7 @@ export default ({
       // video: document.body.appendChild(document.createElement('video')),
       subContent: `${subtitleTrack.header}\n${subtitleTrack.data}`,
       fonts: fonts.map(([,filename]) => filename),
-      availableFonts:  Object.fromEntries(fonts),
+      availableFonts: Object.fromEntries(fonts),
       workerUrl: libassPath, // Link to WebAssembly-based file "libassjs-worker.js"
     })
     setSubtitlesOctopusInstance(_subtitlesOctopusInstance)

@@ -9,12 +9,13 @@
   ],
   "scripts": {
     "dev": "vite --port 1234",
-    "build": "vite build && npm run copy-dependencies && tsc",
+    "build": "vite build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-deps && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/@banou26/oz-libav/build/worker.js build/worker.js",
     "copy-worker-deps": "copyfiles -u 4 node_modules/@banou26/oz-libav/build/shared-memory-api_pb.*.js build",
-    "copy-worker-wasm": "shx cp node_modules/@banou26/oz-libav/build/libav.wasm build/worker.wasm",
-    "copy-libass": "copyfiles -u 4 ./node_modules/libass-wasm/dist/js/* build && shx rm build/COPYRIGHT"
+    "copy-worker-wasm": "shx cp node_modules/@banou26/oz-libav/build/libav.wasm build/libav.wasm",
+    "copy-libass": "copyfiles -u 4 ./node_modules/libass-wasm/dist/js/* build",
+    "types": "tsc"
   },
   "author": "Banou26",
   "devDependencies": {
@@ -31,7 +32,7 @@
     "vite": "^3.2.4"
   },
   "dependencies": {
-    "@banou26/oz-libav": "^0.1.6-ci-3614283292.0",
+    "@banou26/oz-libav": "^0.1.7-ci-3681724240.0",
     "@emotion/react": "^11.10.5",
     "libass-wasm": "^4.0.0",
     "mp4box": "^0.5.2",
