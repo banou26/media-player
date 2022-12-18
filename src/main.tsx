@@ -78,7 +78,6 @@ const Mount = () => {
   }, [streamReader])
 
   const setupStream = async (offset: number) => {
-    console.log('setupStream', offset)
     if (streamReader) {
       streamReader.cancel()
     }
@@ -88,13 +87,11 @@ const Mount = () => {
     const reader = stream.getReader()
     setStreamReader(reader)
     setCurrentStreamOffset(offset)
-    return streamReader
+    return reader
   }
 
   const onFetch = async (offset: number, end?: number, force?: boolean) => {
-    console.log('onFetch', offset, end, (end - offset) + 1, force)
     if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
-      console.log('actual fetch', offset, end, (end - offset) + 1)
       return (
         fetch(
           '../video3.mkv',
@@ -108,11 +105,10 @@ const Mount = () => {
     }
     const _streamReader =
       currentStreamOffset !== offset
-        ? await setupStream(offset, undefined, false)
+        ? await setupStream(offset)
         : streamReader
 
     if (!_streamReader) throw new Error('Stream reader not ready')
-    console.log('onFetch stream', offset, end, force)
     return new Response(
       await _streamReader
         .read()
@@ -120,15 +116,9 @@ const Mount = () => {
           if (value) {
             setCurrentStreamOffset(offset => offset + value.byteLength)
           }
-          console.log('onFetch stream result', value, offset, end, force)
           return value
         })
-        .catch(err => console.error('err', err, offset, end, force))
     )
-  }
-
-  const seek = (currentOffset: number, offset: number, whence: SEEK_WHENCE_FLAG) => {
-    console.log('seek', currentOffset, offset, whence)
   }
 
   useEffect(() => {
@@ -139,7 +129,7 @@ const Mount = () => {
         contentRangeContentLength
           ? Number(contentRangeContentLength)
           : Number(headers.get('Content-Length'))
-      await setupStream(0, undefined, false)
+      await setupStream(0)
       setSize(contentLength)
     })
   }, [])
@@ -150,7 +140,6 @@ const Mount = () => {
         baseBufferSize={BASE_BUFFER_SIZE}
         ref={setVideoElemRef}
         size={size}
-        seek={seek}
         fetch={onFetch}
         publicPath={'/build/'}
         workerPath={'/node_modules/@banou26/oz-libav/build/worker.js'}

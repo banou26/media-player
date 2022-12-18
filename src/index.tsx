@@ -75,19 +75,17 @@ export type FKNVideoOptions = {
   baseBufferSize?: number
   size?: number
   fetch: (offset: number, size: number) => Promise<Response>
-  seek?: (currentOffset: number, offset: number, whence: SEEK_WHENCE_FLAG) => void
   customControls?: FKNVideoControl[]
   publicPath: string
   workerPath: string
   libassPath: string
-  makeTransmuxer: typeof libavMakeTransmuxer
+  makeTransmuxer?: typeof libavMakeTransmuxer
 }
 
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
   baseBufferSize = BASE_BUFFER_SIZE,
   size: contentLength,
   fetch,
-  seek,
   customControls,
   publicPath,
   workerPath,
@@ -109,13 +107,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [currentLoadedRange, setCurretLoadedRange] = useState<[number, number]>([0, 0])
 
   const fetchRef = useRef(fetch)
-  const seekRef = useRef(seek)
-  const transmuxerSeekRef = useRef<(time: number) => Promise<any> | undefined>()
 
   useEffect(() => {
     fetchRef.current = fetch
-    seekRef.current = seek
-  }, [fetch, seek])
+  }, [fetch])
 
 
   useEffect(() => {
@@ -157,17 +152,17 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         bufferSize: baseBufferSize,
         length: contentLength,
         read: (offset, size) =>
-          fetchRef.current(offset, Math.min(offset + size, contentLength) - 1)
+          fetchRef
+            .current(offset, Math.min(offset + size, contentLength) - 1)
             .then(res => res.arrayBuffer())
             .then(arrayBuffer => {
               setCurrentOffset(Math.min(offset + size, contentLength))
               return arrayBuffer
             }),
         seek: async (currentOffset, offset, whence) => {
-          seekRef.current?.(currentOffset, offset, whence)
           if (whence === SEEK_WHENCE_FLAG.SEEK_CUR) {
-          setCurrentOffset(currentOffset + offset)
-          return currentOffset + offset
+            setCurrentOffset(currentOffset + offset)
+            return currentOffset + offset
           }
           if (whence === SEEK_WHENCE_FLAG.SEEK_END) {
             return -1
@@ -401,8 +396,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         if (isPlaying) await video.play()
       })
 
-      transmuxerSeekRef.current = seek
-
       const processingQueue = new PQueue({ concurrency: 1 })
 
       const process = () =>
@@ -458,10 +451,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await processNeededBufferRange()
       await updateBufferedRanges()
 
-      // video.addEventListener('seeking', () => {
-      //   if (skipSeek) return
-      //   seek(video.currentTime)
-      // })
+      video.addEventListener('seeking', () => {
+        if (skipSeek) return
+        seek(video.currentTime)
+      })
 
       const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
         await processNeededBufferRange(time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
@@ -469,7 +462,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       })
 
       video.addEventListener('timeupdate', () => {
-        console.log('timeupdate')
         timeUpdateWork(video.currentTime)
       })
     })()
@@ -488,12 +480,11 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     setCurrentTime(videoRef.current?.currentTime ?? 0)
   }
 
-  const _seek = async (time: number) => {
+  const seek = async (time: number) => {
     const video = videoRef.current
     if (!video) throw new Error('Trying to seek before video element has ref')
-    setCurrentTime(video.currentTime ?? 0)
-    await transmuxerSeekRef.current?.(time)
     video.currentTime = time
+    setCurrentTime(video.currentTime ?? 0)
   }
 
   const timeUpdate: React.DOMAttributes<HTMLVideoElement>['onTimeUpdate'] = (ev) => {
@@ -563,7 +554,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         pictureInPicture={pictureInPicture}
         fullscreen={fullscreen}
         play={play}
-        seek={_seek}
+        seek={seek}
         getVolume={getVolume}
         setVolume={setVolume}
         attachments={attachments}
