@@ -4,12 +4,59 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import FKNMediaPlayer from './index'
+import { SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
 
 const mountStyle = css`
   display: grid;
   height: 100%;
   width: 100%;
 `
+
+export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, size: number }) =>
+  new ReadableStream<Uint8Array>({
+    start() {
+      // @ts-ignore
+      this.reader = stream.getReader()
+    },
+    async pull(controller) {
+      // @ts-ignore
+      const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
+
+      const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
+        // @ts-ignore
+        const { value: newBuffer, done } = await this.reader.read()
+  
+        if (currentSize === 0 && leftOverData) {
+          buffer.set(leftOverData)
+          currentSize += leftOverData.byteLength
+          // @ts-ignore
+          this.leftOverData = undefined
+        }
+  
+        if (done) {
+          return { buffer: buffer.slice(0, currentSize), currentSize, done }
+        }
+  
+        let newSize
+        const slicedBuffer = newBuffer.slice(0, SIZE - currentSize)
+        newSize = currentSize + slicedBuffer.byteLength
+        buffer.set(slicedBuffer, currentSize)
+  
+        if (newSize === SIZE) {
+          // @ts-ignore
+          this.leftOverData = newBuffer.slice(SIZE - currentSize)
+          return { buffer, currentSize: newSize, done: false }
+        }
+        
+        return accumulate({ buffer, currentSize: newSize })
+      }
+      const { buffer, done } = await accumulate()
+      if (buffer?.byteLength) controller.enqueue(buffer)
+      if (done) controller.close()
+    }
+  })
+
+const BASE_BUFFER_SIZE = 5_000_000
 
 const Mount = () => {
   const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
@@ -20,24 +67,79 @@ const Mount = () => {
     videoElemRef.addEventListener('error', err => console.log('err', err))
   }, [videoElemRef])
 
-  const onFetch = (offset: number, end: number) =>
-    fetch(
-      '../video2.mkv',
-      {
-        headers: {
-          Range: `bytes=${offset}-${end}`
-        }
-      }
-    )
+  const [currentStreamOffset, setCurrentStreamOffset] = useState<number>(0)
+  const [streamReader, setStreamReader] = useState<ReadableStreamDefaultReader<Uint8Array>>()
 
   useEffect(() => {
-    onFetch(0, 1).then(({ headers, body }) => {
+    if (!streamReader) return
+    return () => {
+      streamReader.cancel()
+    }
+  }, [streamReader])
+
+  const setupStream = async (offset: number) => {
+    console.log('setupStream', offset)
+    if (streamReader) {
+      streamReader.cancel()
+    }
+    const streamResponse = await onFetch(offset, undefined, true)
+    if (!streamResponse.body) throw new Error('no body')
+    const stream = bufferStream({ stream: streamResponse.body, size: BASE_BUFFER_SIZE })
+    const reader = stream.getReader()
+    setStreamReader(reader)
+    setCurrentStreamOffset(offset)
+    return streamReader
+  }
+
+  const onFetch = async (offset: number, end?: number, force?: boolean) => {
+    console.log('onFetch', offset, end, (end - offset) + 1, force)
+    if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
+      console.log('actual fetch', offset, end, (end - offset) + 1)
+      return (
+        fetch(
+          '../video3.mkv',
+          {
+            headers: {
+              Range: `bytes=${offset}-${end ?? ''}`
+            }
+          }
+        )
+      )
+    }
+    const _streamReader =
+      currentStreamOffset !== offset
+        ? await setupStream(offset, undefined, false)
+        : streamReader
+
+    if (!_streamReader) throw new Error('Stream reader not ready')
+    console.log('onFetch stream', offset, end, force)
+    return new Response(
+      await _streamReader
+        .read()
+        .then(({ value }) => {
+          if (value) {
+            setCurrentStreamOffset(offset => offset + value.byteLength)
+          }
+          console.log('onFetch stream result', value, offset, end, force)
+          return value
+        })
+        .catch(err => console.error('err', err, offset, end, force))
+    )
+  }
+
+  const seek = (currentOffset: number, offset: number, whence: SEEK_WHENCE_FLAG) => {
+    console.log('seek', currentOffset, offset, whence)
+  }
+
+  useEffect(() => {
+    onFetch(0, 1, true).then(async ({ headers, body }) => {
       if (!body) throw new Error('no body')
       const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
       const contentLength =
         contentRangeContentLength
           ? Number(contentRangeContentLength)
           : Number(headers.get('Content-Length'))
+      await setupStream(0, undefined, false)
       setSize(contentLength)
     })
   }, [])
@@ -45,8 +147,10 @@ const Mount = () => {
   return (
     <div css={mountStyle}>
       <FKNMediaPlayer
+        baseBufferSize={BASE_BUFFER_SIZE}
         ref={setVideoElemRef}
         size={size}
+        seek={seek}
         fetch={onFetch}
         publicPath={'/build/'}
         workerPath={'/node_modules/@banou26/oz-libav/build/worker.js'}

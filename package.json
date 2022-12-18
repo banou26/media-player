@@ -8,7 +8,7 @@
     "build"
   ],
   "scripts": {
-    "dev": "vite --port 1234",
+    "dev": "vite --port 4560",
     "build": "vite build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-deps && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/@banou26/oz-libav/build/worker.js build/worker.js",
@@ -22,17 +22,17 @@
     "@types/node": "^17.0.23",
     "@types/react": "^18.0.9",
     "@types/react-dom": "^18.0.8",
-    "@vitejs/plugin-react": "^2.2.0",
+    "@vitejs/plugin-react": "^3.0.0",
     "concurrently": "^7.0.0",
     "copyfiles": "^2.4.1",
     "mime": "^3.0.0",
     "react-dom": "^18.2.0",
     "shx": "^0.3.4",
-    "typescript": "^4.6.3",
-    "vite": "^3.2.4"
+    "typescript": "^4.8.3",
+    "vite": "^4.0.1"
   },
   "dependencies": {
-    "@banou26/oz-libav": "^0.1.7-ci-3681724240.0",
+    "@banou26/oz-libav": "file:../oz/libav",
     "@emotion/react": "^11.10.5",
     "libass-wasm": "^4.0.0",
     "mp4box": "^0.5.2",

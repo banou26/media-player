@@ -12,13 +12,22 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      external: ['@banou26/oz-libav', 'react', '@emotion/react']
+      external: ['@banou26/oz-libav', 'react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip']
     }
   },
   plugins: [
     react({
       jsxImportSource: '@emotion/react'
-    })
+    }),
+    {
+      name: 'configure-response-headers',
+      configureServer: (server) => {
+        server.middlewares.use((_req, res, next) => {
+          res.setHeader('Cache-Control', 'no-store')
+          next()
+        })
+      }
+    }
   ],
   server: {
     fs: {

@@ -72,8 +72,10 @@ export type FKNVideoControlOptions = {
 export type FKNVideoControl = (args: FKNVideoControlOptions) => JSX.Element
 
 export type FKNVideoOptions = {
+  baseBufferSize?: number
   size?: number
   fetch: (offset: number, size: number) => Promise<Response>
+  seek?: (currentOffset: number, offset: number, whence: SEEK_WHENCE_FLAG) => void
   customControls?: FKNVideoControl[]
   publicPath: string
   workerPath: string
@@ -82,8 +84,10 @@ export type FKNVideoOptions = {
 }
 
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
+  baseBufferSize = BASE_BUFFER_SIZE,
   size: contentLength,
   fetch,
+  seek,
   customControls,
   publicPath,
   workerPath,
@@ -103,6 +107,16 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [sourceUrl, setSourceUrl] = useState<string>()
   const [duration, setDuration] = useState<number>()
   const [currentLoadedRange, setCurretLoadedRange] = useState<[number, number]>([0, 0])
+
+  const fetchRef = useRef(fetch)
+  const seekRef = useRef(seek)
+  const transmuxerSeekRef = useRef<(time: number) => Promise<any> | undefined>()
+
+  useEffect(() => {
+    fetchRef.current = fetch
+    seekRef.current = seek
+  }, [fetch, seek])
+
 
   useEffect(() => {
     if (!contentLength || !videoElement) return
@@ -140,16 +154,17 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       _transmuxer = makeTransmuxer({
         publicPath,
         workerPath,
-        bufferSize: BASE_BUFFER_SIZE,
+        bufferSize: baseBufferSize,
         length: contentLength,
-      read: (offset, size) =>
-        fetch(offset, Math.min(offset + size, contentLength) - 1)
+        read: (offset, size) =>
+          fetchRef.current(offset, Math.min(offset + size, contentLength) - 1)
             .then(res => res.arrayBuffer())
             .then(arrayBuffer => {
               setCurrentOffset(Math.min(offset + size, contentLength))
               return arrayBuffer
             }),
         seek: async (currentOffset, offset, whence) => {
+          seekRef.current?.(currentOffset, offset, whence)
           if (whence === SEEK_WHENCE_FLAG.SEEK_CUR) {
           setCurrentOffset(currentOffset + offset)
           return currentOffset + offset
@@ -386,11 +401,13 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         if (isPlaying) await video.play()
       })
 
+      transmuxerSeekRef.current = seek
+
       const processingQueue = new PQueue({ concurrency: 1 })
 
       const process = () =>
         processingQueue.add(() =>
-          transmuxer.process(BASE_BUFFER_SIZE)
+          transmuxer.process(baseBufferSize)
         )
 
       const updateBufferedRanges = async () => {
@@ -441,10 +458,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await processNeededBufferRange()
       await updateBufferedRanges()
 
-      video.addEventListener('seeking', () => {
-        if (skipSeek) return
-        seek(video.currentTime)
-      })
+      // video.addEventListener('seeking', () => {
+      //   if (skipSeek) return
+      //   seek(video.currentTime)
+      // })
 
       const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
         await processNeededBufferRange(time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
@@ -452,6 +469,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       })
 
       video.addEventListener('timeupdate', () => {
+        console.log('timeupdate')
         timeUpdateWork(video.currentTime)
       })
     })()
@@ -470,11 +488,12 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     setCurrentTime(videoRef.current?.currentTime ?? 0)
   }
 
-  const seek = (time: number) => {
+  const _seek = async (time: number) => {
     const video = videoRef.current
     if (!video) throw new Error('Trying to seek before video element has ref')
-    video.currentTime = time
     setCurrentTime(video.currentTime ?? 0)
+    await transmuxerSeekRef.current?.(time)
+    video.currentTime = time
   }
 
   const timeUpdate: React.DOMAttributes<HTMLVideoElement>['onTimeUpdate'] = (ev) => {
@@ -544,7 +563,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         pictureInPicture={pictureInPicture}
         fullscreen={fullscreen}
         play={play}
-        seek={seek}
+        seek={_seek}
         getVolume={getVolume}
         setVolume={setVolume}
         attachments={attachments}
