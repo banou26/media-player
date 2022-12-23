@@ -12,6 +12,7 @@ import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
 import useScrub from '../use-scrub'
 import { Subtitle } from '../worker'
 import { tagToLanguage } from '../languages'
+import useNamespacedLocalStorage from '../use-local-storage'
 
 const style = css`
   position: relative;
@@ -315,11 +316,14 @@ export default ({
   const volumeBarRef = useRef<HTMLDivElement>(null)
   const [hiddenVolumeArea, setHiddenVolumeArea] = useState(false)
   const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
-  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: Number(localStorage.getItem('volume') || 1) })
-  const [isMuted, setIsMuted] = useState(localStorage.getItem('muted') === 'true' ? true : false)
   const isPictureInPictureEnabled = useMemo(() => document.pictureInPictureEnabled, [])
   const [hasShownErrorPopup, setHasShownErrorPopup] = useState(false)
-  
+
+  const useStoredValue = useNamespacedLocalStorage<{ volume: number, muted: boolean }>('fkn-media-player')
+  const [volume, setStoredVolume] = useStoredValue('volume', 1)
+  const [isMuted, setStoredMuted] = useStoredValue('muted', false)
+  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: volume })
+
   useEffect(() => {
     if (hasShownErrorPopup) return
     setHasShownErrorPopup(true)
@@ -334,14 +338,14 @@ export default ({
   useEffect(() => {
     if (isMuted) {
       setVolume(0)
-      localStorage.setItem('muted', isMuted.toString())
-      if (volumeScrubValue) localStorage.setItem('volume', volumeScrubValue.toString())
+      setStoredMuted(isMuted)
+      if (volumeScrubValue) setStoredVolume(volumeScrubValue)
       return
     }
     if (volumeScrubValue === undefined) return
     setVolume(volumeScrubValue ** 2)
-    localStorage.setItem('volume', volumeScrubValue.toString())
-    localStorage.setItem('muted', isMuted.toString())
+    setStoredVolume(volumeScrubValue)
+    setStoredMuted(isMuted)
   }, [volumeScrubValue, isMuted])
 
   const hoverVolumeArea: React.DOMAttributes<HTMLDivElement>['onMouseOver'] = () => {
@@ -354,7 +358,7 @@ export default ({
   }
 
   const toggleMuteButton = () => {
-    setIsMuted(value => !value)
+    setStoredMuted(value => !value)
   }
 
   const setSubtitleTrack = (ev: MouseEvent<HTMLButtonElement, globalThis.MouseEvent>, track: Subtitle | undefined, trackIndex: number) => {
@@ -538,15 +542,15 @@ export default ({
           <button className="mute-button" data-tip data-for="mute-button-tooltip" onClick={toggleMuteButton}>
             {
               isMuted ? <VolumeX/>
-              : (volumeScrubValue ?? 0) > 0.66 ? <Volume2/>
-              : (volumeScrubValue ?? 0) > 0.33 ? <Volume1/>
-              : (volumeScrubValue ?? 0) > 0 ? <Volume/>
+              : (volume ?? 0) > 0.66 ? <Volume2/>
+              : (volume ?? 0) > 0.33 ? <Volume1/>
+              : (volume ?? 0) > 0 ? <Volume/>
               : <VolumeX/>
             }
           </button>
           <div ref={volumeBarRef} className={`volume-panel${hiddenVolumeArea ? '' : ' volume-control-hover'}`} onMouseDown={volumeScrub}>
             <div className="slider">
-              <div className="slider-handle" style={{ left: `${(volumeScrubValue ?? 0) * 100}%` }}></div>
+              <div className="slider-handle" style={{ left: `${(volume ?? 0) * 100}%` }}></div>
             </div>
           </div>
         </div>
