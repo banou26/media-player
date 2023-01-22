@@ -1,6 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, SyntheticEvent, VideoHTMLAttributes } from 'react'
-import type { MP4Info } from './mp4box'
+import type { MP4Info } from 'mp4box'
 
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'

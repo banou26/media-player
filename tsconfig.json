@@ -16,7 +16,10 @@
     "noEmit": false,
     "declaration": true,
     "emitDeclarationOnly": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "mp4box": ["./src/mp4box.ts"]
+    }
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
