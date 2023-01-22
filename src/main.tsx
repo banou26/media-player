@@ -4,61 +4,13 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import FKNMediaPlayer from './index'
-import { SEEK_WHENCE_FLAG } from '@banou26/libav-wasm'
+import { bufferStream } from './utils'
 
 const mountStyle = css`
   display: grid;
   height: 100%;
   width: 100%;
 `
-
-export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, size: number }) =>
-  new ReadableStream<Uint8Array>({
-    start() {
-      // @ts-expect-error
-      this.reader = stream.getReader()
-    },
-    async pull(controller) {
-      // @ts-expect-error
-      const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
-
-      const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
-        // @ts-expect-error
-        const { value: newBuffer, done } = await this.reader.read()
-  
-        if (currentSize === 0 && leftOverData) {
-          buffer.set(leftOverData)
-          currentSize += leftOverData.byteLength
-          // @ts-expect-error
-          this.leftOverData = undefined
-        }
-  
-        if (done) {
-          return { buffer: buffer.slice(0, currentSize), currentSize, done }
-        }
-  
-        let newSize
-        const slicedBuffer = newBuffer.slice(0, SIZE - currentSize)
-        newSize = currentSize + slicedBuffer.byteLength
-        buffer.set(slicedBuffer, currentSize)
-  
-        if (newSize === SIZE) {
-          // @ts-expect-error
-          this.leftOverData = newBuffer.slice(SIZE - currentSize)
-          return { buffer, currentSize: newSize, done: false }
-        }
-        
-        return accumulate({ buffer, currentSize: newSize })
-      }
-      const { buffer, done } = await accumulate()
-      if (buffer?.byteLength) controller.enqueue(buffer)
-      if (done) controller.close()
-    },
-    cancel() {
-      // @ts-expect-error
-      this.reader.cancel()
-    }
-  })
 
 const BASE_BUFFER_SIZE = 5_000_000
 

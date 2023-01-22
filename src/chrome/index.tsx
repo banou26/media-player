@@ -1,9 +1,9 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObject } from 'react'
-
 import type { Attachment, FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+// @ts-expect-error
 import SubtitlesOctopus from 'libass-wasm'
 import { css } from '@emotion/react'
 import Overlay from './overlay'
@@ -128,7 +128,7 @@ export default ({
       // video: video.current,
       canvas: canvasElement,
       // video: document.body.appendChild(document.createElement('video')),
-      subContent: `${subtitleTrack.header}\n${subtitleTrack.data}`,
+      subContent: subtitleTrack.data,
       fonts: fonts.map(([,filename]) => filename),
       availableFonts: Object.fromEntries(fonts),
       workerUrl: libassPath, // Link to WebAssembly-based file "libassjs-worker.js"
@@ -147,7 +147,7 @@ export default ({
       subtitlesOctopusInstance.freeTrack()
       return
     }
-    subtitlesOctopusInstance.setTrack(`${subtitleTrack.header}\n${subtitleTrack.data}`)
+    subtitlesOctopusInstance.setTrack(subtitleTrack.data)
     const parent = canvasElement?.parentElement
     if (!parent || canvasInitialized) return
     setCanvasInitialized(true)

@@ -1,5 +1,3 @@
-import type { default as PQueue } from 'p-queue'
-
 export type Chunk = {
   offset: number
   buffer: Uint8Array
@@ -79,19 +77,23 @@ export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args:
 
 // todo: reimplement this into a ReadableByteStream https://web.dev/streams/ once FF gets support
 export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, size: number }) =>
-  new ReadableStream({
+  new ReadableStream<Uint8Array>({
     start() {
+      // @ts-expect-error
       this.reader = stream.getReader()
     },
     async pull(controller) {
+      // @ts-expect-error
       const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
 
       const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
+        // @ts-expect-error
         const { value: newBuffer, done } = await this.reader.read()
   
         if (currentSize === 0 && leftOverData) {
           buffer.set(leftOverData)
           currentSize += leftOverData.byteLength
+          // @ts-expect-error
           this.leftOverData = undefined
         }
   
@@ -105,6 +107,7 @@ export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, s
         buffer.set(slicedBuffer, currentSize)
   
         if (newSize === SIZE) {
+          // @ts-expect-error
           this.leftOverData = newBuffer.slice(SIZE - currentSize)
           return { buffer, currentSize: newSize, done: false }
         }
@@ -114,6 +117,10 @@ export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, s
       const { buffer, done } = await accumulate()
       if (buffer?.byteLength) controller.enqueue(buffer)
       if (done) controller.close()
+    },
+    cancel() {
+      // @ts-expect-error
+      this.reader.cancel()
     }
   })
 

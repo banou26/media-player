@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 
 const useNamespacedLocalStorage = <T extends { [key: PropertyKey]: string | boolean | number | undefined | null | object | any[] }>(namespace: string) => {
   const [state, setState] = useState<T>(() => {
@@ -28,4 +28,5 @@ const useNamespacedLocalStorage = <T extends { [key: PropertyKey]: string | bool
     ] as const
   }
 }
+
 export default useNamespacedLocalStorage

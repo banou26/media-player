@@ -1,8 +1,8 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { Dispatch, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
+import type { Dispatch, DOMAttributes, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
 
 import type { ChromeOptions } from '.'
-import type { FKNVideoControl, TransmuxError } from '..'
+import type { FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import ReactTooltip from 'react-tooltip'
 import { css } from '@emotion/react'
@@ -10,7 +10,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
 
 import useScrub from '../use-scrub'
-import { Subtitle } from '../worker'
 import { tagToLanguage } from '../languages'
 import useNamespacedLocalStorage from '../use-local-storage'
 
@@ -445,7 +444,7 @@ export default ({
   }, [tracks.length])
 
   useEffect(() => {
-    const eventListener = (ev) => {
+    const eventListener = (ev: KeyboardEvent) => {
       if (ev.key === 'f') toggleFullscreen()
       if (ev.key === 'k') togglePlay()
       if (ev.key === 'm') toggleMuteButton()
@@ -456,7 +455,7 @@ export default ({
 
   const [progressBarOverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
 
-  const onProgressBarOver = (ev) => {
+  const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
     const percentage = ev.nativeEvent.offsetX / ev.currentTarget.offsetWidth
     const time = percentage * (duration ?? 0)
     setProgressBarOverTime(time)

@@ -82,6 +82,8 @@ export type FKNVideoOptions = {
   makeTransmuxer?: typeof libavMakeTransmuxer
 }
 
+export type HeaderChunk = Chunk & { buffer: { buffer: { fileStart: number } } }
+
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
   baseBufferSize = BASE_BUFFER_SIZE,
   size: contentLength,
@@ -118,7 +120,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     let _transmuxer: ReturnType<typeof makeTransmuxer>
     ;(async () => {
       let mp4boxfile = createFile()
-      mp4boxfile.onError = (error: Error) => console.error('mp4box error', error)
+      mp4boxfile.onError = (error) => console.error('mp4box error', error)
 
       let _resolveInfo: (value: unknown) => void
       const infoPromise = new Promise((resolve) => { _resolveInfo = resolve })
@@ -135,7 +137,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         _resolveInfo(info)
       }
 
-      let headerChunk: Chunk
+      let headerChunk: HeaderChunk | undefined
       let chunks: Chunk[] = []
       let initDone = false
     
@@ -196,7 +198,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             if (!headerChunk) {
               headerChunk = {
                 offset,
-                buffer: new Uint8Array(buffer),
+                buffer: new Uint8Array(buffer) as HeaderChunk['buffer'],
                 pts,
                 duration,
                 pos,
@@ -224,10 +226,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await transmuxer.init()
       initDone = true
 
-      // @ts-ignore
       if (!headerChunk) throw new Error('No header chunk found after transmuxer init')
 
-      // @ts-ignore
       headerChunk.buffer.buffer.fileStart = 0
       mp4boxfile.appendBuffer(headerChunk.buffer.buffer)
 
