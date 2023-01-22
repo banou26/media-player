@@ -15,21 +15,21 @@ const mountStyle = css`
 export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, size: number }) =>
   new ReadableStream<Uint8Array>({
     start() {
-      // @ts-ignore
+      // @ts-expect-error
       this.reader = stream.getReader()
     },
     async pull(controller) {
-      // @ts-ignore
+      // @ts-expect-error
       const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
 
       const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
-        // @ts-ignore
+        // @ts-expect-error
         const { value: newBuffer, done } = await this.reader.read()
   
         if (currentSize === 0 && leftOverData) {
           buffer.set(leftOverData)
           currentSize += leftOverData.byteLength
-          // @ts-ignore
+          // @ts-expect-error
           this.leftOverData = undefined
         }
   
@@ -43,7 +43,7 @@ export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, s
         buffer.set(slicedBuffer, currentSize)
   
         if (newSize === SIZE) {
-          // @ts-ignore
+          // @ts-expect-error
           this.leftOverData = newBuffer.slice(SIZE - currentSize)
           return { buffer, currentSize: newSize, done: false }
         }
@@ -53,6 +53,10 @@ export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, s
       const { buffer, done } = await accumulate()
       if (buffer?.byteLength) controller.enqueue(buffer)
       if (done) controller.close()
+    },
+    cancel() {
+      // @ts-expect-error
+      this.reader.cancel()
     }
   })
 
