@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import FKNMediaPlayer from './index'
-import { SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
+import { SEEK_WHENCE_FLAG } from '@banou26/libav-wasm'
 
 const mountStyle = css`
   display: grid;
@@ -94,7 +94,7 @@ const Mount = () => {
     if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
       return (
         fetch(
-          '../video3.mkv',
+          '/video3.mkv',
           {
             headers: {
               Range: `bytes=${offset}-${end ?? ''}`
@@ -142,7 +142,7 @@ const Mount = () => {
         size={size}
         fetch={onFetch}
         publicPath={'/build/'}
-        workerPath={'/node_modules/@banou26/oz-libav/build/worker.js'}
+        workerPath={'/node_modules/@banou26/libav-wasm/build/worker.js'}
         libassPath={'/build/subtitles-octopus-worker.js'}
       />
     </div>

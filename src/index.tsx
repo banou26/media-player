@@ -5,7 +5,7 @@ import type { MP4Info } from './mp4box'
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { createFile } from 'mp4box'
-import { makeTransmuxer as libavMakeTransmuxer, SEEK_WHENCE_FLAG } from '@banou26/oz-libav'
+import { makeTransmuxer as libavMakeTransmuxer, SEEK_WHENCE_FLAG } from '@banou26/libav-wasm'
 
 import { queuedDebounceWithLastCall } from './utils'
 import Chrome from './chrome'
