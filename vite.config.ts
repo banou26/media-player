@@ -12,7 +12,7 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      external: ['@banou26/libav-wasm', 'react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip']
+      external: ['react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip']
     }
   },
   plugins: [
