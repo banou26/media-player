@@ -6,7 +6,12 @@
   "main": "build/index.js",
   "files": [
     "build",
-    ".npmrc"
+    ".npmrc",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.node.json",
+    "src",
+    "index.html"
   ],
   "scripts": {
     "dev": "vite --port 4560",
