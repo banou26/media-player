@@ -3,8 +3,7 @@ import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObje
 import type { Attachment, FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-// @ts-expect-error
-import SubtitlesOctopus from 'libass-wasm'
+import JASSUB from 'jassub'
 import { css } from '@emotion/react'
 import Overlay from './overlay'
 import Bottom from './bottom'
@@ -36,7 +35,7 @@ export type ChromeOptions = {
   seek: (time: number) => void
   getVolume: () => number | undefined
   setVolume: (volume: number) => void
-  attachments: Attachment[]
+  attachments: Attachment[] | undefined
   tracks: Subtitle[]
   video: MutableRefObject<HTMLVideoElement | undefined>
   errors: TransmuxError[]
@@ -70,7 +69,7 @@ export default ({
   const [hidden, setHidden] = useState(false)
   const autoHide = useRef<number>()
   const [isSubtitleMenuHidden, setIsSubtitleMenuHidden] = useState(true)
-  const [subtitlesOctopusInstance, setSubtitlesOctopusInstance] = useState<any>()
+  const [jassub, setJassub] = useState<JASSUB>()
   const [currentSubtitleTrack, setCurrentSubtitleTrack] = useState<number | undefined>()
   const subtitleTrack = useMemo(
     () => currentSubtitleTrack !== undefined ? tracks[currentSubtitleTrack] : undefined,
@@ -102,38 +101,28 @@ export default ({
     play()
   }
 
-  const resizeSubtitles = () => {
-    if (!canvasElement) return
-    canvasElement.height = window.screen.height * window.devicePixelRatio
-    canvasElement.width = window.screen.width * window.devicePixelRatio
-    subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
-    setTimeout(() => {
-      canvasElement.height = window.screen.height * window.devicePixelRatio
-      canvasElement.width = window.screen.width * window.devicePixelRatio
-      subtitlesOctopusInstance.resize((window.screen.width * window.devicePixelRatio) * 2, (window.screen.height * window.devicePixelRatio) * 2)
-    }, 10)
-  }
-
   const toggleFullscreen = () => {
-    if (!canvasElement || !subtitlesOctopusInstance) return
+    if (!canvasElement || !jassub) return
     setFullscreen(value => !value)
     fullscreen()
-    resizeSubtitles()
   }
 
   useEffect(() => {
-    if (!video.current || !canvasElement || subtitlesOctopusInstance || !subtitleTrack?.data || !attachments) return
-    const fonts = attachments.map(({ filename, data }) => [filename, URL.createObjectURL(new Blob([data], {type : 'application/javascript'} ))])
-    const _subtitlesOctopusInstance = new SubtitlesOctopus({
-      // video: video.current,
+    if (!video.current || !canvasElement || jassub || !subtitleTrack?.data || !attachments) return
+    const fonts = attachments.map(({ filename, data }) => [
+      filename.toLowerCase().replaceAll('-', ' ').split('.').at(0),
+      data
+    ])
+    const jassubInstance = new JASSUB({
+      video: video.current,
       canvas: canvasElement,
       // video: document.body.appendChild(document.createElement('video')),
       subContent: subtitleTrack.data,
-      fonts: fonts.map(([,filename]) => filename),
+      fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
       availableFonts: Object.fromEntries(fonts),
       workerUrl: libassPath, // Link to WebAssembly-based file "libassjs-worker.js"
     })
-    setSubtitlesOctopusInstance(_subtitlesOctopusInstance)
+    setJassub(jassubInstance)
   }, [canvasElement, attachments, subtitleTrack?.data])
 
   useEffect(() => {
@@ -142,47 +131,16 @@ export default ({
   }, [tracks.length])
 
   useEffect(() => {
-    if (!subtitlesOctopusInstance) return
+    if (!jassub) return
     if (!subtitleTrack) {
-      subtitlesOctopusInstance.freeTrack()
+      jassub.freeTrack()
       return
     }
-    subtitlesOctopusInstance.setTrack(subtitleTrack.data)
+    jassub.setTrack(subtitleTrack.data)
     const parent = canvasElement?.parentElement
     if (!parent || canvasInitialized) return
     setCanvasInitialized(true)
-    canvasElement.height = parent.getBoundingClientRect().height
-    canvasElement.width = parent.getBoundingClientRect().width
-    subtitlesOctopusInstance.resize(parent.getBoundingClientRect().width, parent.getBoundingClientRect().height)
-  }, [subtitlesOctopusInstance, subtitleTrack, canvasInitialized])
-
-  useEffect(() => {
-    if (!subtitlesOctopusInstance) return
-    subtitlesOctopusInstance.setCurrentTime(currentTime)
-  }, [subtitlesOctopusInstance, currentTime])
-
-  useEffect(() => {
-    if (!canvasElement || isFullscreen) return
-    // const listener = () => {
-    //   canvasElement.height = canvasElement.getBoundingClientRect().height
-    //   canvasElement.width = canvasElement.getBoundingClientRect().width
-    // }
-    // document.addEventListener('resize', listener)
-    const observer = new ResizeObserver(() => {
-      const parent = canvasElement.parentElement
-      if (!parent || !subtitlesOctopusInstance || isFullscreen) return
-      resizeSubtitles()
-    })
-    const parent = canvasElement.parentElement
-    if (parent && subtitlesOctopusInstance) {
-      resizeSubtitles()
-    }
-    observer.observe(canvasElement)
-    return () => {
-      observer.disconnect()
-      // document.removeEventListener('resize', listener)
-    }
-  }, [canvasElement, subtitlesOctopusInstance, isFullscreen])
+  }, [jassub, subtitleTrack, canvasInitialized])
 
   const setCanvasRef: ClassAttributes<HTMLCanvasElement>['ref'] = (canvasElem) => {
     if (!canvasElem) return

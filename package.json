@@ -20,7 +20,7 @@
     "copy-worker": "shx cp node_modules/@banou26/libav-wasm/build/worker.js build/worker.js",
     "copy-worker-deps": "copyfiles -u 4 node_modules/@banou26/libav-wasm/build/shared-memory-api_pb.*.js build",
     "copy-worker-wasm": "shx cp node_modules/@banou26/libav-wasm/build/libav.wasm build/libav.wasm",
-    "copy-libass": "copyfiles -u 4 ./node_modules/libass-wasm/dist/js/* build",
+    "copy-libass": "copyfiles -u 3 ./node_modules/jassub/dist/* build",
     "types": "tsc"
   },
   "author": "Banou26",
@@ -40,7 +40,7 @@
   "dependencies": {
     "@banou26/libav-wasm": "^0.1.8-ci-4066583008.0",
     "@emotion/react": "^11.10.5",
-    "libass-wasm": "^4.0.0",
+    "jassub": "^1.2.3",
     "mp4box": "^0.5.2",
     "osra": "^0.0.8",
     "p-queue": "^7.3.0",

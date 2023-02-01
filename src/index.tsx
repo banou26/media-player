@@ -101,7 +101,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [isPlaying, setIsPlaying] = useState(!(videoRef?.current?.paused ?? true))
   const [currentTime, setCurrentTime] = useState(0)
   const [currentOffset, setCurrentOffset] = useState(0)
-  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [attachments, setAttachments] = useState<Attachment[] | undefined>(undefined)
   const [tracks, setTracks] = useState<Subtitle[]>([])
   const [errors, setErrors] = useState<TransmuxError[]>([])
   const [sourceUrl, setSourceUrl] = useState<string>()
@@ -187,9 +187,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           ])
         },
         attachment: (filename: string, mimetype: string, buffer: ArrayBuffer) => {
-          if (attachments.find(({ filename: _filename }) => filename === _filename)) return
+          if (attachments?.find(({ filename: _filename }) => filename === _filename)) return
           setAttachments(attachments => [
-            ...attachments,
+            ...attachments ?? [],
             { filename, mimetype, data: new Uint8Array(buffer) }
           ])
         },

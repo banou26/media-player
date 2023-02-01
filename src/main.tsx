@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
-import FKNMediaPlayer from './index'
+import MediaPlayer from './index'
 import { bufferStream } from './utils'
 
 const mountStyle = css`
@@ -92,14 +92,14 @@ const Mount = () => {
 
   return (
     <div css={mountStyle}>
-      <FKNMediaPlayer
+      <MediaPlayer
         baseBufferSize={BASE_BUFFER_SIZE}
         ref={setVideoElemRef}
         size={size}
         fetch={onFetch}
         publicPath={'/build/'}
         workerPath={'/node_modules/@banou26/libav-wasm/build/worker.js'}
-        libassPath={'/build/subtitles-octopus-worker.js'}
+        libassPath={'/build/jassub-worker.js'}
       />
     </div>
   )
