@@ -399,8 +399,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       const processingQueue = new PQueue({ concurrency: 1 })
 
       const process = () =>
-        processingQueue.add(() =>
-          transmuxer.process(baseBufferSize)
+        processingQueue.add(
+          () => transmuxer.process(baseBufferSize),
+          { throwOnTimeout: true }
         )
 
       const updateBufferedRanges = async () => {
