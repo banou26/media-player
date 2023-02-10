@@ -97,8 +97,8 @@ const Mount = () => {
         ref={setVideoElemRef}
         size={size}
         fetch={onFetch}
-        publicPath={'/build/'}
-        workerPath={'/node_modules/@banou26/libav-wasm/build/worker.js'}
+        publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
+        workerPath={new URL('/node_modules/@banou26/libav-wasm/build/worker.js', import.meta.url).toString()}
         libassPath={'/build/jassub-worker.js'}
       />
     </div>
