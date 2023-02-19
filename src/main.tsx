@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
@@ -90,6 +90,18 @@ const Mount = () => {
     })
   }, [])
 
+  const jassubWorkerUrl = useMemo(() => {
+    const workerUrl = new URL('/build/jassub-worker.js', import.meta.url).toString()
+    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
+    return URL.createObjectURL(blob)
+  }, [])
+
+  const libavWorkerUrl = useMemo(() => {
+    const workerUrl = new URL('/node_modules/@banou26/libav-wasm/build/worker.js', import.meta.url).toString()
+    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
+    return URL.createObjectURL(blob)
+  }, [])
+
   return (
     <div css={mountStyle}>
       <MediaPlayer
@@ -98,8 +110,8 @@ const Mount = () => {
         size={size}
         fetch={onFetch}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
-        workerPath={new URL('/node_modules/@banou26/libav-wasm/build/worker.js', import.meta.url).toString()}
-        libassPath={'/build/jassub-worker.js'}
+        libavWorkerUrl={libavWorkerUrl}
+        libassWorkerUrl={jassubWorkerUrl}
       />
     </div>
   )

@@ -40,7 +40,7 @@ export type ChromeOptions = {
   video: MutableRefObject<HTMLVideoElement | undefined>
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
-  libassPath: string
+  libassWorkerUrl: string
   publicPath: string
 } & HTMLAttributes<HTMLDivElement>
 
@@ -61,7 +61,7 @@ export default ({
   video,
   errors,
   customControls,
-  libassPath,
+  libassWorkerUrl,
   publicPath,
   ...rest
 }: ChromeOptions) => {
@@ -123,7 +123,7 @@ export default ({
       subContent: subtitleTrack.data,
       fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
       availableFonts: Object.fromEntries(fonts),
-      workerUrl: libassPath, // Link to WebAssembly-based file "libassjs-worker.js"
+      workerUrl: libassWorkerUrl, // Link to WebAssembly-based file "libassjs-worker.js"
     })
     setJassub(jassubInstance)
   }, [canvasElement, attachments, subtitleTrack?.data])

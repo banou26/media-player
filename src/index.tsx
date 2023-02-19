@@ -77,8 +77,9 @@ export type FKNVideoOptions = {
   fetch: (offset: number, size: number) => Promise<Response>
   customControls?: FKNVideoControl[]
   publicPath: string
-  workerPath: string
-  libassPath: string
+  libavWorkerUrl: string
+  libavWorkerOptions?: WorkerOptions
+  libassWorkerUrl: string
   makeTransmuxer?: typeof libavMakeTransmuxer
 }
 
@@ -90,8 +91,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   fetch,
   customControls,
   publicPath,
-  workerPath,
-  libassPath,
+  libavWorkerUrl,
+  libavWorkerOptions,
+  libassWorkerUrl,
   makeTransmuxer = libavMakeTransmuxer
 }, ref) => {
   const [loading, setLoading] = useState(true)
@@ -150,7 +152,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       
       _transmuxer = makeTransmuxer({
         publicPath,
-        workerPath,
+        workerUrl: libavWorkerUrl,
+        workerOptions: libavWorkerOptions,
         bufferSize: baseBufferSize,
         length: contentLength,
         read: (offset, size) =>
@@ -562,7 +565,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         tracks={tracks}
         errors={errors}
         customControls={customControls}
-        libassPath={libassPath}
+        libassWorkerUrl={libassWorkerUrl}
         publicPath={publicPath}
       />
     </div>
