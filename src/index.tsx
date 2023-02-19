@@ -563,6 +563,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         errors={errors}
         customControls={customControls}
         libassPath={libassPath}
+        publicPath={publicPath}
       />
     </div>
   )

@@ -41,6 +41,7 @@ export type ChromeOptions = {
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
   libassPath: string
+  publicPath: string
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
@@ -61,6 +62,7 @@ export default ({
   errors,
   customControls,
   libassPath,
+  publicPath,
   ...rest
 }: ChromeOptions) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
@@ -114,6 +116,7 @@ export default ({
       data
     ])
     const jassubInstance = new JASSUB({
+      publicPath,
       video: video.current,
       canvas: canvasElement,
       // video: document.body.appendChild(document.createElement('video')),
