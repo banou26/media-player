@@ -106,7 +106,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [attachments, setAttachments] = useState<Attachment[] | undefined>(undefined)
   const [tracks, setTracks] = useState<Subtitle[]>([])
   const [errors, setErrors] = useState<TransmuxError[]>([])
-  const [sourceUrl, setSourceUrl] = useState<string>()
   const [duration, setDuration] = useState<number>()
   const [currentLoadedRange, setCurretLoadedRange] = useState<[number, number]>([0, 0])
 
@@ -246,7 +245,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       })
 
       const mediaSource = new MediaSource()
-      setSourceUrl(URL.createObjectURL(mediaSource))
+      videoElement.src = URL.createObjectURL(mediaSource)
 
       const sourceBuffer: SourceBuffer =
         await new Promise(resolve =>
@@ -539,7 +538,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     <div css={style} ref={containerRef}>
       <video
         ref={refFunction}
-        src={sourceUrl}
         onWaiting={waiting}
         onSeeking={seeking}
         onTimeUpdate={timeUpdate}
