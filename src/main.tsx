@@ -13,6 +13,7 @@ const mountStyle = css`
 `
 
 const BASE_BUFFER_SIZE = 5_000_000
+const STREAM_RESPONSES = false
 
 const Mount = () => {
   const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
@@ -50,7 +51,7 @@ const Mount = () => {
     if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
       return (
         fetch(
-          '/video3.mkv',
+          '/vid.mkv',
           {
             headers: {
               Range: `bytes=${offset}-${end ?? ''}`
@@ -85,7 +86,7 @@ const Mount = () => {
         contentRangeContentLength
           ? Number(contentRangeContentLength)
           : Number(headers.get('Content-Length'))
-      await setupStream(0)
+      if (STREAM_RESPONSES) await setupStream(0)
       setSize(contentLength)
     })
   }, [])
@@ -108,7 +109,7 @@ const Mount = () => {
         baseBufferSize={BASE_BUFFER_SIZE}
         ref={setVideoElemRef}
         size={size}
-        fetch={onFetch}
+        fetch={(offset, end) => onFetch(offset, end, STREAM_RESPONSES ? false : true)}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
         libavWorkerUrl={libavWorkerUrl}
         libassWorkerUrl={jassubWorkerUrl}
