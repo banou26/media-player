@@ -122,8 +122,8 @@ export default ({
       // video: document.body.appendChild(document.createElement('video')),
       subContent: subtitleTrack.data,
       fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
-      availableFonts: Object.fromEntries(fonts),
-      workerUrl: libassWorkerUrl, // Link to WebAssembly-based file "libassjs-worker.js"
+      availableFonts: { ...Object.fromEntries(fonts), 'liberation sans': new URL('/build/default.woff2', new URL(window.location.toString()).origin).toString() },
+      workerUrl: libassWorkerUrl, // Link to WebAssembly-based file "libassjs-worker.js",
     })
     setJassub(jassubInstance)
   }, [canvasElement, attachments, subtitleTrack?.data])
