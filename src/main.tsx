@@ -98,7 +98,7 @@ const Mount = () => {
   }, [])
 
   const libavWorkerUrl = useMemo(() => {
-    const workerUrl = new URL('/node_modules/@banou26/libav-wasm/build/worker.js', import.meta.url).toString()
+    const workerUrl = new URL('/node_modules/@banou26/libav-wasm/build/libav.js', import.meta.url).toString()
     const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
     return URL.createObjectURL(blob)
   }, [])
