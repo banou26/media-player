@@ -107,7 +107,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [tracks, setTracks] = useState<Subtitle[]>([])
   const [errors, setErrors] = useState<TransmuxError[]>([])
   const [duration, setDuration] = useState<number>()
-  const [currentLoadedRange, setCurretLoadedRange] = useState<[number, number]>([0, 0])
+  const [currentLoadedRange, setCurrentLoadedRange] = useState<[number, number]>([0, 0])
 
   const fetchRef = useRef(fetch)
 
@@ -146,7 +146,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
         let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
         if (firstPts === undefined || lastPts === undefined) return
-        setCurretLoadedRange([firstPts, lastPts])
+        setCurrentLoadedRange([firstPts, lastPts])
       }, 200)
       
       _transmuxer = makeTransmuxer({
