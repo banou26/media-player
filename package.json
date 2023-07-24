@@ -38,7 +38,7 @@
     "vite": "^4.0.4"
   },
   "dependencies": {
-    "@banou26/libav-wasm": "^0.1.8-ci-4216939293.0",
+    "@banou26/libav-wasm": "^0.1.8-ci-5639794024.0",
     "@emotion/react": "^11.10.5",
     "jassub": "github:Banou26/jassub",
     "mp4box": "^0.5.2",
