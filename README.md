@@ -9,3 +9,5 @@ A player that somehow manages to playback MKV files
 - a test video has subtitles that switch from time to time, subtitle index is kept but array items change indexes
 
 Todo: make the UI composable components, useable without the actual video player, useful for custom UI embedding on top of players like youtube, ect...
+
+Take inspiration from https://github.com/cookpete/react-player
