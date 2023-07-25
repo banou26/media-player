@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { ClassAttributes, SyntheticEvent, VideoHTMLAttributes } from 'react'
+import type { ClassAttributes, ReactNode, SyntheticEvent, VideoHTMLAttributes } from 'react'
 import type { MP4Info } from 'mp4box'
 
 import { forwardRef, useEffect, useRef, useState } from 'react'
@@ -72,6 +72,7 @@ export type FKNVideoControlOptions = {
 export type FKNVideoControl = (args: FKNVideoControlOptions) => JSX.Element
 
 export type FKNVideoOptions = {
+  customOverlay?: ReactNode
   baseBufferSize?: number
   size?: number
   fetch: (offset: number, size: number) => Promise<Response>
@@ -86,6 +87,7 @@ export type FKNVideoOptions = {
 export type HeaderChunk = Chunk & { buffer: { buffer: { fileStart: number } } }
 
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement> & FKNVideoOptions>(({
+  customOverlay,
   baseBufferSize = BASE_BUFFER_SIZE,
   size: contentLength,
   fetch,
@@ -548,6 +550,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       />
       <Chrome
         className="chrome"
+        customOverlay={customOverlay}
         isPlaying={isPlaying}
         video={videoRef}
         loading={loading}

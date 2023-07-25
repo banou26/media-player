@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObject } from 'react'
+import type { ClassAttributes, HTMLAttributes, MouseEventHandler, MutableRefObject, ReactNode } from 'react'
 import type { Attachment, FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -24,6 +24,7 @@ overflow: hidden;
 `
 
 export type ChromeOptions = {
+  customOverlay?: ReactNode
   isPlaying?: boolean
   loading?: boolean
   duration?: number
@@ -45,6 +46,7 @@ export type ChromeOptions = {
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
+  customOverlay,
   isPlaying,
   loading,
   duration,
@@ -160,6 +162,7 @@ export default ({
   return (
     <div {...rest} css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <Overlay loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
+      {customOverlay}
       <Bottom
         className="bottom"
         toggleFullscreen={toggleFullscreen}
