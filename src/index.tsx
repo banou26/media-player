@@ -183,10 +183,11 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           return -1
         },
         subtitle: (title, language, subtitle) => {
-          setTracks(tracks => [
-            ...tracks.filter(({ title: _title }) => _title !== title),
-            { title, language, data: subtitle }
-          ])
+          setTracks(tracks =>
+            tracks.find(({ title: _title }) => _title === title)
+              ? tracks.map((track) => track.title === title ? { title, language, data: subtitle } : track)
+              : [...tracks, { title, language, data: subtitle }]
+          )
         },
         attachment: (filename: string, mimetype: string, buffer: ArrayBuffer) => {
           if (attachments?.find(({ filename: _filename }) => filename === _filename)) return
