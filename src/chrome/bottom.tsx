@@ -309,7 +309,8 @@ export default ({
   subtitleTrack,
   pictureInPicture,
   errors,
-  customControls
+  customControls,
+  ...rest
 }: BottomOptions) => {
   const progressBarRef = useRef<HTMLDivElement>(null)
   const volumeBarRef = useRef<HTMLDivElement>(null)
@@ -467,7 +468,7 @@ export default ({
   }
 
   return (
-    <div css={style} onMouseOut={mouseOutBottom}>
+    <div css={style} onMouseOut={mouseOutBottom} {...rest}>
       <div className="preview"></div>
       <div
         ref={progressBarRef}

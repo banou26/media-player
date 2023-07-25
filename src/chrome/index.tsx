@@ -16,7 +16,7 @@ overflow: hidden;
 
 &.hide {
   cursor: none;
-
+  
   .bottom {
     opacity: 0;
   }
@@ -154,6 +154,7 @@ export default ({
     <div {...rest} css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
       <Overlay loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
       <Bottom
+        className="bottom"
         toggleFullscreen={toggleFullscreen}
         togglePlay={togglePlay}
         isFullscreen={isFullscreen}
