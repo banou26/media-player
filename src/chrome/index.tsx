@@ -88,6 +88,13 @@ export default ({
     autoHide.current = timeout
   }
 
+  // hide automatically after 3 seconds, in case the user doesn't move the mouse on init
+  useEffect(() => {
+    setTimeout(() => {
+      setHidden(true)
+    }, 3_000)
+  }, [])
+
   const mouseOut: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
     const root = canvasElement?.parentElement?.parentElement
     if (!root?.contains(ev?.relatedTarget as Element)) {
