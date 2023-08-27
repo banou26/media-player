@@ -223,6 +223,22 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
               buffered: false
             }
           ]
+          // fix the duration of chunks by inferring it from the next chunk
+          chunks =
+            chunks
+              .map((chunk, index) => {
+                if (index === chunks.length - 1) return chunk
+                return {
+                  ...chunk,
+                  duration:
+                    Math.max(
+                      chunk.duration <= 0
+                        ? chunks[index + 1].pts - chunk.pts <= 0 ? chunks[index + 1].duration : chunks[index + 1].pts - chunk.pts
+                        : chunk.duration,
+                      0.1
+                    )
+                }
+              })
         }
       })
 
