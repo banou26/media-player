@@ -111,6 +111,7 @@ const Mount = () => {
         size={size}
         fetch={(offset, end) => onFetch(offset, end, STREAM_RESPONSES ? false : true)}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
+        wasmUrl={new URL('/build/jassub-worker-modern.wasm', new URL(import.meta.url).origin).toString()}
         libavWorkerUrl={libavWorkerUrl}
         libassWorkerUrl={jassubWorkerUrl}
       />

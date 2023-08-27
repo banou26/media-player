@@ -78,6 +78,7 @@ export type FKNVideoOptions = {
   fetch: (offset: number, size: number) => Promise<Response>
   customControls?: FKNVideoControl[]
   publicPath: string
+  wasmUrl: string
   libavWorkerUrl: string
   libavWorkerOptions?: WorkerOptions
   libassWorkerUrl: string
@@ -93,6 +94,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   fetch,
   customControls,
   publicPath,
+  wasmUrl,
   libavWorkerUrl,
   libavWorkerOptions,
   libassWorkerUrl,
@@ -584,7 +586,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         errors={errors}
         customControls={customControls}
         libassWorkerUrl={libassWorkerUrl}
-        publicPath={publicPath}
+        wasmUrl={wasmUrl}
       />
     </div>
   )

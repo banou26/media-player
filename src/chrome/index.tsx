@@ -42,7 +42,7 @@ export type ChromeOptions = {
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
   libassWorkerUrl: string
-  publicPath: string
+  wasmUrl: string
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
@@ -64,7 +64,7 @@ export default ({
   errors,
   customControls,
   libassWorkerUrl,
-  publicPath,
+  wasmUrl,
   ...rest
 }: ChromeOptions) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
@@ -125,7 +125,6 @@ export default ({
       data
     ])
     const jassubInstance = new JASSUB({
-      publicPath,
       video: video.current,
       canvas: canvasElement,
       // video: document.body.appendChild(document.createElement('video')),
@@ -133,6 +132,7 @@ export default ({
       fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
       availableFonts: { ...Object.fromEntries(fonts), 'liberation sans': new URL('/build/default.woff2', new URL(window.location.toString()).origin).toString() },
       workerUrl: libassWorkerUrl, // Link to WebAssembly-based file "libassjs-worker.js",
+      modernWasmUrl: wasmUrl
     })
     setJassub(jassubInstance)
   }, [canvasElement, attachments, subtitleTrack?.data])
