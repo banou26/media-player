@@ -124,7 +124,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [mp4boxfile] = useState(createFile())
   const [mimeType, setMimeType] = useState<string | undefined>(undefined)
   const [headerChunk, setHeaderChunk] = useState<HeaderChunk | undefined>(undefined)
-  const [chunks, setChunks] = useState<Chunk[]>([])
+  const chunksRef = useRef<Chunk[]>([])
   const [transmuxer, setTransmuxer] = useState<Awaited<ReturnType<typeof makeTransmuxer>>>()
   const [initDone, setInitDone] = useState(false)
   const [mediaSource, setMediaSource] = useState<MediaSource>()
@@ -172,17 +172,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }, [videoElement])
 
   useEffect(() => {
-    if (!sourceBuffer) return
-
-    setInterval(() => {
-      console.log('sourceBuffer.buffered', getTimeRanges())
-      setChunks(chunks => console.log('chunks', chunks) || chunks)
-    }, 10_000)
-
-  }, [sourceBuffer])
-
-
-  useEffect(() => {
     mp4boxfile.onError = (error) => console.error('mp4box error', error)
     mp4boxfile.onReady = (info: MP4Info) => {
       let mime = 'video/mp4; codecs=\"'
@@ -197,8 +186,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
   useEffect(() => {
     const rangeUpdateInterval = window.setInterval(() => {
-      let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
-      let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+      let firstPts = chunksRef.current.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
+      let lastPts = chunksRef.current.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
       if (firstPts === undefined || lastPts === undefined) return
       setCurrentLoadedRange([firstPts, lastPts])
     }, 200)
@@ -209,7 +198,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   })
 
   useEffect(() => {
-    if (!contentLength || !setTransmuxer || !setChunks || !setHeaderChunk || !setTracks || !setAttachments) return
+    if (!contentLength || !setTransmuxer || !setHeaderChunk || !setTracks || !setAttachments) return
 
     let _headerChunk = undefined as HeaderChunk | undefined
     makeTransmuxer({
@@ -270,8 +259,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           }
           return
         }
-        setChunks(chunks => console.log('write chunks', chunks) || [
-          ...chunks,
+        chunksRef.current = [
+          ...chunksRef.current,
           {
             offset,
             buffer: new Uint8Array(buffer),
@@ -280,7 +269,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             pos,
             buffered: false
           }
-        ])
+        ]
       }
     })
     .then(async transmuxer => {
@@ -289,7 +278,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       if (!_headerChunk) throw new Error('No header chunk found after transmuxer init')
       setInitDone(true)
     })
-  }, [contentLength, setTransmuxer, setChunks, setHeaderChunk, setTracks, setAttachments])
+  }, [contentLength, setTransmuxer, setHeaderChunk, setTracks, setAttachments])
 
   useEffect(() => {
     if (!headerChunk || !mp4boxfile || !transmuxer) return
@@ -369,12 +358,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
     return async (chunk: Chunk) => {
       await appendBuffer(chunk.buffer.buffer)
-      setChunks(chunks =>
-        chunks.map(_chunk =>
-          _chunk === chunk
-            ? { ..._chunk, buffered: true }
-            : _chunk
-        )
+      chunksRef.current = chunksRef.current.map(_chunk =>
+        _chunk.pos === chunk.pos
+          ? { ..._chunk, buffered: true }
+          : _chunk
       )
     }
   }, [sourceBuffer])
@@ -418,24 +405,24 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         new Promise((resolve, reject) => {
           setupListeners(resolve, reject)
 
-          const chunkIndex = chunks.findIndex(_chunk => _chunk.pos === chunk.pos)
+          const chunkIndex = chunksRef.current.findIndex(_chunk => _chunk.pos === chunk.pos)
           if (chunkIndex === -1) return reject('No chunk found')
           sourceBuffer.remove(chunk.pts, chunk.pts + chunk.duration)
           chunk.buffered = false
         })
       )
-  }, [sourceBuffer, chunks, setupListeners])
+  }, [sourceBuffer, setupListeners])
 
   const removeChunk = useMemo(() => {
     if (!unbufferChunk) return
 
       return async (chunk: Chunk) => {
-      const chunkIndex = chunks.findIndex(_chunk => chunk.pos)
+      const chunkIndex = chunksRef.current.findIndex(_chunk => _chunk.pos === chunk.pos)
       if (chunkIndex === -1) throw new RangeError('No chunk found')
       await unbufferChunk(chunk)
-      setChunks(chunks => chunks.filter(_chunk => _chunk !== chunk))
+      chunksRef.current = chunksRef.current.filter(_chunk => _chunk.pos === chunk.pos)
     }
-  }, [unbufferChunk, chunks])
+  }, [unbufferChunk])
 
   const process = useMemo(() => {
     if (!transmuxer) return
@@ -453,7 +440,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
     return queuedDebounceWithLastCall(0, async (maxPts?: number) => {
       const currentTime = videoElement.currentTime
-      let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+      let lastPts = chunksRef.current.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
       while (
         (maxPts === undefined ? true : (lastPts ?? 0) < maxPts)
         && (lastPts === undefined || (lastPts < (currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)))
@@ -466,16 +453,17 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       }
     })
-  }, [videoElement, process, duration, chunks])
+  }, [videoElement, process, duration])
 
   const updateBufferedRanges = useMemo(() => {
-    if (!videoElement || !chunks || !bufferChunk || !unbufferChunk || !removeChunk || !getTimeRanges || !unbufferRange || !duration) return
+    if (!videoElement || !bufferChunk || !unbufferChunk || !removeChunk || !getTimeRanges || !unbufferRange || !duration) return
 
     return async () => {
       const { currentTime } = videoElement
-      console.log('updateBufferedRanges', { currentTime, chunks })
+      console.log('updateBufferedRanges', { currentTime, chunks: chunksRef.current })
       const neededChunks =
-        chunks
+        chunksRef
+          .current
           .filter(({ pts, duration }) =>
             ((currentTime - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS) < pts)
             && ((currentTime + POST_SEEK_REMOVE_BUFFERS_IN_SECONDS) > (pts + duration))
@@ -489,12 +477,14 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           )
   
       const shouldBeUnbufferedChunks = 
-        chunks
+        chunksRef
+          .current
           .filter(({ buffered }) => buffered)
           .filter((chunk) => !shouldBeBufferedChunks.includes(chunk))
   
       const nonNeededChunks =
-        chunks
+        chunksRef
+          .current
           .filter((chunk) => !neededChunks.includes(chunk))
   
       for (const shouldBeUnbufferedChunk of shouldBeUnbufferedChunks) {
@@ -534,10 +524,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       }
     }
-  }, [videoElement, chunks, bufferChunk, unbufferChunk, removeChunk, getTimeRanges, unbufferRange, duration])
+  }, [videoElement, bufferChunk, unbufferChunk, removeChunk, getTimeRanges, unbufferRange, duration])
 
   const seek = useMemo(() => {
-    if (!videoElement || !process || !processNeededBufferRange || !chunks || !transmuxer || !updateBufferedRanges || !mediaSource || !duration || !getTimeRanges || !unbufferRange) return
+    if (!videoElement || !process || !processNeededBufferRange || !transmuxer || !updateBufferedRanges || !mediaSource || !duration || !getTimeRanges || !unbufferRange) return
 
     return queuedDebounceWithLastCall(500, async (time: number, shouldResume = false) => {
       const ranges = getTimeRanges()
@@ -566,10 +556,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       processingQueue.start()
       const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
       if (seekTime > POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
-        setChunks([])
+        chunksRef.current = []
         await transmuxer.seek(seekTime)
       } else {
-        setChunks([])
+        chunksRef.current = []
         await transmuxer.destroy()
         await transmuxer.init()
         await process()
@@ -596,7 +586,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }, 1_000)
       })
     })
-  }, [chunks, transmuxer, process, processNeededBufferRange, videoElement, updateBufferedRanges, mediaSource, duration, getTimeRanges, unbufferRange])
+  }, [transmuxer, process, processNeededBufferRange, videoElement, updateBufferedRanges, mediaSource, duration, getTimeRanges, unbufferRange])
 
   const [headerAppended, setHeaderAppended] = useState(false)
 
@@ -627,6 +617,16 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       videoElement.removeEventListener('timeupdate', timeUpdateListener)
     }
   }, [videoElement, processNeededBufferRange, updateBufferedRanges])
+
+  useEffect(() => {
+    if (!sourceBuffer || !getTimeRanges) return
+
+    setInterval(() => {
+      console.log('sourceBuffer.buffered', getTimeRanges())
+      console.log('chunks', chunksRef.current)
+    }, 10_000)
+
+  }, [sourceBuffer, getTimeRanges])
 
   const waiting: React.DOMAttributes<HTMLVideoElement>['onWaiting'] = (ev) => {
     setLoading(true)
