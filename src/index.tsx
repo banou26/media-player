@@ -160,7 +160,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       'seeking',
       'stalled',
       'suspend',
-      'timeupdate',
+      // 'timeupdate',
       'volumechange',
       'waiting'
     ]
@@ -176,8 +176,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
     setInterval(() => {
       console.log('sourceBuffer.buffered', getTimeRanges())
-      setChunks(chunks => console.log('chunks', chunks) || chunks) 
-    }, 1000)
+      setChunks(chunks => console.log('chunks', chunks) || chunks)
+    }, 10_000)
 
   }, [sourceBuffer])
 
@@ -353,7 +353,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }, [sourceBuffer])
 
   const appendBuffer = useMemo(() => {
-    if (!sourceBuffer) return
+    if (!sourceBuffer || !setupListeners) return
     
     return (buffer: ArrayBuffer) =>
       queue.add(() =>
@@ -362,10 +362,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           sourceBuffer.appendBuffer(buffer)
         })
       )
-  }, [sourceBuffer])
+  }, [sourceBuffer, setupListeners])
 
   const bufferChunk = useMemo(() => {
-    if (!sourceBuffer) return undefined
+    if (!sourceBuffer || !appendBuffer) return undefined
 
     return async (chunk: Chunk) => {
       await appendBuffer(chunk.buffer.buffer)
@@ -396,7 +396,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }, [sourceBuffer])
 
   const unbufferRange = useMemo(() => {
-    if (!sourceBuffer) return
+    if (!sourceBuffer || !setupListeners) return
 
     return async (start: number, end: number) => {
       return (
@@ -408,34 +408,34 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         )
       )
     }
-  }, [sourceBuffer])
+  }, [sourceBuffer, setupListeners])
 
   const unbufferChunk = useMemo(() => {
-    if (!sourceBuffer) return
+    if (!sourceBuffer || !setupListeners) return
 
     return async (chunk: Chunk) =>
       queue.add(() =>
         new Promise((resolve, reject) => {
           setupListeners(resolve, reject)
 
-          const chunkIndex = chunks.indexOf(chunk)
+          const chunkIndex = chunks.findIndex(_chunk => _chunk.pos === chunk.pos)
           if (chunkIndex === -1) return reject('No chunk found')
           sourceBuffer.remove(chunk.pts, chunk.pts + chunk.duration)
           chunk.buffered = false
         })
       )
-  }, [sourceBuffer])
+  }, [sourceBuffer, chunks, setupListeners])
 
   const removeChunk = useMemo(() => {
     if (!unbufferChunk) return
 
       return async (chunk: Chunk) => {
-      const chunkIndex = chunks.indexOf(chunk)
+      const chunkIndex = chunks.findIndex(_chunk => chunk.pos)
       if (chunkIndex === -1) throw new RangeError('No chunk found')
       await unbufferChunk(chunk)
       setChunks(chunks => chunks.filter(_chunk => _chunk !== chunk))
     }
-  }, [unbufferChunk])
+  }, [unbufferChunk, chunks])
 
   const process = useMemo(() => {
     if (!transmuxer) return
@@ -466,13 +466,14 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       }
     })
-  }, [videoElement, process, duration])
+  }, [videoElement, process, duration, chunks])
 
   const updateBufferedRanges = useMemo(() => {
     if (!videoElement || !chunks || !bufferChunk || !unbufferChunk || !removeChunk || !getTimeRanges || !unbufferRange || !duration) return
 
     return async () => {
       const { currentTime } = videoElement
+      console.log('updateBufferedRanges', { currentTime, chunks })
       const neededChunks =
         chunks
           .filter(({ pts, duration }) =>
@@ -597,16 +598,18 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     })
   }, [chunks, transmuxer, process, processNeededBufferRange, videoElement, updateBufferedRanges, mediaSource, duration, getTimeRanges, unbufferRange])
 
+  const [headerAppended, setHeaderAppended] = useState(false)
 
   useEffect(() => {
-    if (!headerChunk || !appendBuffer || !processNeededBufferRange || !updateBufferedRanges) return
+    if (!headerChunk || !appendBuffer || !processNeededBufferRange || !updateBufferedRanges || headerAppended) return
     appendBuffer(headerChunk.buffer)
       .then(async () => {
+        setHeaderAppended(true)
         console.log('header chunk appended')
         await processNeededBufferRange()
         await updateBufferedRanges()
       })
-  }, [headerChunk, appendBuffer, processNeededBufferRange, updateBufferedRanges])
+  }, [headerChunk, appendBuffer, processNeededBufferRange, updateBufferedRanges, headerAppended])
 
   useEffect(() => {
     if (!videoElement || !processNeededBufferRange || !updateBufferedRanges) return
@@ -615,10 +618,15 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await updateBufferedRanges()
     })
 
-    videoElement.addEventListener('timeupdate', () => {
+    const timeUpdateListener = (ev: Event) => {
       timeUpdateWork(videoElement.currentTime)
-    })
-  }, [videoElement])
+    }
+    videoElement.addEventListener('timeupdate', timeUpdateListener)
+
+    return () => {
+      videoElement.removeEventListener('timeupdate', timeUpdateListener)
+    }
+  }, [videoElement, processNeededBufferRange, updateBufferedRanges])
 
   const waiting: React.DOMAttributes<HTMLVideoElement>['onWaiting'] = (ev) => {
     setLoading(true)
