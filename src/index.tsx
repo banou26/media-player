@@ -39,8 +39,8 @@ type Chunk = {
 }
 
 const BASE_BUFFER_SIZE = 5_000_000
-const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 5
-const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
+const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
+const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 25
 const POST_SEEK_REMOVE_BUFFERS_IN_SECONDS = 60
 
 const style = css`
@@ -123,6 +123,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   useEffect(() => {
     if (!contentLength || !videoElement) return
     let _transmuxer: ReturnType<typeof makeTransmuxer>
+    let rangeUpdateInterval: number
     ;(async () => {
       let mp4boxfile = createFile()
       mp4boxfile.onError = (error) => console.error('mp4box error', error)
@@ -146,7 +147,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       let chunks: Chunk[] = []
       let initDone = false
     
-      setInterval(() => {
+      rangeUpdateInterval = window.setInterval(() => {
         let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
         let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
         if (firstPts === undefined || lastPts === undefined) return
@@ -225,22 +226,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
               buffered: false
             }
           ]
-          // fix the duration of chunks by inferring it from the next chunk
-          chunks =
-            chunks
-              .map((chunk, index) => {
-                if (index === chunks.length - 1) return chunk
-                return {
-                  ...chunk,
-                  duration:
-                    Math.max(
-                      chunk.duration <= 0
-                        ? chunks[index + 1].pts - chunk.pts <= 0 ? chunks[index + 1].duration : chunks[index + 1].pts - chunk.pts
-                        : chunk.duration,
-                      0.1
-                    )
-                }
-              })
         }
       })
 
@@ -264,6 +249,40 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         // @ts-ignore
         console.error(ev.target?.error)
       })
+
+      const allVideoEvents = [
+        'abort',
+        'canplay',
+        'canplaythrough',
+        'durationchange',
+        'emptied',
+        'encrypted',
+        'ended',
+        'error',
+        'interruptbegin',
+        'interruptend',
+        'loadeddata',
+        'loadedmetadata',
+        'loadstart',
+        'mozaudioavailable',
+        'pause',
+        'play',
+        'playing',
+        'progress',
+        'ratechange',
+        'seeked',
+        'seeking',
+        'stalled',
+        'suspend',
+        'timeupdate',
+        'volumechange',
+        'waiting'
+      ]
+      for (const event of allVideoEvents) {
+        video.addEventListener(event, ev => {
+          console.log('video event', event, ev)
+        })
+      }
 
       const mediaSource = new MediaSource()
       videoElement.src = URL.createObjectURL(mediaSource)
@@ -370,9 +389,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       })
 
-      let skipSeek = false
       // todo: add error checker & retry to seek a bit earlier
-      const seek = queuedDebounceWithLastCall(500, async (time: number) => {
+      const seek = queuedDebounceWithLastCall(500, async (time: number, shouldResume = false) => {
         const ranges = getTimeRanges()
         if (ranges.some(({ start, end }) => time >= start && time <= end)) {
           return
@@ -380,8 +398,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         for (const range of ranges) {
           await unbufferRange(range.start, range.end)
         }
-        const isPlaying = !video.paused
-        if (isPlaying) video.pause()
         const allTasksDone = new Promise(resolve => {
           processingQueue.size && processingQueue.pending
             ? (
@@ -416,7 +432,20 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         await processNeededBufferRange(time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await updateBufferedRanges()
 
-        if (isPlaying) await video.play()
+        mediaSource.duration = duration
+
+        await new Promise((resolve, reject) => {
+          video.addEventListener('canplaythrough', async (event) => {
+            video.currentTime = Math.max(time - 0.5, 0)
+            video.currentTime = Math.max(time, 0)
+            console.log('shouldResume', shouldResume)
+            if (shouldResume) await video.play()
+            resolve(undefined)
+          }, { once: true })
+          setTimeout(() => {
+            reject('timeout')
+          }, 1_000)
+        })
       })
 
       const processingQueue = new PQueue({ concurrency: 1 })
@@ -467,6 +496,27 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             break
           }
         }
+        const firstChunk = neededChunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)
+        const lastChunk = neededChunks.sort(({ pts, duration }, { pts: pts2, duration: duration2 }) => (pts + duration) - (pts2 + duration2)).at(-1)
+        const lowestAllowedStart =
+          firstChunk
+            ? Math.max(firstChunk?.pts - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS, 0)
+            : undefined
+        const highestAllowedEnd =
+          lastChunk
+            ? Math.min(lastChunk.pts + lastChunk.duration + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS, duration)
+            : undefined
+        const ranges = getTimeRanges()
+        // console.log('ranges', ranges, lowestAllowedStart, highestAllowedEnd, neededChunks, chunks)
+        for (const { start, end } of ranges) {
+          if (!lowestAllowedStart || !highestAllowedEnd) continue
+          if (lowestAllowedStart !== undefined && start < lowestAllowedStart) {
+            await unbufferRange(start, lowestAllowedStart)
+          }
+          if (highestAllowedEnd !== undefined && end > highestAllowedEnd) {
+            await unbufferRange(highestAllowedEnd, end)
+          }
+        }
       }
 
       // @ts-ignore
@@ -476,8 +526,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       await updateBufferedRanges()
 
       video.addEventListener('seeking', () => {
-        if (skipSeek) return
-        seek(video.currentTime)
+        const isPlaying = !video._isPaused
+        console.log('seeking', isPlaying)
+        seek(video.currentTime, isPlaying)
+        video._isPaused = undefined
       })
 
       const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
@@ -491,6 +543,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
     })()
 
     return () => {
+      clearInterval(rangeUpdateInterval)
       _transmuxer.then(transmuxer => transmuxer.destroy(true))
     }
   }, [contentLength, videoElement])
@@ -507,6 +560,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const seek = async (time: number) => {
     const video = videoRef.current
     if (!video) throw new Error('Trying to seek before video element has ref')
+    video._isPaused = video.paused
+    video.pause()
     video.currentTime = time
     setCurrentTime(video.currentTime ?? 0)
   }
