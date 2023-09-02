@@ -148,8 +148,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       let chunks: Chunk[] = []
     
       rangeUpdateInterval = window.setInterval(() => {
-        let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
-        let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+        let firstPts = chunks.filter(({ buffered }) => buffered).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
+        let lastPts = chunks.filter(({ buffered }) => buffered).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
         if (firstPts === undefined || lastPts === undefined) return
         setCurrentLoadedRange([firstPts, lastPts])
       }, 200)
@@ -350,6 +350,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       const unbufferRange = async (start: number, end: number) =>
         queue.add(() =>
           new Promise((resolve, reject) => {
+            console.log(`%c UNBUFFER RANGE ${start}, ${end}, ${(new Error()).stack}`, 'color: #d11d1d')
             setupListeners(resolve, reject)
             sourceBuffer.remove(start, end)
           })
@@ -396,15 +397,31 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         const wasPlaying = !video.paused
         console.log('seeking', time, wasPlaying)
         await video.pause()
+        console.log('seeking pause')
         const ranges = getTimeRanges()
+        console.log('seeking getRanges')
         if (ranges.some(({ start, end }) => time >= start && time <= end)) {
+          console.log('seeking early return cuz buffered')
+          video.currentTime = time
+          setCurrentTime(video.currentTime)
+          await new Promise((resolve, reject) => {
+            video.addEventListener('canplaythrough', async (event) => {
+              if (wasPlaying) await video.play()
+              resolve(undefined)
+            }, { once: true })
+            setTimeout(() => {
+              if (wasPlaying) video.play()
+            }, 100)
+          })
           return
         }
-        for (const range of ranges) {
-          await unbufferRange(range.start, range.end)
-        }
-        const isPlaying = !video.paused
-        if (isPlaying) video.pause()
+
+        console.log('seeking unbuffering')
+        // for (const range of ranges) {
+        //   await unbufferRange(range.start, range.end)
+        // }
+        await updateBufferedRanges(time)
+        console.log('seeking allTasks')
         const allTasksDone = new Promise(resolve => {
           processingQueue.size && processingQueue.pending
             ? (
@@ -422,10 +439,11 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         processingQueue.clear()
         await allTasksDone
         processingQueue.start()
-        const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
+        console.log('seeking transmuxer seeking')
+        const seekTime = Math.max(0, time - (PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS * 2))
         await transmuxer.seek(seekTime)
-        await process()
-        await process()
+        console.log('seeking transmuxer seeked')
+        console.log('seeking transmuxer proces')
         await process()
         // if (seekTime > POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
         //   chunks = []
@@ -456,20 +474,22 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
         console.log('seeking set time')
         video.currentTime = time
-        setCurrentTime(video.currentTime ?? 0)
+        setCurrentTime(video.currentTime)
 
         console.log('seeking done')
         // if (wasPlaying) await video.play()
 
-        await new Promise((resolve, reject) => {
+        await new Promise((resolve) => {
           video.addEventListener('canplaythrough', async (event) => {
-            if (wasPlaying) await video.play()
+            if (wasPlaying) await video.play().catch(err => {})
             resolve(undefined)
           }, { once: true })
-          setTimeout(() => {
-            if (wasPlaying) video.play()
+          setTimeout(async () => {
+            if (wasPlaying) await video.play().catch(err => {})
+            resolve(undefined)
           }, 100)
         })
+        console.log('SEEKING ACTUALLY DONE')
       })
 
       seekRef.current = seek
@@ -478,7 +498,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
       const process = () =>
         processingQueue.add(
-          () => transmuxer.process(baseBufferSize),
+          () => transmuxer.process(POST_SEEK_NEEDED_BUFFERS_IN_SECONDS),
           { throwOnTimeout: true }
         )
 

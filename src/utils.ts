@@ -29,7 +29,10 @@ export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args:
         lastCallArguments = undefined
         funcResult
           .then(resolve)
-          .catch(reject)
+          .catch((err) => {
+            console.error(err)
+            reject(err)
+          })
 
         let _resolve: (value: ReturnType<T> | PromiseLike<ReturnType<T>>) => void
         let _reject: (reason?: any) => void
