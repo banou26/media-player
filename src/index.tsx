@@ -146,7 +146,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
       let headerChunk: HeaderChunk | undefined
       let chunks: Chunk[] = []
-      let initDone = false
     
       rangeUpdateInterval = window.setInterval(() => {
         let firstPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
@@ -235,7 +234,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       const transmuxer = await _transmuxer
 
       await transmuxer.init()
-      initDone = true
 
       if (!headerChunk) throw new Error('No header chunk found after transmuxer init')
 
@@ -277,13 +275,13 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         'seeking',
         'stalled',
         'suspend',
-        // 'timeupdate',
+        'timeupdate',
         'volumechange',
         'waiting'
       ]
       for (const event of allVideoEvents) {
         video.addEventListener(event, ev => {
-          console.log('video event', event, ev)
+          console.log('video event', event)
         })
       }
 
@@ -426,6 +424,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         processingQueue.start()
         const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await transmuxer.seek(seekTime)
+        await process()
+        await process()
+        await process()
         // if (seekTime > POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
         //   chunks = []
         //   console.log('TRANSMUXER SEEK')
@@ -441,6 +442,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         console.log('seeking processed')
 
         await new Promise(resolve => setTimeout(resolve, 0))
+
+        // await processNeededBufferRange(0)
+        // await updateBufferedRanges(0)
 
         console.log('seeking pre processNeededBufferRange')
         await processNeededBufferRange(time, time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
@@ -478,19 +482,19 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           { throwOnTimeout: true }
         )
 
-      const updateBufferedRanges = async (currentTime: number) => {
+      const updateBufferedRanges = async (time: number) => {
         const neededChunks =
           chunks
             .filter(({ pts, duration }) =>
-              ((currentTime - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS) < pts)
-              && ((currentTime + POST_SEEK_REMOVE_BUFFERS_IN_SECONDS) > (pts + duration))
+              ((time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS) < pts)
+              && ((time + POST_SEEK_REMOVE_BUFFERS_IN_SECONDS) > (pts + duration))
             )
 
         const shouldBeBufferedChunks =
           neededChunks
             .filter(({ pts, duration }) =>
-              ((currentTime - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS) < pts)
-              && ((currentTime + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) > (pts + duration))
+              ((time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS) < pts)
+              && ((time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) > (pts + duration))
             )
 
         const shouldBeUnbufferedChunks = 
@@ -559,10 +563,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         { once: true }
       )
 
-      video.addEventListener('seeking', () => {
-        if (skipSeek) return
-        seek(video.currentTime)
-      })
+      // video.addEventListener('seeking', () => {
+      //   if (skipSeek) return
+      //   seek(video.currentTime)
+      // })
 
       const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
         await processNeededBufferRange(time, time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
@@ -576,6 +580,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       setInterval(() => {
         console.log('ranges', getTimeRanges(), chunks)
       }, 5_000)
+
+      // video.addEventListener('progress', () => {
+        
+      // })
 
     })()
 
