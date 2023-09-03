@@ -38,8 +38,8 @@ type Chunk = {
 }
 
 const BASE_BUFFER_SIZE = 5_000_000
-const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 15
-const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 25
+const PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS = 20
+const POST_SEEK_NEEDED_BUFFERS_IN_SECONDS = 30
 const POST_SEEK_REMOVE_BUFFERS_IN_SECONDS = 60
 
 const style = css`
@@ -341,11 +341,20 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           })
         )
 
-      const bufferChunk = (chunk: Chunk) => appendBuffer(chunk.buffer.buffer)
+      const bufferChunk = async (chunk: Chunk) => {
+        console.log('buffering chunk', chunk, getTimeRanges().map(({ start, end }) => `${start}-${end}`))
+        await appendBuffer(chunk.buffer.buffer)
+        console.log('AFTER buffering chunk', chunk, getTimeRanges().map(({ start, end }) => `${start}-${end}`))
+      }
 
       const unbufferRange = async (start: number, end: number) =>
         queue.add(() =>
           new Promise((resolve, reject) => {
+            try {
+              throw new Error(`unbufferRange ${start} ${end}`)
+            } catch (err) {
+              console.error(err)
+            }
             setupListeners(resolve, reject)
             sourceBuffer.remove(start, end)
           })
@@ -365,7 +374,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       const seek = queuedDebounceWithLastCall(500, async (time: number) => {
         setCurrentTime(time)
         const wasPlaying = !video.paused
-        console.log('seeking', time, time / 60, wasPlaying)
+        console.log('seeking', time, `${Math.floor(time / 60)}:${Math.floor(time % 60)}`, wasPlaying)
         await video.pause()
         console.log('seeking pause')
         const ranges = getTimeRanges()
@@ -391,7 +400,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         //   await unbufferRange(range.start, range.end)
         // }
         await updateBufferedRanges(time)
-        console.log('seeking allTasks')
+        console.log('seeking allTasks', getTimeRanges(), chunks)
         const allTasksDone = new Promise(resolve => {
           processingQueue.size && processingQueue.pending
             ? (
@@ -410,11 +419,11 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         await allTasksDone
         processingQueue.start()
         console.log('seeking transmuxer seeking')
-        const seekTime = Math.max(0, time - (PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS * 2))
+        const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await transmuxer.seek(seekTime)
         console.log('seeking transmuxer seeked')
         console.log('seeking transmuxer proces')
-        await process(POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
+        await process(PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         // if (seekTime > POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
         //   chunks = []
         //   console.log('TRANSMUXER SEEK')
@@ -431,8 +440,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
         await new Promise(resolve => setTimeout(resolve, 0))
 
+        console.log('PRE seeking updateBufferedRanges', getTimeRanges(), chunks)
         await updateBufferedRanges(time)
-        console.log('seeking updateBufferedRanges', chunks)
+        console.log('seeking updateBufferedRanges', getTimeRanges(), chunks)
         
         mediaSource.duration = duration
 
@@ -459,6 +469,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       seekRef.current = seek
 
       const updateBufferedRanges = async (time: number) => {
+        const ranges1 = getTimeRanges()
         const neededChunks =
           chunks
             .filter(({ pts, duration }) =>
@@ -473,9 +484,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
               && ((time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) > (pts + duration))
             )
 
-        const shouldBeUnbufferedChunks = 
+        const shouldBeUnbufferedChunks =
           chunks
-            .filter(({ buffered }) => buffered)
+            .filter(({ pts, duration }) => ranges1.some(({ start, end }) => start < (pts + (duration / 2)) && (pts + (duration / 2)) < end))
             .filter((chunk) => !shouldBeBufferedChunks.includes(chunk))
 
         const nonNeededChunks =
@@ -493,6 +504,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           try {
             await bufferChunk(chunk)
           } catch (err) {
+            console.error(err)
             if (!(err instanceof Event)) throw err
             break
           }
@@ -508,9 +520,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             ? Math.min(lastChunk.pts + lastChunk.duration + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS, duration)
             : undefined
         const ranges = getTimeRanges()
-        // console.log('ranges', ranges, lowestAllowedStart, highestAllowedEnd, neededChunks, chunks)
+        console.log('ranges', ranges, lowestAllowedStart, highestAllowedEnd, neededChunks, chunks)
         for (const { start, end } of ranges) {
           if (!lowestAllowedStart || !highestAllowedEnd) continue
+          console.log('range', start, end)
           if (lowestAllowedStart !== undefined && start < lowestAllowedStart) {
             await unbufferRange(start, lowestAllowedStart)
           }
