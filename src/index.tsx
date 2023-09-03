@@ -145,13 +145,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
       let headerChunk: HeaderChunk | undefined
       let chunks: Chunk[] = []
-    
-      rangeUpdateInterval = window.setInterval(() => {
-        let firstPts = chunks.filter(({ buffered }) => buffered).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
-        let lastPts = chunks.filter(({ buffered }) => buffered).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
-        if (firstPts === undefined || lastPts === undefined) return
-        setCurrentLoadedRange([firstPts, lastPts])
-      }, 200)
       
       _transmuxer = makeTransmuxer({
         publicPath,
@@ -367,21 +360,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         chunks = chunks.filter(_chunk => _chunk !== chunk)
       }
 
-      const processNeededBufferRange = queuedDebounceWithLastCall(0, async (time: number, maxPts?: number) => {
-        let lastPts = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
-        while (
-          (maxPts === undefined ? true : (lastPts ?? 0) < maxPts)
-          && (lastPts === undefined || (lastPts < (time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)))
-        ) {
-          const newChunks = await process()
-          const lastProcessedChunk = newChunks.at(-1)
-          if (!lastProcessedChunk && ((lastPts ?? 0) + 10) >= duration) break
-          if (lastProcessedChunk) {
-            lastPts = lastProcessedChunk.pts
-          }
-        }
-      })
-
       // todo: add error checker & retry to seek a bit earlier
       const seek = queuedDebounceWithLastCall(500, async (time: number) => {
         setCurrentTime(time)
@@ -566,7 +544,10 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       // })
 
       const timeUpdateWork = queuedDebounceWithLastCall(500, async (time: number) => {
-        await process()
+        const lastChunk = chunks.sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)
+        if (lastChunk && lastChunk.pts < time + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS) {
+          await process()
+        }
         await updateBufferedRanges(time)
       })
 
@@ -577,6 +558,17 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       setInterval(() => {
         console.log('ranges', getTimeRanges(), chunks)
       }, 5_000)
+
+      rangeUpdateInterval = window.setInterval(() => {
+        const ranges = getTimeRanges()
+        const firstRange = ranges.sort(({ start }, { start: start2 }) => start - start2).at(0)
+        const lastRange = ranges.sort(({ end }, { end: end2 }) => end - end2).at(-1)
+        if (!firstRange || !lastRange) return
+        let firstPts = chunks.filter(({ pts, duration }) => pts + (duration / 2) > firstRange.start).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
+        let lastPts = chunks.filter(({ pts, duration }) => pts + (duration / 2) < lastRange.end).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
+        if (firstPts === undefined || lastPts === undefined) return
+        setCurrentLoadedRange([firstPts, lastPts])
+      }, 200)
 
       // video.addEventListener('progress', () => {
         
