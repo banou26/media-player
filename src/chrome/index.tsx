@@ -43,6 +43,7 @@ export type ChromeOptions = {
   customControls?: FKNVideoControl[]
   libassWorkerUrl: string
   wasmUrl: string
+  needsInitialInteraction?: boolean
 } & HTMLAttributes<HTMLDivElement>
 
 export default ({
@@ -65,6 +66,7 @@ export default ({
   customControls,
   libassWorkerUrl,
   wasmUrl,
+  needsInitialInteraction,
   ...rest
 }: ChromeOptions) => {
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
@@ -161,7 +163,7 @@ export default ({
 
   return (
     <div {...rest} css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={`chrome ${rest.className ?? ''} ${hidden ? 'hide' : ''}`}>
-      <Overlay loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
+      <Overlay needsInitialInteraction={needsInitialInteraction} loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
       {customOverlay}
       <Bottom
         className="bottom"

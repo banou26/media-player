@@ -112,6 +112,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [duration, setDuration] = useState<number>()
   const [currentLoadedRange, setCurrentLoadedRange] = useState<[number, number]>([0, 0])
   const seekRef = useRef<(time: number) => any>()
+  const [needsInitialInteraction, setNeedsInitialInteraction] = useState(false)
 
   const fetchRef = useRef(fetch)
 
@@ -519,12 +520,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       }
 
-      // @ts-ignore
-      await appendBuffer(headerChunk.buffer)
-
-      await process()
-      await updateBufferedRanges(0)
-
       video.addEventListener(
         'canplay',
         () =>
@@ -533,10 +528,17 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             // Catch error if user denied autoplay
             .catch(err => {
               if (!(err instanceof DOMException) || err.name !== 'NotAllowedError') return
+              setNeedsInitialInteraction(true)
               setLoading(false)
             }),
         { once: true }
       )
+
+      // @ts-ignore
+      await appendBuffer(headerChunk.buffer)
+
+      await process()
+      await updateBufferedRanges(0)
 
       // video.addEventListener('seeking', () => {
       //   if (skipSeek) return
@@ -624,6 +626,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }
 
   const play = async () => {
+    setNeedsInitialInteraction(false)
     const isPaused = videoRef.current?.paused
     if (isPaused) await videoRef.current?.play()
     else await videoRef.current?.pause()
@@ -662,6 +665,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         customOverlay={customOverlay}
         isPlaying={isPlaying}
         video={videoRef}
+        needsInitialInteraction={needsInitialInteraction}
         loading={loading}
         duration={duration}
         currentTime={currentTime}
