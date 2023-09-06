@@ -21,6 +21,12 @@ overflow: hidden;
     opacity: 0;
   }
 }
+
+.bottom {
+  &.hide {
+    opacity: 0 !important;
+  }
+}
 `
 
 export type ChromeOptions = {
@@ -166,7 +172,7 @@ export default ({
       <Overlay needsInitialInteraction={needsInitialInteraction} loading={loading} togglePlay={togglePlay} setCanvasRef={setCanvasRef}/>
       {customOverlay}
       <Bottom
-        className="bottom"
+        className={`bottom ${needsInitialInteraction ? 'hide' : ''}`}
         toggleFullscreen={toggleFullscreen}
         togglePlay={togglePlay}
         isFullscreen={isFullscreen}

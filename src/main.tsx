@@ -51,7 +51,7 @@ const Mount = () => {
     if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
       return (
         fetch(
-          '/vid.mkv',
+          '/video3.mkv',
           {
             headers: {
               Range: `bytes=${offset}-${end ?? ''}`
