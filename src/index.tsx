@@ -144,7 +144,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
       let headerChunk: HeaderChunk | undefined
       let chunks: Chunk[] = []
-      
+
       _transmuxer = makeTransmuxer({
         publicPath,
         workerUrl: libavWorkerUrl,
@@ -351,7 +351,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         const seekTime = Math.max(0, time - PRE_SEEK_NEEDED_BUFFERS_IN_SECONDS)
         await transmuxer.seek(seekTime)
         await process(POST_SEEK_NEEDED_BUFFERS_IN_SECONDS + POST_SEEK_NEEDED_BUFFERS_IN_SECONDS)
-        sourceBuffer.timestampOffset = seekTime
         for (const range of ranges) {
           await unbufferRange(range.start, range.end)
         }
@@ -359,6 +358,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           if (chunk.pts <= seekTime) continue
           await bufferChunk(chunk)
         }
+        // updateBufferedRanges(time)
         video.currentTime = time
         isSeeking = false
       })
@@ -465,7 +465,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         if (isSeeking) return
         timeUpdateWork(video.currentTime)
       })
-  
+
       rangeUpdateInterval = window.setInterval(() => {
         const ranges = getTimeRanges()
         const firstRange = ranges.sort(({ start }, { start: start2 }) => start - start2).at(0)

@@ -135,7 +135,6 @@ export default ({
     const jassubInstance = new JASSUB({
       video: video.current,
       canvas: canvasElement,
-      // video: document.body.appendChild(document.createElement('video')),
       subContent: subtitleTrack.data,
       fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
       availableFonts: { ...Object.fromEntries(fonts), 'liberation sans': new URL('/build/default.woff2', new URL(window.location.toString()).origin).toString() },
