@@ -322,12 +322,15 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
 
       // todo: add error checker & retry to seek a bit earlier
       const seek = queuedDebounceWithLastCall(500, async (time: number) => {
+        const isPlaying = !video.paused
+        videoElement?.pause()
         isSeeking = true
         setCurrentTime(time)
         const ranges = getTimeRanges()
         if (ranges.some(({ start, end }) => time >= start && time <= end)) {
           video.currentTime = time
           isSeeking = false
+          if (isPlaying) video.play()
           return
         }
         const allTasksDone = new Promise(resolve => {
@@ -361,6 +364,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         // updateBufferedRanges(time)
         video.currentTime = time
         isSeeking = false
+        if (isPlaying) video.play()
       })
 
       seekRef.current = seek
