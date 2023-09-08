@@ -102,9 +102,9 @@ export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, s
           const { value: newBuffer, done } = await this.reader.read()
 
           if (currentSize === 0 && leftOverData) {
-            console.log('currentSize', currentSize)
-            console.log('buffer', buffer)
-            console.log('leftOverData', leftOverData)
+            // console.log('currentSize', currentSize)
+            // console.log('buffer', buffer)
+            // console.log('leftOverData', leftOverData)
             buffer.set(leftOverData)
             currentSize += leftOverData.byteLength
             // @ts-expect-error
