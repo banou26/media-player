@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { Dispatch, DOMAttributes, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
+import type { Dispatch, DOMAttributes, HTMLAttributes, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
 
 import type { ChromeOptions } from '.'
 import type { FKNVideoControl, Subtitle, TransmuxError } from '..'
@@ -288,7 +288,9 @@ export type BottomOptions = {
   subtitleTrack: Subtitle | undefined
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
-} & Pick<ChromeOptions, 'seek' | 'setVolume' | 'loadedTime' | 'isPlaying' | 'tracks' | 'pictureInPicture'>
+} &
+Pick<ChromeOptions, 'seek' | 'setVolume' | 'loadedTime' | 'isPlaying' | 'tracks' | 'pictureInPicture'> &
+HTMLAttributes<HTMLDivElement>
 
 export default ({
   duration,
