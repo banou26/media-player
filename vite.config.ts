@@ -12,7 +12,7 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      external: ['react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip']
+      external: ['react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip', 'jassub', 'libav-wasm']
     }
   },
   plugins: [
@@ -31,7 +31,7 @@ export default defineConfig({
   ],
   server: {
     fs: {
-      allow: ['..']
+      allow: ['../..']
     }
   }
 })

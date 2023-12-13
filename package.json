@@ -6,16 +6,13 @@
   "main": "build/index.js",
   "files": [
     "build",
-    ".npmrc",
-    "vite.config.ts",
     "tsconfig.json",
     "tsconfig.node.json",
-    "src",
-    "index.html"
+    "src"
   ],
   "scripts": {
     "dev": "vite --port 4560",
-    "build": "vite build && npm run types && npm run copy-libass",
+    "build": "vite build && npm run types",
     "build-for-dev": "vite build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-deps && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/@banou26/libav-wasm/build/worker.js build/libav.js",
