@@ -15,7 +15,8 @@
   ],
   "scripts": {
     "dev": "vite --port 4560",
-    "build": "vite build && npm run copy-dependencies && npm run types",
+    "build": "vite build && npm run types && npm run copy-libass",
+    "build-for-dev": "vite build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-deps && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/@banou26/libav-wasm/build/worker.js build/libav.js",
     "copy-worker-deps": "copyfiles -u 4 node_modules/@banou26/libav-wasm/build/shared-memory-api_pb.*.js build",
@@ -38,9 +39,9 @@
     "vite": "^4.0.4"
   },
   "dependencies": {
-    "@banou26/libav-wasm": "^0.1.8-ci-7079861587.0",
     "@emotion/react": "^11.10.5",
     "jassub": "^1.7.1",
+    "libav-wasm": "^0.1.7",
     "mp4box": "^0.5.2",
     "osra": "^0.0.11",
     "p-queue": "^7.3.4",
