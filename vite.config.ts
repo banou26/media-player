@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+import { dependencies, devDependencies } from './package.json'
+
 export default defineConfig({
   build: {
     target: 'esnext',
@@ -12,7 +14,10 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      external: ['react', '@emotion/react', 'buffer', 'mp4box', 'osra', 'p-queue', 'react-feather', 'react-tooltip', 'jassub', 'libav-wasm']
+      external: [
+        ...dependencies ? Object.keys(dependencies) : [],
+        ...devDependencies ? Object.keys(devDependencies) : [],
+      ]
     }
   },
   plugins: [
