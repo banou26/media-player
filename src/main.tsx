@@ -12,7 +12,7 @@ const mountStyle = css`
 `
 
 const BASE_BUFFER_SIZE = 5_000_000
-const STREAM_RESPONSES = false
+const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 
 const Mount = () => {
   const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
@@ -28,7 +28,7 @@ const Mount = () => {
       '/video9.mkv',
       {
         headers: {
-          Range: `bytes=${offset}-${end ?? ''}`
+          Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
         }
       }
     )
