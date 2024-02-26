@@ -252,7 +252,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   
       const pull = async () => {
         const chunk = await remuxer.read()
-        // @ts-expect-error
         chunks = [...chunks, chunk]
         return chunk
       }
@@ -268,7 +267,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         for (let i = 0; i < sliceIndex + BUFFER_COUNT; i++) {
           if (chunks[i]) continue
           const chunk = await pull()
-          // @ts-expect-error
           await appendBuffer(chunk.buffer)
         }
   
@@ -304,9 +302,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           chunks = []
           await remuxer.seek(seekTime)
           const chunk1 = await pull()
-          // @ts-expect-error
           sourceBuffer.timestampOffset = chunk1.pts
-          // @ts-expect-error
           await appendBuffer(chunk1.buffer)
           if (firstSeekPaused === false) {
             await videoElement.play()
@@ -323,7 +319,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       })
 
       const firstChunk = await pull()
-      // @ts-expect-error
       appendBuffer(firstChunk.buffer)
   
       videoElement.addEventListener('timeupdate', () => {
