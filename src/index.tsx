@@ -307,6 +307,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           chunks = []
           await remuxer.seek(seekTime)
           const chunk1 = await pull()
+          // firefox sometimes throws "Uncaught (in promise) DOMException: An attempt was made to use an object that is not, or is no longer, usable"
           sourceBuffer.timestampOffset = chunk1.pts
           await appendBuffer(chunk1.buffer)
           if (firstSeekPaused === false) {
