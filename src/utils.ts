@@ -200,6 +200,7 @@ export const toBufferedStream = (SIZE: number) => (stream: ReadableStream) =>
         this.currentPullPromise = undefined
         if (done) {
           try {
+            for (const buffer of this.buffers) controller.enqueue(buffer)
             controller.close()
           } catch (err) {
             // console.error(err)

@@ -250,8 +250,12 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   
       await appendBuffer(headerChunk.buffer)
   
+      let reachedEnd = false
+
       const pull = async () => {
+        if (reachedEnd) throw new Error('end')
         const chunk = await remuxer.read()
+        if (chunk.isTrailer) reachedEnd = true
         chunks = [...chunks, chunk]
         return chunk
       }
@@ -265,7 +269,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         const sliceIndex = Math.max(0, currentChunkIndex - PREVIOUS_BUFFER_COUNT)
   
         for (let i = 0; i < sliceIndex + BUFFER_COUNT; i++) {
-          if (chunks[i]) continue
+          if (chunks[i] || reachedEnd) continue
           const chunk = await pull()
           await appendBuffer(chunk.buffer)
         }
@@ -297,6 +301,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       let firstSeekPaused: boolean | undefined
       const seek = debounceImmediateAndLatest(250, async (seekTime: number) => {
         try {
+          reachedEnd = false
           if (firstSeekPaused === undefined) firstSeekPaused = videoElement.paused
           seeking = true
           chunks = []
