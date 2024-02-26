@@ -4,7 +4,6 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import MediaPlayer from './index'
-import { bufferStream } from './utils'
 
 const mountStyle = css`
   display: grid;
@@ -24,69 +23,24 @@ const Mount = () => {
     videoElemRef.addEventListener('error', err => console.log('err', err))
   }, [videoElemRef])
 
-  const [currentStreamOffset, setCurrentStreamOffset] = useState<number>(0)
-  const [streamReader, setStreamReader] = useState<ReadableStreamDefaultReader<Uint8Array>>()
-
-  useEffect(() => {
-    if (!streamReader) return
-    return () => {
-      streamReader.cancel()
-    }
-  }, [streamReader])
-
-  const setupStream = async (offset: number) => {
-    if (streamReader) {
-      streamReader.cancel()
-    }
-    const streamResponse = await onFetch(offset, undefined, true)
-    if (!streamResponse.body) throw new Error('no body')
-    const stream = bufferStream({ stream: streamResponse.body, size: BASE_BUFFER_SIZE })
-    const reader = stream.getReader()
-    setStreamReader(reader)
-    setCurrentStreamOffset(offset)
-    return reader
-  }
-
-  const onFetch = async (offset: number, end?: number, force?: boolean) => {
-    if (force || end !== undefined && ((end - offset) + 1) !== BASE_BUFFER_SIZE) {
-      return (
-        fetch(
-          '/video6.mkv',
-          {
-            headers: {
-              Range: `bytes=${offset}-${end ?? ''}`
-            }
-          }
-        )
-      )
-    }
-    const _streamReader =
-      currentStreamOffset !== offset
-        ? await setupStream(offset)
-        : streamReader
-
-    if (!_streamReader) throw new Error('Stream reader not ready')
-    return new Response(
-      await _streamReader
-        .read()
-        .then(({ value }) => {
-          if (value) {
-            setCurrentStreamOffset(offset => offset + value.byteLength)
-          }
-          return value
-        })
+  const onFetch = async (offset: number, end?: number) =>
+    fetch(
+      '/video6.mkv',
+      {
+        headers: {
+          Range: `bytes=${offset}-${end ?? ''}`
+        }
+      }
     )
-  }
 
   useEffect(() => {
-    onFetch(0, 1, true).then(async ({ headers, body }) => {
+    onFetch(0, 1).then(async ({ headers, body }) => {
       if (!body) throw new Error('no body')
       const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
       const contentLength =
         contentRangeContentLength
           ? Number(contentRangeContentLength)
           : Number(headers.get('Content-Length'))
-      if (STREAM_RESPONSES) await setupStream(0)
       setSize(contentLength)
     })
   }, [])
@@ -109,7 +63,7 @@ const Mount = () => {
         baseBufferSize={BASE_BUFFER_SIZE}
         ref={setVideoElemRef}
         size={size}
-        fetch={(offset, end) => onFetch(offset, end, STREAM_RESPONSES ? false : true)}
+        fetch={(offset, end) => onFetch(offset, end)}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
         wasmUrl={new URL('/build/jassub-worker-modern.wasm', new URL(import.meta.url).origin).toString()}
         libavWorkerUrl={libavWorkerUrl}

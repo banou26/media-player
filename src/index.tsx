@@ -3,9 +3,9 @@ import type { ClassAttributes, ReactNode, SyntheticEvent, VideoHTMLAttributes } 
 
 import { forwardRef, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { makeTransmuxer as libavMakeTransmuxer } from 'libav-wasm'
+import { makeRemuxer as libavMakeRemuxer } from 'libav-wasm'
 
-import { queuedDebounceWithLastCall, toBufferedStream, toStreamChunkSize } from './utils'
+import { debounceImmediateAndLatest, queuedDebounceWithLastCall, toBufferedStream, toStreamChunkSize } from './utils'
 import Chrome from './chrome'
 import PQueue from 'p-queue'
 
@@ -76,7 +76,7 @@ export type FKNVideoOptions = {
   libavWorkerUrl: string
   libavWorkerOptions?: WorkerOptions
   libassWorkerUrl: string
-  makeTransmuxer?: typeof libavMakeTransmuxer
+  makeTransmuxer?: typeof libavMakeRemuxer
 }
 
 export type HeaderChunk = Chunk & { buffer: { buffer: { fileStart: number } } }
@@ -92,7 +92,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   libavWorkerUrl,
   libavWorkerOptions,
   libassWorkerUrl,
-  makeTransmuxer = libavMakeTransmuxer
+  makeTransmuxer = libavMakeRemuxer
 }, ref) => {
   const [loading, setLoading] = useState(true)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -124,19 +124,19 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         workerOptions: libavWorkerOptions,
         bufferSize: baseBufferSize,
         length: contentLength,
-        randomRead: (offset, size) =>
+        getStream: (offset, size) =>
           fetchRef
-            .current(offset, Math.min(offset + size, contentLength) - 1)
-            .then(res => res.arrayBuffer()),
-        getStream: (offset) =>
-          fetchRef
-            .current(offset, '')
+            .current(offset, size ? Math.min(offset + size, contentLength) - 1 : undefined)
             .then(res =>
-              toBufferedStream(3)(
-                toStreamChunkSize(baseBufferSize)(
-                  res.body!
+              size
+                ? res.body!
+                : (
+                  toBufferedStream(3)(
+                    toStreamChunkSize(baseBufferSize)(
+                      res.body!
+                    )
+                  )
                 )
-              )
             ),
         subtitle: (title, language, subtitle) => {
           setTracks(tracks =>
@@ -297,17 +297,28 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         }
       })
 
-      const seek = queuedDebounceWithLastCall(500, async (seekTime: number) => {
-        seeking = true
-        setCurrentTime(seekTime)
-        await appendBuffer(headerChunk.buffer)
-        chunks = []
-        await remuxer.seek(seekTime)
-        const chunk1 = await pull()
-        sourceBuffer.timestampOffset = chunk1.pts
-        await appendBuffer(chunk1.buffer)
-        seeking = false
-        await updateBuffers()
+      let firstSeekPaused: boolean | undefined
+      const seek = debounceImmediateAndLatest(250, async (seekTime: number) => {
+        try {
+          if (firstSeekPaused === undefined) firstSeekPaused = videoElement.paused
+          seeking = true
+          chunks = []
+          await remuxer.seek(seekTime)
+          const chunk1 = await pull()
+          sourceBuffer.timestampOffset = chunk1.pts
+          await appendBuffer(chunk1.buffer)
+          if (firstSeekPaused === false) {
+            await videoElement.play()
+          }
+          seeking = false
+          await updateBuffers()
+          if (firstSeekPaused === false) {
+            await videoElement.play()
+          }
+          firstSeekPaused = undefined
+        } catch (err: any) {
+          if (err.message !== 'exit') throw err
+        }
       })
 
       const firstChunk = await pull()
@@ -322,7 +333,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       })
   
       videoElement.addEventListener('seeking', (ev) => {
-        if (seeking) return
         seek(videoElement.currentTime)
       })
   

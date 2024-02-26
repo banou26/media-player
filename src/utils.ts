@@ -7,6 +7,38 @@ export type Chunk = {
   buffered: boolean
 }
 
+export function debounceImmediateAndLatest<T extends (...args: any[]) => any>(
+  wait: number,
+  func: T
+): T {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastArgs: any[] | null = null;
+
+  const debouncedFunction = function(...args: any[]) {
+    const context = this;
+
+    if (timeoutId === null) {
+      // Call immediately on the first call
+      func.apply(context, args);
+    } else {
+      // Store the latest arguments for the last call
+      lastArgs = args;
+    }
+
+    clearTimeout(timeoutId as ReturnType<typeof setTimeout>);
+
+    timeoutId = setTimeout(() => {
+      if (lastArgs) {
+        func.apply(context, lastArgs);
+        lastArgs = null;
+      }
+      timeoutId = null;
+    }, wait);
+  };
+
+  return debouncedFunction as T;
+}
+
 export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args: T2) => any>(time: number, func: T) => {
   let runningFunction: Promise<ReturnType<T>> | undefined
   let lastCall: Promise<ReturnType<T>> | undefined
@@ -84,63 +116,6 @@ export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args:
   }
 }
 
-// todo: reimplement this into a ReadableByteStream https://web.dev/streams/ once FF gets support
-// todo: remove firefox workaround once https://bugzilla.mozilla.org/show_bug.cgi?id=1808868 ships
-export const bufferStream = ({ stream, size: SIZE }: { stream: ReadableStream, size: number }) =>
-  new ReadableStream<Uint8Array>({
-    start() {
-      // @ts-expect-error
-      this.reader = stream.getReader()
-    },
-    async pull(controller) {
-      try {
-        // @ts-expect-error
-        const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
-
-        const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
-          // @ts-expect-error
-          const { value: newBuffer, done } = await this.reader.read()
-
-          if (currentSize === 0 && leftOverData) {
-            // console.log('currentSize', currentSize)
-            // console.log('buffer', buffer)
-            // console.log('leftOverData', leftOverData)
-            buffer.set(leftOverData)
-            currentSize += leftOverData.byteLength
-            // @ts-expect-error
-            this.leftOverData = undefined
-          }
-    
-          if (done) {
-            return { buffer: buffer.slice(0, currentSize), currentSize, done }
-          }
-    
-          let newSize
-          const slicedBuffer = newBuffer.slice(0, SIZE - currentSize)
-          newSize = currentSize + slicedBuffer.byteLength
-          buffer.set(slicedBuffer, currentSize)
-    
-          if (newSize === SIZE) {
-            // @ts-expect-error
-            this.leftOverData = newBuffer.slice(SIZE - currentSize)
-            return { buffer, currentSize: newSize, done: false }
-          }
-          
-          return accumulate({ buffer, currentSize: newSize })
-        }
-        const { buffer, done } = await accumulate()
-        if (buffer?.byteLength) controller.enqueue(buffer)
-        if (done) controller.close()
-      } catch (err) {
-        console.error(err)
-      }
-    },
-    cancel() {
-      // @ts-expect-error
-      this.reader.cancel()
-    }
-  })
-
 const getTimeRanges = (sourceBuffer: SourceBuffer) =>
   Array(sourceBuffer.buffered.length)
     .fill(undefined)
@@ -162,24 +137,14 @@ export const toStreamChunkSize = (SIZE: number) => (stream: ReadableStream) =>
   new ReadableStream<Uint8Array>({
     reader: undefined,
     leftOverData: undefined,
-    closed: false,
     start() {
       this.reader = stream.getReader()
-      this.reader.closed.then(() => {
-        this.closed = true
-      })
     },
     async pull(controller) {
       const { leftOverData }: { leftOverData: Uint8Array | undefined } = this
 
       const accumulate = async ({ buffer = new Uint8Array(SIZE), currentSize = 0 } = {}): Promise<{ buffer?: Uint8Array, currentSize?: number, done: boolean }> => {
-        if (this.closed) {
-          this.reader = undefined
-          this.leftOverData = undefined
-          return { buffer: new Uint8Array(), currentSize: 0, done: true }
-        }
         const { value: newBuffer, done } = await this.reader!.read()
-  
         if (currentSize === 0 && leftOverData) {
           buffer.set(leftOverData)
           currentSize += leftOverData.byteLength
@@ -211,13 +176,11 @@ export const toStreamChunkSize = (SIZE: number) => (stream: ReadableStream) =>
     },
     cancel() {
       this.reader!.cancel()
-      this.reader = undefined
       this.leftOverData = undefined
     }
   } as UnderlyingDefaultSource<Uint8Array> & {
     reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     leftOverData: Uint8Array | undefined
-    closed: boolean
   })
 
 export const toBufferedStream = (SIZE: number) => (stream: ReadableStream) =>
@@ -226,22 +189,21 @@ export const toBufferedStream = (SIZE: number) => (stream: ReadableStream) =>
     currentPullPromise: undefined,
     reader: undefined,
     leftOverData: undefined,
-    closed: false,
     start() {
       this.reader = stream.getReader()
-      this.reader.closed.then(() => {
-        this.closed = true
-      })
     },
     async pull(controller) {
       const pull = async () => {
-        if (this.closed) return
         if (this.buffers.length >= SIZE) return
         this.currentPullPromise = this.reader!.read()
         const { value: newBuffer, done } = await this.currentPullPromise
         this.currentPullPromise = undefined
         if (done) {
-          controller.close()
+          try {
+            controller.close()
+          } catch (err) {
+            // console.error(err)
+          }
           return
         }
         this.buffers.push(newBuffer)
@@ -249,13 +211,15 @@ export const toBufferedStream = (SIZE: number) => (stream: ReadableStream) =>
       }
 
       const tryToBuffer = async (): Promise<void> => {
-        if (this.buffers.length >= SIZE || this.closed) return
+        if (this.buffers.length >= SIZE) return
         
         if (this.buffers.length === 0) {
-          await pull()
+          const buffer = await pull()
+          if (!buffer) return
           return tryToBuffer()
         } else {
-          pull().then(() => {
+          pull().then((buffer) => {
+            if (!buffer) return
             tryToBuffer()
           })
         }
@@ -273,5 +237,4 @@ export const toBufferedStream = (SIZE: number) => (stream: ReadableStream) =>
     leftOverData: Uint8Array | undefined
     buffers: Uint8Array[]
     currentPullPromise: Promise<ReadableStreamReadResult<Uint8Array>> | undefined
-    closed: boolean
   })
