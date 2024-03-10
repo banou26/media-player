@@ -246,7 +246,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       let chunks: Chunk[] = []
   
       const PREVIOUS_BUFFER_COUNT = 1
-      const BUFFER_COUNT = 5
+      const NEEDED_TIME_IN_SECONDS = 15
   
       await appendBuffer(headerChunk.buffer)
   
@@ -268,8 +268,13 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         const currentChunkIndex = chunks.findIndex(({ pts, duration }) => pts <= currentTime && pts + duration >= currentTime)
         const sliceIndex = Math.max(0, currentChunkIndex - PREVIOUS_BUFFER_COUNT)
   
-        for (let i = 0; i < sliceIndex + BUFFER_COUNT; i++) {
-          if (chunks[i] || reachedEnd) continue
+        const getLastChunkEndTime = () => {
+          const lastChunk = chunks.at(-1)
+          if (!lastChunk) return 0
+          return lastChunk.pts + lastChunk.duration
+        }
+  
+        while (getLastChunkEndTime() < currentTime + NEEDED_TIME_IN_SECONDS){
           const chunk = await pull()
           await appendBuffer(chunk.buffer)
         }
