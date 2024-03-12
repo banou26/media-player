@@ -447,6 +447,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       <Chrome
         className="chrome"
         customOverlay={customOverlay}
+        publicPath={publicPath}
         isPlaying={isPlaying}
         video={videoRef}
         needsInitialInteraction={needsInitialInteraction}

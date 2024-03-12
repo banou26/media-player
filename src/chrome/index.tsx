@@ -30,6 +30,7 @@ overflow: hidden;
 `
 
 export type ChromeOptions = {
+  publicPath: string
   customOverlay?: ReactNode
   isPlaying?: boolean
   loading?: boolean
@@ -54,6 +55,7 @@ export type ChromeOptions = {
 
 export default ({
   customOverlay,
+  publicPath,
   isPlaying,
   loading,
   duration,
@@ -137,7 +139,7 @@ export default ({
       canvas: canvasElement,
       subContent: subtitleTrack.data,
       fonts: fonts.filter(Boolean).map(([,filename]) => filename as string),
-      availableFonts: { ...Object.fromEntries(fonts), 'liberation sans': new URL('/build/default.woff2', new URL(window.location.toString()).origin).toString() },
+      availableFonts: { ...Object.fromEntries(fonts), 'liberation sans': `${publicPath}default.woff2` },
       workerUrl: libassWorkerUrl, // Link to WebAssembly-based file "libassjs-worker.js",
       modernWasmUrl: wasmUrl
     })
