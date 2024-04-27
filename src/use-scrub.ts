@@ -34,6 +34,7 @@ export default ({ ref, defaultValue }: { ref: RefObject<HTMLElement>, defaultVal
   return {
     value,
     scrubbing,
-    scrub
+    scrub,
+    setValue
   }
 }

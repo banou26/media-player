@@ -4,7 +4,6 @@ import type { Dispatch, DOMAttributes, HTMLAttributes, MouseEvent, MouseEventHan
 import type { ChromeOptions } from '.'
 import type { FKNVideoControl, Subtitle, TransmuxError } from '..'
 
-import ReactTooltip from 'react-tooltip'
 import { css } from '@emotion/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
@@ -12,6 +11,7 @@ import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
 import useScrub from '../use-scrub'
 import { tagToLanguage } from '../languages'
 import useNamespacedLocalStorage from '../use-local-storage'
+import { Tooltip } from 'react-tooltip'
 
 const style = css`
   position: relative;
@@ -317,14 +317,14 @@ export default ({
   const progressBarRef = useRef<HTMLDivElement>(null)
   const volumeBarRef = useRef<HTMLDivElement>(null)
   const [hiddenVolumeArea, setHiddenVolumeArea] = useState(false)
-  const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
+  const { scrub: seekScrub, value: seekScrubValue, setValue: setSeekValue } = useScrub({ ref: progressBarRef })
   const isPictureInPictureEnabled = useMemo(() => document.pictureInPictureEnabled, [])
   const [hasShownErrorPopup, setHasShownErrorPopup] = useState(false)
 
   const useStoredValue = useNamespacedLocalStorage<{ volume: number, muted: boolean }>('fkn-media-player')
   const [volume, setStoredVolume] = useStoredValue('volume', 1)
   const [isMuted, setStoredMuted] = useStoredValue('muted', false)
-  const { scrub: volumeScrub, value: volumeScrubValue } = useScrub({ ref: volumeBarRef, defaultValue: volume })
+  const { scrub: volumeScrub, value: volumeScrubValue, setValue: updateVolume } = useScrub({ ref: volumeBarRef, defaultValue: volume })
 
   useEffect(() => {
     if (hasShownErrorPopup) return
@@ -443,14 +443,25 @@ export default ({
   , [errors])
 
   useEffect(() => {
-    ReactTooltip.rebuild()
-  }, [tracks.length])
-
-  useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
       if (ev.key === 'f') toggleFullscreen()
       if (ev.key === 'k') togglePlay()
+      if (ev.key === ' ') togglePlay()
       if (ev.key === 'm') toggleMuteButton()
+      if (ev.key === 'ArrowUp') {
+        if (volume <= 0.95) {
+          updateVolume(volume + 0.05)
+        } else {
+          updateVolume(1)
+        }
+      }
+      if (ev.key === 'ArrowDown') {
+        if (volume >= 0.05) {
+          updateVolume(volume - 0.05)
+        } else {
+          updateVolume(0)
+        }
+      }
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
@@ -519,14 +530,14 @@ export default ({
         <div className="padding" onMouseDown={seekScrub}></div>
       </div>
       <div className="controls">
-        <ReactTooltip id="play-button-tooltip" effect="solid" place="top">
+        <Tooltip id="play-button-tooltip" place="top-start" >
           {
             isPlaying
               ? 'Pause (k)'
               : 'Play (k)'
           }
-        </ReactTooltip>
-        <button className="play-button" type="button" data-tip data-for="play-button-tooltip" onClick={togglePlay}>
+        </Tooltip>
+        <button className="play-button" type="button" data-tip data-tooltip-id="play-button-tooltip" onClick={togglePlay}>
           {
             isPlaying
               ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-pause"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
@@ -534,14 +545,17 @@ export default ({
           }
         </button>
         <div className="volume-area" onMouseOver={hoverVolumeArea}>
-          <ReactTooltip id="mute-button-tooltip" effect="solid" place="top">
+          <Tooltip
+            id="mute-button-tooltip"
+            place="top"
+          >
             {
               isMuted
                 ? 'Unmute (m)'
                 : 'Mute (m)'
             }
-          </ReactTooltip>
-          <button className="mute-button" data-tip data-for="mute-button-tooltip" onClick={toggleMuteButton}>
+          </Tooltip>
+          <button className="mute-button" data-tip data-tooltip-id="mute-button-tooltip" onClick={toggleMuteButton}>
             {
               isMuted ? <VolumeX/>
               : (volume ?? 0) > 0.66 ? <Volume2/>
@@ -589,9 +603,17 @@ export default ({
               : null
           }
         </div>
-        <ReactTooltip id="subtitle-button-tooltip" globalEventOff="click" effect="solid" place="top" disable={!isSubtitleMenuHidden}>
-          Subtitles
-        </ReactTooltip>
+        <Tooltip
+          id="subtitle-button-tooltip"
+          globalEventOff="click"
+        
+          disable={!isSubtitleMenuHidden}
+          class="tooltip"
+        >
+          <span>
+            Subtitles
+          </span>
+        </Tooltip>
         <div className="subtitle-area">
           {
             tracks.length
@@ -610,7 +632,7 @@ export default ({
                       )
                   }
                 </div>
-                <button className="subtitle-menu-button" data-tip data-for="subtitle-button-tooltip" onClick={subtitleMenuButtonClick}>
+                <button className="subtitle-menu-button" data-tip data-tooltip-id="subtitle-button-tooltip" onClick={subtitleMenuButtonClick}>
                   <SubtitleTrackToName subtitleTrack={subtitleTrack}/>
                 </button>
               </>
@@ -618,26 +640,30 @@ export default ({
             : null
           }
         </div>
-        <ReactTooltip id="pip-button-tooltip" effect="solid" place="top">
+        <Tooltip
+          id="pip-button-tooltip"
+        
+          place="top"
+        >
           Picture in Picture
-        </ReactTooltip>
+        </Tooltip>
         {
           isPictureInPictureEnabled
             ? (
-              <button className="picture-in-picture" data-tip data-for="pip-button-tooltip" onClick={pictureInPicture}>
+              <button className="picture-in-picture" data-tip data-tooltip-id="pip-button-tooltip" onClick={pictureInPicture}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="21" height="14" rx="2" ry="2"></rect><rect x="12.5" y="8.5" width="8" height="6" rx="2" ry="2"></rect></svg>
               </button>
             )
             : null
         }
-        <ReactTooltip id="fullscreen-button-tooltip" effect="solid" place="top">
+        <Tooltip id="fullscreen-button-tooltip" place="top-end">
           {
             isFullscreen
               ? 'Exit full screen (f)'
               : 'Full screen (f)'
           }
-        </ReactTooltip>
-        <button className="fullscreen" data-tip data-for="fullscreen-button-tooltip" onClick={toggleFullscreen}>
+        </Tooltip>
+        <button className="fullscreen" data-tip data-tooltip-id="fullscreen-button-tooltip" onClick={toggleFullscreen}>
           {
             isFullscreen
               ? <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="feather feather-minimize"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"></path></svg>
