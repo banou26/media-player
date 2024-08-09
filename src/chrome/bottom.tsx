@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { Dispatch, DOMAttributes, HTMLAttributes, MouseEvent, MouseEventHandler, SetStateAction } from 'react'
+import type { Dispatch, DOMAttributes, HTMLAttributes, MouseEvent, MouseEventHandler, MutableRefObject, SetStateAction } from 'react'
 
 import type { ChromeOptions } from '.'
 import type { FKNVideoControl, Subtitle, TransmuxError } from '..'
@@ -275,6 +275,8 @@ const style = css`
 `
 
 export type BottomOptions = {
+  video: MutableRefObject<HTMLVideoElement | undefined>
+  videoReactive: HTMLVideoElement | undefined,
   duration?: number
   currentTime?: number
   togglePlay: () => void
@@ -293,6 +295,8 @@ Pick<ChromeOptions, 'seek' | 'setVolume' | 'loadedTime' | 'isPlaying' | 'tracks'
 HTMLAttributes<HTMLDivElement>
 
 export default ({
+  video,
+  videoReactive,
   duration,
   currentTime,
   togglePlay,
@@ -462,10 +466,26 @@ export default ({
           updateVolume(0)
         }
       }
+      if (ev.key === 'ArrowLeft') {
+        if (!videoReactive) return
+        videoReactive.currentTime -= (
+          ev.shiftKey ? 20
+          : ev.ctrlKey ? 2
+          : 5
+        )
+      }
+      if (ev.key === 'ArrowRight') {
+        if (!videoReactive) return
+        videoReactive.currentTime += (
+          ev.shiftKey ? 20
+          : ev.ctrlKey ? 2
+          : 5
+        )
+      }
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [toggleFullscreen, togglePlay, toggleMuteButton])
+  }, [videoReactive, toggleFullscreen, togglePlay, toggleMuteButton])
 
   const [progressBarOverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
 

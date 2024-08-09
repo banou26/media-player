@@ -46,6 +46,7 @@ export type ChromeOptions = {
   attachments: Attachment[] | undefined
   tracks: Subtitle[]
   video: MutableRefObject<HTMLVideoElement | undefined>
+  videoReactive: HTMLVideoElement | undefined,
   errors: TransmuxError[]
   customControls?: FKNVideoControl[]
   libassWorkerUrl: string
@@ -70,6 +71,7 @@ export default ({
   attachments,
   tracks,
   video,
+  videoReactive,
   errors,
   customControls,
   libassWorkerUrl,
@@ -178,6 +180,8 @@ export default ({
         togglePlay={togglePlay}
         isFullscreen={isFullscreen}
         pictureInPicture={pictureInPicture}
+        video={video}
+        videoReactive={videoReactive}
         seek={seek}
         setCurrentSubtitleTrack={setCurrentSubtitleTrack}
         isSubtitleMenuHidden={isSubtitleMenuHidden}

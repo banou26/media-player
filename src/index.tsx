@@ -450,6 +450,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         publicPath={publicPath}
         isPlaying={isPlaying}
         video={videoRef}
+        videoReactive={videoElement}
         needsInitialInteraction={needsInitialInteraction}
         loading={loading}
         duration={duration}
