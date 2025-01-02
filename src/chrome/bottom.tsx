@@ -5,7 +5,7 @@ import type { ChromeOptions } from '.'
 import type { FKNVideoControl, Subtitle, TransmuxError } from '..'
 
 import { css } from '@emotion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Volume, Volume1, Volume2, VolumeX, AlertTriangle } from 'react-feather'
 
 import useScrub from '../use-scrub'
@@ -84,7 +84,7 @@ const style = css`
     height: 100%;
     display: grid;
     align-items: center;
-    grid-template-columns: 5rem fit-content(4.8rem) 20rem auto fit-content(10rem) 5rem 5rem 5rem;
+    grid-template-columns: 5rem fit-content(4.8rem) 20rem auto fit-content(10rem) fit-content(10rem) 5rem 5rem;
     grid-gap: 1rem;
     color: #fff;
     user-select: none;
@@ -234,7 +234,7 @@ const style = css`
       .subtitle-menu {
         position: absolute;
         bottom: 4.8rem;
-        left: -1rem;
+        left: calc(-1rem - 50%);
         /* background: rgba(0, 0, 0, .2); */
         /* background: rgb(35, 35, 35); */
         padding: 1rem 0;
@@ -255,6 +255,8 @@ const style = css`
           color: #fff;
           cursor: pointer;
           text-shadow: 2px 2px #000;
+          white-space: nowrap;
+          text-align: start;
 
           &:hover {
             background-color: rgb(51, 51, 51);
@@ -415,7 +417,7 @@ export default ({
     if (subtitle.title) {
       return (
         <>
-          {subtitle.title?.replace('subs', '')}{language ? `(${language})` : ''}
+          {subtitle.title?.replace('subs', '').replace(/\(.*\)/, '')}
         </>
       )
     }
@@ -591,9 +593,9 @@ export default ({
           </div>
         </div>
         <div className="time">
-          <span>{new Date((currentTime ?? 0) * 1000).toISOString().substr(11, 8)}</span>
+          <span>{new Date((currentTime ?? 0) * 1000).toISOString().substr(11, 8).replace(/^00:/, '')}</span>
           <span> / </span>
-          <span>{duration ? new Date(duration * 1000).toISOString().substr(11, 8) : ''}</span>
+          <span>{duration ? new Date(duration * 1000).toISOString().substr(11, 8).replace(/^00:/, '') : ''}</span>
         </div>
         <div className="custom-controls">
           {
@@ -646,7 +648,12 @@ export default ({
                       : (
                         [...tracks, undefined].map((track, i) =>
                           <button key={!track ? 'disabled' : i} onClick={ev => setSubtitleTrack(ev, track, i)}>
-                            <SubtitleTrackToName subtitleTrack={track}/>
+                            {
+                              track
+                                ? <span>{i}. </span>
+                                : null
+                            }
+                            <span><SubtitleTrackToName subtitleTrack={track}/></span>
                           </button>
                         )
                       )

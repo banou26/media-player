@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, ReactNode, SyntheticEvent, VideoHTMLAttributes } from 'react'
 
-import { forwardRef, useEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { makeRemuxer as libavMakeRemuxer } from 'libav-wasm'
 
@@ -105,6 +105,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   const [errors, setErrors] = useState<TransmuxError[]>([])
   const [duration, setDuration] = useState<number>()
   const [currentLoadedRange, setCurrentLoadedRange] = useState<[number, number]>([0, 0])
+  const _currentLoadedRangeRef = useRef<[number, number]>([0, 0])
   const [needsInitialInteraction, setNeedsInitialInteraction] = useState(false)
 
   const fetchRef = useRef(fetch)
@@ -354,6 +355,8 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
         let firstPts = chunks.filter(({ pts, duration }) => pts + (duration / 2) > firstRange.start).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(0)?.pts
         let lastPts = chunks.filter(({ pts, duration }) => pts + (duration / 2) < lastRange.end).sort(({ pts }, { pts: pts2 }) => pts - pts2).at(-1)?.pts
         if (firstPts === undefined || lastPts === undefined) return
+        if (firstPts === _currentLoadedRangeRef.current[0] && lastPts === _currentLoadedRangeRef.current[1]) return
+        _currentLoadedRangeRef.current = [firstPts, lastPts]
         setCurrentLoadedRange([firstPts, lastPts])
       }, 200)
     })()

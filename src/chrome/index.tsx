@@ -125,7 +125,6 @@ export default ({
   }
 
   const toggleFullscreen = () => {
-    if (!canvasElement || !jassub) return
     setFullscreen(value => !value)
     fullscreen()
   }

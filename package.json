@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "dev": "vite --port 4560",
+    "build-dev": "vite build --watch",
     "build": "vite build && npm run types",
     "build-for-dev": "vite build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-wasm",
