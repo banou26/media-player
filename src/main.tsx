@@ -15,60 +15,51 @@ const BASE_BUFFER_SIZE = 5_000_000
 const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 
 const Mount = () => {
-  const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
-  const [size, setSize] = useState<number>()
+  // const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
+  // const [size, setSize] = useState<number>()
 
-  useEffect(() => {
-    if (!videoElemRef) return
-    videoElemRef.addEventListener('error', err => console.log('err', err))
-  }, [videoElemRef])
+  // useEffect(() => {
+  //   if (!videoElemRef) return
+  //   videoElemRef.addEventListener('error', err => console.log('err', err))
+  // }, [videoElemRef])
 
-  const onFetch = async (offset: number, end?: number) =>
-    fetch(
-      '/video9.mkv',
-      {
-        headers: {
-          Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
-        }
-      }
-    )
+  // const onFetch = async (offset: number, end?: number) =>
+  //   fetch(
+  //     '/video9.mkv',
+  //     {
+  //       headers: {
+  //         Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
+  //       }
+  //     }
+  //   )
 
-  useEffect(() => {
-    onFetch(0, 1).then(async ({ headers, body }) => {
-      if (!body) throw new Error('no body')
-      const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
-      const contentLength =
-        contentRangeContentLength
-          ? Number(contentRangeContentLength)
-          : Number(headers.get('Content-Length'))
-      setSize(contentLength)
-    })
-  }, [])
+  // useEffect(() => {
+  //   onFetch(0, 1).then(async ({ headers, body }) => {
+  //     if (!body) throw new Error('no body')
+  //     const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
+  //     const contentLength =
+  //       contentRangeContentLength
+  //         ? Number(contentRangeContentLength)
+  //         : Number(headers.get('Content-Length'))
+  //     setSize(contentLength)
+  //   })
+  // }, [])
 
-  const jassubWorkerUrl = useMemo(() => {
-    const workerUrl = new URL('/build/jassub-worker.js', import.meta.url).toString()
-    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
-    return URL.createObjectURL(blob)
-  }, [])
+  // const jassubWorkerUrl = useMemo(() => {
+  //   const workerUrl = new URL('/build/jassub-worker.js', import.meta.url).toString()
+  //   const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
+  //   return URL.createObjectURL(blob)
+  // }, [])
 
-  const libavWorkerUrl = useMemo(() => {
-    const workerUrl = new URL('/build/libav.js', new URL(window.location.toString()).origin).toString()
-    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
-    return URL.createObjectURL(blob)
-  }, [])
+  // const libavWorkerUrl = useMemo(() => {
+  //   const workerUrl = new URL('/build/libav.js', new URL(window.location.toString()).origin).toString()
+  //   const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
+  //   return URL.createObjectURL(blob)
+  // }, [])
 
   return (
     <div css={mountStyle}>
-      <MediaPlayer
-        baseBufferSize={BASE_BUFFER_SIZE}
-        ref={setVideoElemRef}
-        size={size}
-        fetch={(offset, end) => onFetch(offset, end)}
-        publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
-        wasmUrl={new URL('/build/jassub-worker-modern.wasm', new URL(import.meta.url).origin).toString()}
-        libavWorkerUrl={libavWorkerUrl}
-        libassWorkerUrl={jassubWorkerUrl}
-      />
+      <MediaPlayer/>
     </div>
   )
 }

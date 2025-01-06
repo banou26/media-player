@@ -82,7 +82,8 @@ export default ({
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | undefined>()
   const [canvasInitialized, setCanvasInitialized] = useState(false)
   const [isFullscreen, setFullscreen] = useState(false)
-  const [hidden, setHidden] = useState(false)
+  const [_hidden, setHidden] = useState(false)
+  const hidden = false
   const autoHide = useRef<number>()
   const [isSubtitleMenuHidden, setIsSubtitleMenuHidden] = useState(true)
   const [jassub, setJassub] = useState<JASSUB>()
