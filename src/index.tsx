@@ -6,7 +6,7 @@ import { forwardRef, useEffect, useRef, useState } from 'react'
 
 import { mediaMachine } from './state-machines/media'
 
-const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement>>(({}, ref) => {
+const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement>>(({ }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>()
   const [videoElement, setVideoElement] = useState<HTMLVideoElement>()
@@ -15,6 +15,9 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   useEffect(() => {
     if (!videoElement) return
     send({ type: 'ELEMENT_READY', mediaElement: videoElement })
+    return () => {
+      send({ type: 'DESTROY' })
+    }
   }, [videoElement])
   
   console.log('state', state.context?.media)
