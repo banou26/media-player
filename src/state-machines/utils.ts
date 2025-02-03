@@ -1,5 +1,5 @@
 import PQueue from 'p-queue'
-import { AnyEventObject, CallbackActorRef, EventObject, fromCallback, NonReducibleUnknown } from 'xstate'
+import { AnyEventObject, CallbackActorLogic, CallbackActorRef, EventObject, fromCallback, NonReducibleUnknown } from 'xstate'
 import { AnyActorSystem } from 'xstate/dist/declarations/src/system';
 
 type Receiver<TEvent extends EventObject> = (listener: {
@@ -12,7 +12,7 @@ export type CallbackLogicFunction<TEvent extends EventObject = AnyEventObject, T
     sendBack: (event: TSentEvent) => void;
     receive: Receiver<TEvent>;
     emit: (emitted: TEmitted) => void;
-}) => (Promise<() => void>) | void;
+}) => Promise<(() => void) | void>;
 type FromAsyncCallback = <TEvent extends EventObject, TInput = NonReducibleUnknown, TEmitted extends EventObject = EventObject>(callback: CallbackLogicFunction<TEvent, AnyEventObject, TInput, TEmitted>) => CallbackActorLogic<TEvent, TInput, TEmitted>
 
 export const fromAsyncCallback =
@@ -21,7 +21,7 @@ export const fromAsyncCallback =
       const callbackPromise = callback(...args)
       return () => {
         callbackPromise
-          .then(callbackResult => callbackResult())
+          .then(callbackResult => callbackResult?.())
       }
     })) as FromAsyncCallback
 

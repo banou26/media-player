@@ -1,6 +1,6 @@
 import { makeRemuxer } from 'libav-wasm'
-import { assign, fromCallback, setup } from 'xstate'
-import { sendTo } from 'xstate'
+import { assign, fromCallback, setup, sendTo } from 'xstate'
+
 import { fromAsyncCallback, getTimeRanges, updateSourceBuffer } from './utils'
 import { queuedThrottleWithLastCall, toStreamChunkSize } from '../utils'
 
@@ -18,7 +18,7 @@ type MediaPropertiesEmittedEvents =
   | { type: 'TIME_UPDATE', currentTime: number }
   | { type: 'VOLUME_UPDATE', muted: boolean, volume: number }
   | { type: 'PLAYBACK_RATE_UPDATE', playbackRate: number }
-  | { type: 'SEEKED', currentTime: number }
+  | { type: 'SEEKING', currentTime: number }
   | { type: 'ENDED' }
 
 type MediaPropertiesInput = { mediaElement: HTMLMediaElement }
@@ -51,7 +51,7 @@ const mediaPropertiesLogic = fromCallback<MediaPropertiesEvents, MediaProperties
   const handleTimeUpdate = () => sendBack({ type: 'TIME_UPDATE', currentTime: mediaElement.currentTime })
   const handleVolumeUpdate = () => sendBack({ type: 'VOLUME_UPDATE', muted: mediaElement.muted, volume: mediaElement.volume })
   const handlePlaybackRateUpdate = () => sendBack({ type: 'PLAYBACK_RATE_UPDATE', playbackRate: mediaElement.playbackRate })
-  const handleSeeked = () => sendBack({ type: 'SEEKED', currentTime: mediaElement.currentTime })
+  const handleSeeking = () => sendBack({ type: 'SEEKING', currentTime: mediaElement.currentTime })
 
   mediaElement.addEventListener('play', handlePlay)
   mediaElement.addEventListener('pause', handlePause)
@@ -59,7 +59,7 @@ const mediaPropertiesLogic = fromCallback<MediaPropertiesEvents, MediaProperties
   mediaElement.addEventListener('timeupdate', handleTimeUpdate)
   mediaElement.addEventListener('volumechange', handleVolumeUpdate)
   mediaElement.addEventListener('ratechange', handlePlaybackRateUpdate)
-  mediaElement.addEventListener('seeked', handleSeeked)
+  mediaElement.addEventListener('seeking', handleSeeking)
 
   return () => {
     mediaElement.removeEventListener('play', handlePlay)
@@ -68,12 +68,13 @@ const mediaPropertiesLogic = fromCallback<MediaPropertiesEvents, MediaProperties
     mediaElement.removeEventListener('timeupdate', handleTimeUpdate)
     mediaElement.removeEventListener('volumechange', handleVolumeUpdate)
     mediaElement.removeEventListener('ratechange', handlePlaybackRateUpdate)
-    mediaElement.removeEventListener('seeked', handleSeeked)
+    mediaElement.removeEventListener('seeking', handleSeeking)
   }
 })
 
 type MediaSourceEvents =
-  | { type: 'METADATA', mimeType: string, duration: number, data: ArrayBuffer }
+  | ({ type: 'METADATA' } & Awaited<ReturnType<Awaited<ReturnType<typeof makeRemuxer>>['init']>>)
+  | { type: 'TIMESTAMP_OFFSET', timestampOffset: number }
   | { type: 'DATA', data: ArrayBuffer }
 
 type MediaSourceEmittedEvents =
@@ -110,7 +111,6 @@ const mediaSourceLogic = fromAsyncCallback<MediaSourceEvents, MediaSourceInput, 
           receive((event) => {
             if (resolved) return
             if (event.type === 'METADATA') {
-              console.log('METADATA', event)
               const sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${event.info.input.videoMimeType},${event.info.input.audioMimeType}"`)
               sourceBuffer.mode = 'segments'
               mediaSource.duration = event.info.input.duration
@@ -130,9 +130,10 @@ const mediaSourceLogic = fromAsyncCallback<MediaSourceEvents, MediaSourceInput, 
   appendBuffer(headerBuffer)
 
   receive(async (event) => {
-    console.log('mediaSource event', event)
     if (event.type === 'DATA') {
       await appendBuffer(event.data)
+    } else if (event.type === 'TIMESTAMP_OFFSET') {
+      sourceBuffer.timestampOffset = event.timestampOffset
     }
   })
 
@@ -161,7 +162,6 @@ const mediaSourceLogic = fromAsyncCallback<MediaSourceEvents, MediaSourceInput, 
     const timeRanges = getTimeRanges(sourceBuffer)
     const maxBufferedTime  = Math.max(...timeRanges.map(({ end }) => end))
     if (maxBufferedTime < getBufferTargetTime()) {
-      console.log('NEED DATA?', maxBufferedTime, getBufferTargetTime())
       sendBack({ type: 'NEED_DATA' })
     }
   }, 100)
@@ -184,24 +184,19 @@ const mediaSourceLogic = fromAsyncCallback<MediaSourceEvents, MediaSourceInput, 
 
 type DataSourceEvents =
   | { type: 'METADATA', mimeType: string, duration: number }
-  | { type: 'SET_TIME', currentTime: number }
+  | { type: 'SEEKING', currentTime: number }
   | { type: 'NEED_DATA' }
 
 type DataSourceEmittedEvents =
   | { type: 'DATA', data: Uint8Array }
 
 type DataSourceInput = {
-  publicPath: string
-  bufferSize: number
-  length: number
-  workerUrl: string
-  getStream: (offset: number, size?: number) => Promise<ReadableStream<Uint8Array>>
+  remuxerOptions: Parameters<typeof makeRemuxer>[0]
 }
 
 const dataSourceLogic = fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
-  const { publicPath, workerUrl, bufferSize, length, getStream } = input
-
-  console.log('data source', input)
+  const { remuxerOptions } = input
+  const { publicPath, workerUrl, bufferSize, length, getStream } = remuxerOptions
 
   const remuxer = await makeRemuxer({
     publicPath,
@@ -213,7 +208,8 @@ const dataSourceLogic = fromAsyncCallback<DataSourceEvents, DataSourceInput, Dat
         .then(toStreamChunkSize(bufferSize))
   })
 
-  remuxer.init().then((metadata) => sendBack({ type: 'METADATA', ...metadata }))
+  const metadata = await remuxer.init()
+  sendBack({ type: 'METADATA', ...metadata })
 
   let currentSeeks: { currentTime: number }[] = []
   const loadMore = queuedThrottleWithLastCall(100, async () => {
@@ -230,16 +226,17 @@ const dataSourceLogic = fromAsyncCallback<DataSourceEvents, DataSourceInput, Dat
   receive(async (event) => {
     if (event.type === 'NEED_DATA') {
       loadMore()
-    } else if (event.type === 'SET_TIME') {
+    } else if (event.type === 'SEEKING') {
       const { currentTime } = event
       const seekObject = { currentTime }
       currentSeeks = [...currentSeeks, seekObject]
       try {
-        const { data } = await remuxer
+        const { data, pts } = await remuxer
           .seek(currentTime)
           .finally(() => {
             currentSeeks = currentSeeks.filter(seekObj => seekObj !== seekObject)
           })
+        sendBack({ type: 'TIMESTAMP_OFFSET', timestampOffset: pts })
         sendBack({ type: 'DATA', data })
       } catch (err: any) {
         if (err.message === 'Cancelled') return
@@ -249,7 +246,7 @@ const dataSourceLogic = fromAsyncCallback<DataSourceEvents, DataSourceInput, Dat
   })
 
   return () => {
-    
+    remuxer.destroy()
   }
 })
 
@@ -257,13 +254,7 @@ export const mediaMachine =
   setup({
     types: {} as {
       context: {
-        remuxerOptions: {
-          publicPath: string
-          bufferSize: number
-          length: number
-          workerUrl: string
-          getStream: (offset: number, size?: number) => Promise<ReadableStream<Uint8Array>>
-        } | undefined
+        remuxerOptions: Parameters<typeof makeRemuxer>[0] | undefined
         mediaElement: HTMLMediaElement | undefined
         media: {
           paused: boolean
@@ -274,7 +265,7 @@ export const mediaMachine =
         }
       },
       events:
-        | { type: 'ELEMENT_READY', mediaElement: HTMLMediaElement }
+        | { type: 'ELEMENT_READY', mediaElement: HTMLMediaElement, remuxerOptions: Parameters<typeof makeRemuxer>[0] }
         | { type: 'PLAY' }
         | { type: 'PAUSE' }
         | { type: 'SET_TIME', currentTime: number }
@@ -284,6 +275,11 @@ export const mediaMachine =
         | { type: 'TIME_UPDATE', currentTime: number }
         | { type: 'SET_VOLUME', volume: number }
         | { type: 'SET_PLAYBACK_RATE', playbackRate: number }
+        | { type: 'SEEKING', currentTime: number }
+        | { type: 'NEED_DATA' }
+        | { type: 'METADATA', mimeType: string, duration: number, data: ArrayBuffer }
+        | { type: 'DATA', data: ArrayBuffer }
+        | { type: 'TIMESTAMP_OFFSET', timestampOffset: number }
         | { type: 'DESTROY' }
     },
     actors: {
@@ -322,48 +318,35 @@ export const mediaMachine =
           {
             id: 'media',
             src: 'mediaLogic',
-            input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions }),
+            input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions! }),
           },
           {
             id: 'mediaSource',
             src: 'mediaSourceLogic',
-            input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions }),
+            input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions! }),
           },
           {
             id: 'dataSource',
             src: 'dataSourceLogic',
-            input: ({ context }) => ({ ...context.remuxerOptions }),
+            input: ({ context }) => ({ remuxerOptions: context.remuxerOptions! }),
           }
         ],
         on: {
           'PLAY': { actions: sendTo('media', 'PLAY') },
           'PAUSE': { actions: sendTo('media', 'PAUSE') },
-          'SET_TIME': { actions: sendTo('media', 'SET_TIME') },
-          'SET_PLAYBACK_RATE': { actions: sendTo('media', 'SET_PLAYBACK_RATE') },
+          'SET_TIME': { actions: sendTo('media', ({ event }) => event) },
+          'SET_PLAYBACK_RATE': { actions: sendTo('media', ({ event }) => event) },
           'PLAYING': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: false }) }) },
           'PAUSED': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: true }) }) },
           'ENDED': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: true }) }) },
           'TIME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, currentTime: event.currentTime }) }) },
-          'VOLUME_UPDATE': {
-            actions: assign({
-              media: ({ context, event }) => ({
-                ...context.media,
-                muted: event.muted,
-                volume: event.volume
-              })
-            })
-          },
-          'PLAYBACK_RATE_UPDATE': {
-            actions: assign({
-              media: ({ context, event }) => ({
-                ...context.media,
-                playbackRate: event.playbackRate
-              })
-            })
-          },
-          'NEED_DATA': { actions: sendTo('dataSource', ({ event }) => ({ type: 'NEED_DATA' })) },
-          'METADATA': { actions: sendTo('mediaSource', ({ event }) => ({ type: 'METADATA', ...event })) },
-          'DATA': { actions: sendTo('mediaSource', ({ event }) => ({ type: 'DATA', data: event.data })) },
+          'VOLUME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, muted: event.muted, volume: event.volume }) }) },
+          'PLAYBACK_RATE_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, playbackRate: event.playbackRate }) }) },
+          'NEED_DATA': { actions: sendTo('dataSource', ({ event }) => event) },
+          'METADATA': { actions: sendTo('mediaSource', ({ event }) => event) },
+          'SEEKING': { actions: sendTo('dataSource', ({ event }) => event) },
+          'DATA': { actions: sendTo('mediaSource', ({ event }) => event) },
+          'TIMESTAMP_OFFSET': { actions: sendTo('mediaSource', ({ event }) => event) },
           'DESTROY': {
             target: 'DESTROYED',
           }
