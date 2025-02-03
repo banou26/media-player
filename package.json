@@ -39,7 +39,7 @@
     "@emotion/react": "^11.10.5",
     "@xstate/react": "^5.0.1",
     "jassub": "^1.7.1",
-    "libav-wasm": "^0.3.4",
+    "libav-wasm": "file:../libav-wasm",
     "mp4box": "^0.5.2",
     "osra": "^0.1.2",
     "p-queue": "^7.3.4",
