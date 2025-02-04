@@ -1,5 +1,5 @@
 import { makeRemuxer } from 'libav-wasm'
-import { assign, fromCallback, setup, sendTo } from 'xstate'
+import { assign, fromCallback, setup, sendTo, enqueueActions } from 'xstate'
 
 import { fromAsyncCallback, getTimeRanges, updateSourceBuffer } from './utils'
 import { queuedThrottleWithLastCall, toStreamChunkSize } from '../utils'
@@ -265,7 +265,9 @@ export const mediaMachine =
         }
       },
       events:
-        | { type: 'ELEMENT_READY', mediaElement: HTMLMediaElement, remuxerOptions: Parameters<typeof makeRemuxer>[0] }
+        | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
+        | { type: 'ELEMENT_READY', mediaElement: HTMLMediaElement }
+        | { type: 'IS_READY' }
         | { type: 'PLAY' }
         | { type: 'PAUSE' }
         | { type: 'SET_TIME', currentTime: number }
@@ -299,16 +301,36 @@ export const mediaMachine =
         playbackRate: 1,
       }
     },
-    initial: 'WAITING_FOR_ELEMENT',
+    initial: 'WAITING',
     states: {
-      WAITING_FOR_ELEMENT: {
+      WAITING: {
         on: {
           'ELEMENT_READY': {
-            target: 'OK',
-            actions: assign({
-              mediaElement: ({ event }) => event.mediaElement,
-              remuxerOptions: ({ event }) => event.remuxerOptions
-            })
+            actions: [
+              assign({
+                mediaElement: ({ event }) => event.mediaElement,
+              }),
+              enqueueActions(({ context, enqueue }) => {
+                if (context.mediaElement && context.remuxerOptions) {
+                  enqueue.raise({ type: 'IS_READY' })
+                }
+              })
+            ]
+          },
+          'REMUXER_OPTIONS': {
+            actions: [
+              assign({
+                remuxerOptions: ({ event }) => event.remuxerOptions
+              }),
+              enqueueActions(({ context, enqueue }) => {
+                if (context.mediaElement && context.remuxerOptions) {
+                  enqueue.raise({ type: 'IS_READY' })
+                }
+              })
+            ]
+          },
+          'IS_READY': {
+            target: 'OK'
           }
         }
       },

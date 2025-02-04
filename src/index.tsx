@@ -21,7 +21,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
   }, [])
 
   useEffect(() => {
-    if (!videoElement) return
     fetch(VIDEO_URL, { headers: { Range: `bytes=0-1` } })
       .then(async ({ headers, body }) => {
         if (!body) throw new Error('no body')
@@ -32,8 +31,7 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
             : Number(headers.get('Content-Length'))
 
         send({
-          type: 'ELEMENT_READY',
-          mediaElement: videoElement,
+          type: 'REMUXER_OPTIONS',
           remuxerOptions: {
             publicPath: new URL('/build/', new URL(import.meta.url).origin).toString(),
             workerUrl: libavWorkerUrl,
@@ -52,11 +50,22 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
           }
         })
       })
+  }, [libavWorkerUrl])
 
+  useEffect(() => {
+    if (!videoElement) return
+    send({
+      type: 'ELEMENT_READY',
+      mediaElement: videoElement,
+    })
+  }, [videoElement])
+
+  useEffect(() => {
+    if (state.value !== 'OK') return
     return () => {
       send({ type: 'DESTROY' })
     }
-  }, [videoElement])
+  }, [state.value])
   
   console.log('state', state.context?.media)
 
