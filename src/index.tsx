@@ -13,7 +13,7 @@ const VIDEO_URL = '../video.mkv'
 const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement>>(({ }, ref) => {
   const videoRef = useRef<HTMLVideoElement>()
   const [videoElement, setVideoElement] = useState<HTMLVideoElement>()
-  const [state, send] = useMachine(mediaMachine)
+  const [state, send, mediaActor] = useMachine(mediaMachine)
   const libavWorkerUrl = useMemo(() => {
     const workerUrl = new URL('/build/libav.js', new URL(window.location.toString()).origin).toString()
     const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
@@ -66,8 +66,15 @@ const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputEleme
       send({ type: 'DESTROY' })
     }
   }, [state.value])
+
+  useEffect(() => {
+    if (!mediaActor) return
+    mediaActor.on('NEW_SUBTITLE_FRAGMENTS', ev => {
+      console.log('ev', ev)
+    })
+  }, [mediaActor])
   
-  console.log('state', state.context?.media)
+  console.log('state', state.context)
 
   const refFunction: ClassAttributes<HTMLVideoElement>['ref'] = (element) => {
     if (typeof ref === 'function') ref(element)

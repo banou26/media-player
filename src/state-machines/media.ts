@@ -1,8 +1,9 @@
 import { makeRemuxer } from 'libav-wasm'
-import { assign, fromCallback, setup, sendTo, enqueueActions } from 'xstate'
+import { assign, fromCallback, setup, sendTo, enqueueActions, emit } from 'xstate'
 
 import { fromAsyncCallback, getTimeRanges, updateSourceBuffer } from './utils'
 import { queuedThrottleWithLastCall, toStreamChunkSize } from '../utils'
+import { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
 
 type MediaPropertiesEvents =
   | { type: 'PLAY' }
@@ -189,6 +190,8 @@ type DataSourceEvents =
 
 type DataSourceEmittedEvents =
   | { type: 'DATA', data: Uint8Array }
+  | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
+  | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
 
 type DataSourceInput = {
   remuxerOptions: Parameters<typeof makeRemuxer>[0]
@@ -209,13 +212,18 @@ const dataSourceLogic = fromAsyncCallback<DataSourceEvents, DataSourceInput, Dat
   })
 
   const metadata = await remuxer.init()
+  sendBack({ type: 'NEW_ATTACHMENTS', attachments: metadata.attachments })
+  sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: metadata.subtitles })
   sendBack({ type: 'METADATA', ...metadata })
 
   let currentSeeks: { currentTime: number }[] = []
   const loadMore = queuedThrottleWithLastCall(100, async () => {
     if (currentSeeks.length) return
     try {
-      const { data } = await remuxer.read()
+      const { data, subtitles } = await remuxer.read()
+      if (subtitles.length) {
+        sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles })
+      }
       sendBack({ type: 'DATA', data })
     } catch (err: any) {
       if (err.message === 'Cancelled') return
@@ -262,7 +270,9 @@ export const mediaMachine =
           volume: number
           muted: boolean
           playbackRate: number
-        }
+        },
+        attachments: Attachment[]
+        subtitleFragments: SubtitleFragment[]
       },
       events:
         | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
@@ -282,6 +292,8 @@ export const mediaMachine =
         | { type: 'METADATA', mimeType: string, duration: number, data: ArrayBuffer }
         | { type: 'DATA', data: ArrayBuffer }
         | { type: 'TIMESTAMP_OFFSET', timestampOffset: number }
+        | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
+        | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
         | { type: 'DESTROY' }
     },
     actors: {
@@ -299,7 +311,9 @@ export const mediaMachine =
         volume: 1,
         muted: false,
         playbackRate: 1,
-      }
+      },
+      attachments: [],
+      subtitleFragments: []
     },
     initial: 'WAITING',
     states: {
@@ -369,9 +383,14 @@ export const mediaMachine =
           'SEEKING': { actions: sendTo('dataSource', ({ event }) => event) },
           'DATA': { actions: sendTo('mediaSource', ({ event }) => event) },
           'TIMESTAMP_OFFSET': { actions: sendTo('mediaSource', ({ event }) => event) },
-          'DESTROY': {
-            target: 'DESTROYED',
-          }
+          'NEW_ATTACHMENTS': { actions: assign({ attachments: ({ context, event }) => [...context.attachments, ...event.attachments] }) },
+          'NEW_SUBTITLE_FRAGMENTS': {
+            actions: [
+              assign({ subtitleFragments: ({ context, event }) => [...context.subtitleFragments, ...event.subtitles] }),
+              emit(({ event }) => ({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: event.subtitles }))
+            ]
+          },
+          'DESTROY': { target: 'DESTROYED' }
         }
       },
       DESTROYED: {}
