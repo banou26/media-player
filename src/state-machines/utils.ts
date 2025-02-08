@@ -1,18 +1,22 @@
+import type { AnyActorSystem } from 'xstate/dist/declarations/src/system'
+import type { AnyEventObject, CallbackActorLogic, CallbackActorRef, EventObject, NonReducibleUnknown } from 'xstate'
+
 import PQueue from 'p-queue'
-import { AnyEventObject, CallbackActorLogic, CallbackActorRef, EventObject, fromCallback, NonReducibleUnknown } from 'xstate'
-import { AnyActorSystem } from 'xstate/dist/declarations/src/system';
+import { fromCallback } from 'xstate'
 
 type Receiver<TEvent extends EventObject> = (listener: {
-  bivarianceHack(event: TEvent): void;
-}['bivarianceHack']) => void;
+  bivarianceHack(event: TEvent): void
+}['bivarianceHack']) => void
+
 export type CallbackLogicFunction<TEvent extends EventObject = AnyEventObject, TSentEvent extends EventObject = AnyEventObject, TInput = NonReducibleUnknown, TEmitted extends EventObject = EventObject> = ({ input, system, self, sendBack, receive, emit }: {
-    input: TInput;
-    system: AnyActorSystem;
-    self: CallbackActorRef<TEvent>;
-    sendBack: (event: TSentEvent) => void;
-    receive: Receiver<TEvent>;
-    emit: (emitted: TEmitted) => void;
-}) => Promise<(() => void) | void>;
+    input: TInput
+    system: AnyActorSystem
+    self: CallbackActorRef<TEvent>
+    sendBack: (event: TSentEvent) => void
+    receive: Receiver<TEvent>
+    emit: (emitted: TEmitted) => void
+}) => Promise<(() => void) | void>
+
 type FromAsyncCallback = <TEvent extends EventObject, TInput = NonReducibleUnknown, TEmitted extends EventObject = EventObject>(callback: CallbackLogicFunction<TEvent, AnyEventObject, TInput, TEmitted>) => CallbackActorLogic<TEvent, TInput, TEmitted>
 
 export const fromAsyncCallback =

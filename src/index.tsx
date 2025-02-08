@@ -1,16 +1,15 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, VideoHTMLAttributes } from 'react'
 import { useMachine } from '@xstate/react'
-
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
 
-import { mediaMachine } from './state-machines/media'
+import mediaMachine from './state-machines/media'
 
 const BUFFER_SIZE = 2_500_000
 const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 const VIDEO_URL = '../video.mkv'
 
-const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement>>(({ }, ref) => {
+const FKNVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLInputElement>>(({  }, ref) => {
   const videoRef = useRef<HTMLVideoElement>()
   const [videoElement, setVideoElement] = useState<HTMLVideoElement>()
   const [state, send, mediaActor] = useMachine(mediaMachine)
