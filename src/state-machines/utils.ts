@@ -22,7 +22,7 @@ type FromAsyncCallback = <TEvent extends EventObject, TInput = NonReducibleUnkno
 export const fromAsyncCallback =
   ((callback: (...args: any[]) => Promise<() => any>) =>
     fromCallback((...args: any[]) => {
-      const callbackPromise = callback(...args)
+      const callbackPromise = Promise.resolve().then(() => callback(...args))
       return () => {
         callbackPromise
           .then(callbackResult => callbackResult?.())

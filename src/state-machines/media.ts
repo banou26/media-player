@@ -138,7 +138,7 @@ export default setup({
             emit(({ event }) => ({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: event.subtitles }))
           ]
         },
-        'DESTROY': { target: 'DESTROYED' }
+        'DESTROY': { target: 'WAITING' }
       }
     },
     DESTROYED: {}

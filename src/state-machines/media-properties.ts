@@ -20,6 +20,7 @@ type MediaPropertiesEmittedEvents =
 type MediaPropertiesInput = { mediaElement: HTMLMediaElement }
 
 export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPropertiesEmittedEvents>(({ sendBack, receive, input }) => {
+  console.log('media properties')
   const { mediaElement } = input
 
   receive((event) => {
@@ -65,5 +66,6 @@ export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPr
     mediaElement.removeEventListener('volumechange', handleVolumeUpdate)
     mediaElement.removeEventListener('ratechange', handlePlaybackRateUpdate)
     mediaElement.removeEventListener('seeking', handleSeeking)
+    console.log('media properties closed')
   }
 })

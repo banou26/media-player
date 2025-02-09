@@ -19,6 +19,7 @@ type DataSourceInput = {
 }
 
 export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
+  console.log('data source')
   const { remuxerOptions } = input
   const { publicPath, workerUrl, bufferSize, length, getStream } = remuxerOptions
 
@@ -76,5 +77,6 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
 
   return () => {
     remuxer.destroy()
+    console.log('data source closed')
   }
 })
