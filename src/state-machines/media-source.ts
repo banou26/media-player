@@ -23,12 +23,10 @@ const defaultPostEvictionTime = 75
 const defaultBufferTargetTime = 45
 
 export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
-  console.log('media source')
   const { mediaElement } = input
   mediaElement.addEventListener('error', ev => console.error(mediaElement.error))
   const mediaSource = new MediaSource()
   const mediaSourceUrl = URL.createObjectURL(mediaSource)
-  console.log('setting media source url', mediaSourceUrl)
   mediaElement.src = mediaSourceUrl
 
   const getPreEvictionTime = () => mediaElement.currentTime + defaultPreEvictionTime
@@ -114,6 +112,5 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
     mediaSource.removeEventListener('sourceopen', handleSourceOpen)
     mediaSource.removeEventListener('sourceended', handleSourceEnded)
     mediaSource.removeEventListener('error', handleSourceError)
-    console.log('media source closed')
   }
 })

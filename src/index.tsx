@@ -42,7 +42,7 @@ export const FKNVideoRoot = ({ options, videoElement, children }: { options: FKN
   useEffect(() => {
     if (!videoElement) return
     mediaActor.send({
-      type: 'ELEMENT_READY',
+      type: 'SET_ELEMENT',
       mediaElement: videoElement,
     })
   }, [videoElement])

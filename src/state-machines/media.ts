@@ -24,7 +24,7 @@ export default setup({
     },
     events:
       | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
-      | { type: 'ELEMENT_READY', mediaElement: HTMLMediaElement }
+      | { type: 'SET_ELEMENT', mediaElement: HTMLMediaElement }
       | { type: 'IS_READY' }
       | { type: 'PLAY' }
       | { type: 'PAUSE' }
@@ -64,21 +64,26 @@ export default setup({
     subtitleFragments: []
   },
   initial: 'WAITING',
+  on: {
+    'SET_ELEMENT': {
+      actions: [
+        assign({
+          mediaElement: ({ event }) => event.mediaElement,
+        }),
+        enqueueActions(({ context, enqueue }) => {
+          if (context.mediaElement && context.remuxerOptions) {
+            enqueue.raise({ type: 'IS_READY' })
+          }
+        })
+      ]
+    },
+    'IS_READY': {
+      target: '.OK'
+    },
+  },
   states: {
     WAITING: {
       on: {
-        'ELEMENT_READY': {
-          actions: [
-            assign({
-              mediaElement: ({ event }) => event.mediaElement,
-            }),
-            enqueueActions(({ context, enqueue }) => {
-              if (context.mediaElement && context.remuxerOptions) {
-                enqueue.raise({ type: 'IS_READY' })
-              }
-            })
-          ]
-        },
         'REMUXER_OPTIONS': {
           actions: [
             assign({
@@ -90,9 +95,6 @@ export default setup({
               }
             })
           ]
-        },
-        'IS_READY': {
-          target: 'OK'
         }
       }
     },
