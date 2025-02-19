@@ -6,12 +6,16 @@ import { assign, setup, sendTo, enqueueActions, emit } from 'xstate'
 import mediaPropertiesLogic from './media-properties'
 import mediaSourceLogic from './media-source'
 import dataSourceLogic from './data-source'
+import subtitlesLogic from './subtitles'
+import { JassubOptions } from 'jassub'
 
 export default setup({
   types: {} as {
     context: {
+      subtitlesRendererOptions: JassubOptions | undefined
       remuxerOptions: Parameters<typeof makeRemuxer>[0] | undefined
       mediaElement: HTMLMediaElement | undefined
+      canvasElement: HTMLCanvasElement | undefined
       media: {
         paused: boolean
         currentTime: number
@@ -23,8 +27,10 @@ export default setup({
       subtitleFragments: SubtitleFragment[]
     },
     events:
+      | { type: 'SUBTITLES_RENDERER_OPTIONS', subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'> }
       | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
-      | { type: 'SET_ELEMENT', mediaElement: HTMLMediaElement }
+      | { type: 'SET_VIDEO_ELEMENT', mediaElement: HTMLMediaElement }
+      | { type: 'SET_CANVAS_ELEMENT', canvasElement: HTMLCanvasElement }
       | { type: 'IS_READY' }
       | { type: 'PLAY' }
       | { type: 'PAUSE' }
@@ -44,15 +50,25 @@ export default setup({
       | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
       | { type: 'DESTROY' }
   },
+  actions: {
+    isReady: enqueueActions(({ context, enqueue }) => {
+      if (context.mediaElement && context.canvasElement && context.remuxerOptions && context.subtitlesRendererOptions) {
+        enqueue.raise({ type: 'IS_READY' })
+      }
+    })
+  },
   actors: {
     mediaLogic: mediaPropertiesLogic,
     mediaSourceLogic: mediaSourceLogic,
     dataSourceLogic: dataSourceLogic,
+    subtitlesLogic: subtitlesLogic,
   },
 }).createMachine({
   context: {
+    subtitlesRendererOptions: undefined,
     remuxerOptions: undefined,
     mediaElement: undefined,
+    canvasElement: undefined,
     media: {
       paused: true,
       currentTime: 0,
@@ -65,16 +81,20 @@ export default setup({
   },
   initial: 'WAITING',
   on: {
-    'SET_ELEMENT': {
+    'SET_VIDEO_ELEMENT': {
       actions: [
         assign({
           mediaElement: ({ event }) => event.mediaElement,
         }),
-        enqueueActions(({ context, enqueue }) => {
-          if (context.mediaElement && context.remuxerOptions) {
-            enqueue.raise({ type: 'IS_READY' })
-          }
-        })
+        { type: 'isReady' }
+      ]
+    },
+    'SET_CANVAS_ELEMENT': {
+      actions: [
+        assign({
+          canvasElement: ({ event }) => event.canvasElement,
+        }),
+        { type: 'isReady' }
       ]
     },
     'IS_READY': {
@@ -89,11 +109,7 @@ export default setup({
             assign({
               remuxerOptions: ({ event }) => event.remuxerOptions
             }),
-            enqueueActions(({ context, enqueue }) => {
-              if (context.mediaElement && context.remuxerOptions) {
-                enqueue.raise({ type: 'IS_READY' })
-              }
-            })
+            { type: 'isReady' }
           ]
         }
       }
@@ -115,6 +131,15 @@ export default setup({
           id: 'dataSource',
           src: 'dataSourceLogic',
           input: ({ context }) => ({ remuxerOptions: context.remuxerOptions! }),
+        },
+        {
+          id: 'subtitles',
+          src: 'subtitlesLogic',
+          input: ({ context }) => ({
+            video: context.mediaElement!,
+            canvasElement: context.canvasElement!,
+            subtitlesRendererOptions: context.subtitlesRendererOptions!
+          }),
         }
       ],
       on: {
@@ -133,11 +158,17 @@ export default setup({
         'SEEKING': { actions: sendTo('dataSource', ({ event }) => event) },
         'DATA': { actions: sendTo('mediaSource', ({ event }) => event) },
         'TIMESTAMP_OFFSET': { actions: sendTo('mediaSource', ({ event }) => event) },
-        'NEW_ATTACHMENTS': { actions: assign({ attachments: ({ context, event }) => [...context.attachments, ...event.attachments] }) },
+        'NEW_ATTACHMENTS': {
+          actions: [
+            assign({ attachments: ({ context, event }) => [...context.attachments, ...event.attachments] }),
+            sendTo('subtitles', ({ event }) => event)
+          ]
+        },
         'NEW_SUBTITLE_FRAGMENTS': {
           actions: [
             assign({ subtitleFragments: ({ context, event }) => [...context.subtitleFragments, ...event.subtitles] }),
-            emit(({ event }) => ({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: event.subtitles }))
+            sendTo('subtitles', ({ event }) => event)
+            // emit(({ event }) => ({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: event.subtitles }))
           ]
         },
         'DESTROY': { target: 'WAITING' }

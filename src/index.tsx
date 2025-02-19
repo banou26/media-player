@@ -1,29 +1,57 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { ClassAttributes, ReactNode, VideoHTMLAttributes } from 'react'
-import { createActorContext } from '@xstate/react'
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
-
-import mediaMachine from './state-machines/media'
+import type { ClassAttributes, MutableRefObject, ReactNode, RefCallback } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
+
+import Chrome from './chrome'
+import { MediaMachineContext } from './state-machines'
 
 const BUFFER_SIZE = 2_500_000
 // const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 
-const MediaMachineContext = createActorContext(mediaMachine)
 
 const FKNVideoRootStyle = css`
   display: grid;
-  height: 100%;
-  width: 100%;
+  justify-content: center;
+  background-color: #111;
+
+  video {
+    pointer-events: none;
+    grid-column: 1;
+    grid-row: 1;
+
+    height: 100%;
+    max-height: 100vh;
+    max-width: 100%;
+    background-color: black;
+  }
+
+  .chrome {
+    grid-column: 1;
+    grid-row: 1;
+  }
 `
 
-export const FKNVideoRoot = ({ options, videoElement, children }: { options: FKNVideoOptions,videoElement: HTMLVideoElement | undefined, children: ReactNode }) => {
+export type FKNVideoOptions = {
+  fetchData?: (offset: number, end?: number) => Promise<Response>
+  size?: number
+  bufferSize?: number
+  publicPath: string
+  jassubWorkerUrl: string
+  jassubWasmUrl: string
+  libavWorkerUrl: string
+}
+
+export const FKNVideoRoot = (
+  { options, videoElement, children }:
+  { options: FKNVideoOptions, videoElement: HTMLVideoElement | undefined, children: ReactNode }
+) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const status = MediaMachineContext.useSelector((state) => state.value)
 
   useEffect(() => {
-    const { size, fetchData, publicPath, jassubWorkerUrl, libavWorkerUrl } = options
-    if (!fetchData || !size || !publicPath || !jassubWorkerUrl || !libavWorkerUrl) return
+    const { size, fetchData, publicPath, libavWorkerUrl, jassubWasmUrl } = options
+    if (!fetchData || !size || !publicPath || !libavWorkerUrl || !jassubWasmUrl) return
 
     mediaActor.send({
       type: 'REMUXER_OPTIONS',
@@ -37,12 +65,25 @@ export const FKNVideoRoot = ({ options, videoElement, children }: { options: FKN
             .then(res => res.body!)
       }
     })
-  }, [options.fetchData, options.size, options.publicPath, options.jassubWorkerUrl, options.libavWorkerUrl, options.bufferSize])
+  }, [options.fetchData, options.size, options.publicPath, options.libavWorkerUrl, options.bufferSize])
+
+  useEffect(() => {
+    const { jassubWorkerUrl, jassubWasmUrl } = options
+    if (!jassubWorkerUrl || !jassubWasmUrl) return
+
+    mediaActor.send({
+      type: 'SUBTITLES_RENDERER_OPTIONS',
+      subtitlesRendererOptions: {
+        workerUrl: jassubWorkerUrl,
+        wasmUrl: jassubWasmUrl
+      }
+    })
+  }, [options.publicPath, options.jassubWorkerUrl, options.jassubWasmUrl])
 
   useEffect(() => {
     if (!videoElement) return
     mediaActor.send({
-      type: 'SET_ELEMENT',
+      type: 'SET_VIDEO_ELEMENT',
       mediaElement: videoElement,
     })
   }, [videoElement])
@@ -54,38 +95,25 @@ export const FKNVideoRoot = ({ options, videoElement, children }: { options: FKN
     }
   }, [status])
 
-  useEffect(() => {
-    if (!mediaActor) return
-    mediaActor.on('NEW_SUBTITLE_FRAGMENTS', ev => {
-      console.log('ev', ev)
-    })
-  }, [mediaActor])
-
   return (
     <div css={FKNVideoRootStyle}>
-      {children}
+      <Chrome>
+        {children}
+      </Chrome>
     </div>
   )
 }
 
-export type FKNVideoOptions = {
-  fetchData?: (offset: number, end?: number) => Promise<Response>
-  size?: number
-  publicPath?: string
-  jassubWorkerUrl?: string
-  libavWorkerUrl?: string
-  bufferSize?: number
-}
-
-const FKNVideo = forwardRef<HTMLVideoElement, FKNVideoOptions & VideoHTMLAttributes<HTMLInputElement>>((options, ref) => {
-  const videoRef = useRef<HTMLVideoElement>()
-  const [videoElement, setVideoElement] = useState<HTMLVideoElement>()
+const FKNVideo = (
+  { ref, ...options }:
+  FKNVideoOptions & { ref?: RefCallback<HTMLVideoElement> | MutableRefObject<HTMLVideoElement | null> }
+) => {
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | undefined>()
 
   const refFunction: ClassAttributes<HTMLVideoElement>['ref'] = useCallback((element: HTMLVideoElement | null) => {
     if (typeof ref === 'function') ref(element)
-    if (ref && 'current' in ref) ref.current = element
-    videoRef.current = element ?? undefined
-    setVideoElement(videoRef.current)
+    else if (ref && 'current' in ref) ref.current = element
+    setVideoElement(element ?? undefined)
   }, [])
 
   return (
@@ -95,6 +123,6 @@ const FKNVideo = forwardRef<HTMLVideoElement, FKNVideoOptions & VideoHTMLAttribu
       </FKNVideoRoot>
     </MediaMachineContext.Provider>
   )
-})
+}
 
 export default FKNVideo

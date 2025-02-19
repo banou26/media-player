@@ -76,6 +76,5 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
 
   return () => {
     remuxer.destroy()
-    // remuxer.worker.terminate()
   }
 })

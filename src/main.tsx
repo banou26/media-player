@@ -54,6 +54,10 @@ const Mount = () => {
     return URL.createObjectURL(blob)
   }, [])
 
+  const jassubWasmUrl = useMemo(() => {
+    return new URL('/build/jassub.wasm', new URL(window.location.toString()).origin).toString()
+  }, [])
+
   return (
     <div css={mountStyle}>
       <MediaPlayer
@@ -61,6 +65,7 @@ const Mount = () => {
         size={size}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
         jassubWorkerUrl={jassubWorkerUrl}
+        jassubWasmUrl={jassubWasmUrl}
         libavWorkerUrl={libavWorkerUrl}
       />
     </div>
@@ -128,7 +133,7 @@ root.render(
 )
 
 if (import.meta.hot) {
-  import.meta.hot.dispose((data) => {
+  import.meta.hot.dispose(() => {
     root.unmount()
     mountElement.remove()
   })

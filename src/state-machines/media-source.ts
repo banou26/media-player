@@ -18,13 +18,16 @@ type MediaSourceInput = {
   mediaElement: HTMLMediaElement
 }
 
-const defaultPreEvictionTime = -30
-const defaultPostEvictionTime = 75
-const defaultBufferTargetTime = 45
+const defaultPreEvictionTime = -20
+const defaultPostEvictionTime = 60
+const defaultBufferTargetTime = 30
 
 export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
   const { mediaElement } = input
-  mediaElement.addEventListener('error', ev => console.error(mediaElement.error))
+
+  const handlError = () => console.error(mediaElement.error)
+  mediaElement.addEventListener('error', handlError)
+
   const mediaSource = new MediaSource()
   const mediaSourceUrl = URL.createObjectURL(mediaSource)
   mediaElement.src = mediaSourceUrl
@@ -109,6 +112,7 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
   return () => {
     URL.revokeObjectURL(mediaSourceUrl)
     clearInterval(interval)
+    mediaElement.removeEventListener('error', handlError)
     mediaSource.removeEventListener('sourceopen', handleSourceOpen)
     mediaSource.removeEventListener('sourceended', handleSourceEnded)
     mediaSource.removeEventListener('error', handleSourceError)
