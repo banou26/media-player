@@ -15,7 +15,7 @@ type MediaSourceEmittedEvents =
   | { type: 'NEED_DATA' }
 
 type MediaSourceInput = {
-  mediaElement: HTMLMediaElement
+  videoElement: HTMLVideoElement
 }
 
 const defaultPreEvictionTime = -20
@@ -23,18 +23,18 @@ const defaultPostEvictionTime = 60
 const defaultBufferTargetTime = 30
 
 export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
-  const { mediaElement } = input
+  const { videoElement } = input
 
-  const handlError = () => console.error(mediaElement.error)
-  mediaElement.addEventListener('error', handlError)
+  const handlError = () => console.error(videoElement.error)
+  videoElement.addEventListener('error', handlError)
 
   const mediaSource = new MediaSource()
   const mediaSourceUrl = URL.createObjectURL(mediaSource)
-  mediaElement.src = mediaSourceUrl
+  videoElement.src = mediaSourceUrl
 
-  const getPreEvictionTime = () => mediaElement.currentTime + defaultPreEvictionTime
-  const getPostEvictionTime = () => mediaElement.currentTime + defaultPostEvictionTime
-  const getBufferTargetTime = () => mediaElement.currentTime + defaultBufferTargetTime
+  const getPreEvictionTime = () => videoElement.currentTime + defaultPreEvictionTime
+  const getPostEvictionTime = () => videoElement.currentTime + defaultPostEvictionTime
+  const getBufferTargetTime = () => videoElement.currentTime + defaultBufferTargetTime
 
   let headerBuffer: ArrayBuffer | undefined
   const sourceBuffer =
@@ -112,7 +112,7 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
   return () => {
     URL.revokeObjectURL(mediaSourceUrl)
     clearInterval(interval)
-    mediaElement.removeEventListener('error', handlError)
+    videoElement.removeEventListener('error', handlError)
     mediaSource.removeEventListener('sourceopen', handleSourceOpen)
     mediaSource.removeEventListener('sourceended', handleSourceEnded)
     mediaSource.removeEventListener('error', handleSourceError)

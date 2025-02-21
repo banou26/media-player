@@ -10,19 +10,19 @@ type SubtitlesEmittedEvents =
   | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
 
 type SubtitlesInput = {
-  video: HTMLVideoElement
+  videoElement: HTMLVideoElement
   canvasElement: HTMLCanvasElement
   subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'>
 }
 
 export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
-  const { video, canvasElement: canvas } = input
+  const { subtitlesRendererOptions, videoElement: video, canvasElement: canvas } = input
 
   const jassubInstance = new JASSUB({
     video,
     canvas,
-    workerUrl: libassWorkerUrl,
-    modernWasmUrl: wasmUrl
+    workerUrl: subtitlesRendererOptions.workerUrl,
+    modernWasmUrl: subtitlesRendererOptions.wasmUrl
   })
 
   return () => {

@@ -12,9 +12,9 @@ import { JassubOptions } from 'jassub'
 export default setup({
   types: {} as {
     context: {
-      subtitlesRendererOptions: JassubOptions | undefined
+      subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'> | undefined
       remuxerOptions: Parameters<typeof makeRemuxer>[0] | undefined
-      mediaElement: HTMLMediaElement | undefined
+      videoElement: HTMLVideoElement | undefined
       canvasElement: HTMLCanvasElement | undefined
       media: {
         paused: boolean
@@ -29,7 +29,7 @@ export default setup({
     events:
       | { type: 'SUBTITLES_RENDERER_OPTIONS', subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'> }
       | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
-      | { type: 'SET_VIDEO_ELEMENT', mediaElement: HTMLMediaElement }
+      | { type: 'SET_VIDEO_ELEMENT', videoElement: HTMLVideoElement }
       | { type: 'SET_CANVAS_ELEMENT', canvasElement: HTMLCanvasElement }
       | { type: 'IS_READY' }
       | { type: 'PLAY' }
@@ -39,6 +39,8 @@ export default setup({
       | { type: 'PAUSED' }
       | { type: 'ENDED' }
       | { type: 'TIME_UPDATE', currentTime: number }
+      | { type: 'VOLUME_UPDATE', volume: number }
+      | { type: 'PLAYBACK_RATE_UPDATE', playbackRate: number }
       | { type: 'SET_VOLUME', volume: number }
       | { type: 'SET_PLAYBACK_RATE', playbackRate: number }
       | { type: 'SEEKING', currentTime: number }
@@ -52,7 +54,7 @@ export default setup({
   },
   actions: {
     isReady: enqueueActions(({ context, enqueue }) => {
-      if (context.mediaElement && context.canvasElement && context.remuxerOptions && context.subtitlesRendererOptions) {
+      if (context.videoElement && context.canvasElement && context.remuxerOptions && context.subtitlesRendererOptions) {
         enqueue.raise({ type: 'IS_READY' })
       }
     })
@@ -67,7 +69,7 @@ export default setup({
   context: {
     subtitlesRendererOptions: undefined,
     remuxerOptions: undefined,
-    mediaElement: undefined,
+    videoElement: undefined,
     canvasElement: undefined,
     media: {
       paused: true,
@@ -84,7 +86,7 @@ export default setup({
     'SET_VIDEO_ELEMENT': {
       actions: [
         assign({
-          mediaElement: ({ event }) => event.mediaElement,
+          videoElement: ({ event }) => event.videoElement,
         }),
         { type: 'isReady' }
       ]
@@ -111,7 +113,15 @@ export default setup({
             }),
             { type: 'isReady' }
           ]
-        }
+        },
+        'SUBTITLES_RENDERER_OPTIONS': {
+          actions: [
+            assign({
+              subtitlesRendererOptions: ({ event }) => event.subtitlesRendererOptions
+            }),
+            { type: 'isReady' }
+          ]
+        },
       }
     },
     OK: {
@@ -120,12 +130,12 @@ export default setup({
         {
           id: 'media',
           src: 'mediaLogic',
-          input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions! }),
+          input: ({ context }) => ({ videoElement: context.videoElement!, remuxerOptions: context.remuxerOptions! }),
         },
         {
           id: 'mediaSource',
           src: 'mediaSourceLogic',
-          input: ({ context }) => ({ mediaElement: context.mediaElement!, remuxerOptions: context.remuxerOptions! }),
+          input: ({ context }) => ({ videoElement: context.videoElement!, remuxerOptions: context.remuxerOptions! }),
         },
         {
           id: 'dataSource',
@@ -136,7 +146,7 @@ export default setup({
           id: 'subtitles',
           src: 'subtitlesLogic',
           input: ({ context }) => ({
-            video: context.mediaElement!,
+            videoElement: context.videoElement!,
             canvasElement: context.canvasElement!,
             subtitlesRendererOptions: context.subtitlesRendererOptions!
           }),

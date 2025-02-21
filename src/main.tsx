@@ -55,7 +55,7 @@ const Mount = () => {
   }, [])
 
   const jassubWasmUrl = useMemo(() => {
-    return new URL('/build/jassub.wasm', new URL(window.location.toString()).origin).toString()
+    return new URL('/build/jassub-worker.wasm', new URL(window.location.toString()).origin).toString()
   }, [])
 
   return (

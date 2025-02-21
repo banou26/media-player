@@ -84,7 +84,7 @@ export const FKNVideoRoot = (
     if (!videoElement) return
     mediaActor.send({
       type: 'SET_VIDEO_ELEMENT',
-      mediaElement: videoElement,
+      videoElement,
     })
   }, [videoElement])
 
