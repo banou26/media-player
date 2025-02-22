@@ -11,25 +11,9 @@ const BUFFER_SIZE = 2_500_000
 
 
 const FKNVideoRootStyle = css`
-  display: grid;
+  display: flex;
   justify-content: center;
   background-color: #111;
-
-  video {
-    pointer-events: none;
-    grid-column: 1;
-    grid-row: 1;
-
-    height: 100%;
-    max-height: 100vh;
-    max-width: 100%;
-    background-color: black;
-  }
-
-  .chrome {
-    grid-column: 1;
-    grid-row: 1;
-  }
 `
 
 export type FKNVideoOptions = {
@@ -39,6 +23,7 @@ export type FKNVideoOptions = {
   publicPath: string
   jassubWorkerUrl: string
   jassubWasmUrl: string
+  jassubModernWasmUrl: string
   libavWorkerUrl: string
 }
 
@@ -68,14 +53,15 @@ export const FKNVideoRoot = (
   }, [options.fetchData, options.size, options.publicPath, options.libavWorkerUrl, options.bufferSize])
 
   useEffect(() => {
-    const { jassubWorkerUrl, jassubWasmUrl } = options
-    if (!jassubWorkerUrl || !jassubWasmUrl) return
+    const { jassubWorkerUrl, jassubWasmUrl, jassubModernWasmUrl } = options
+    if (!jassubWorkerUrl || !jassubWasmUrl || !jassubModernWasmUrl) return
 
     mediaActor.send({
       type: 'SUBTITLES_RENDERER_OPTIONS',
       subtitlesRendererOptions: {
         workerUrl: jassubWorkerUrl,
-        wasmUrl: jassubWasmUrl
+        wasmUrl: jassubWasmUrl,
+        modernWasmUrl: jassubModernWasmUrl
       }
     })
   }, [options.publicPath, options.jassubWorkerUrl, options.jassubWasmUrl])

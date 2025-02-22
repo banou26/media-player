@@ -146,6 +146,7 @@ export default setup({
           id: 'subtitles',
           src: 'subtitlesLogic',
           input: ({ context }) => ({
+            publicPath: context.remuxerOptions!.publicPath,
             videoElement: context.videoElement!,
             canvasElement: context.canvasElement!,
             subtitlesRendererOptions: context.subtitlesRendererOptions!

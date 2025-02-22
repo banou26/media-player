@@ -58,12 +58,17 @@ const Mount = () => {
     return new URL('/build/jassub-worker.wasm', new URL(window.location.toString()).origin).toString()
   }, [])
 
+  const jassubModernWasmUrl = useMemo(() => {
+    return new URL('/build/jassub-modern-worker.wasm', new URL(window.location.toString()).origin).toString()
+  }, [])
+
   return (
     <div css={mountStyle}>
       <MediaPlayer
         fetchData={fetchData}
         size={size}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
+        jassubModernWasmUrl={jassubModernWasmUrl}
         jassubWorkerUrl={jassubWorkerUrl}
         jassubWasmUrl={jassubWasmUrl}
         libavWorkerUrl={libavWorkerUrl}
