@@ -14,6 +14,7 @@ type MediaPropertiesEmittedEvents =
   | { type: 'TIME_UPDATE', currentTime: number }
   | { type: 'VOLUME_UPDATE', muted: boolean, volume: number }
   | { type: 'PLAYBACK_RATE_UPDATE', playbackRate: number }
+  | { type: 'DURATION_UPDATE', duration: number }
   | { type: 'SEEKING', currentTime: number }
   | { type: 'ENDED' }
 
@@ -48,6 +49,7 @@ export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPr
   const handleVolumeUpdate = () => sendBack({ type: 'VOLUME_UPDATE', muted: videoElement.muted, volume: videoElement.volume })
   const handlePlaybackRateUpdate = () => sendBack({ type: 'PLAYBACK_RATE_UPDATE', playbackRate: videoElement.playbackRate })
   const handleSeeking = () => sendBack({ type: 'SEEKING', currentTime: videoElement.currentTime })
+  const handleDurationChange = () => sendBack({ type: 'DURATION_UPDATE', duration: videoElement.duration })
 
   videoElement.addEventListener('play', handlePlay)
   videoElement.addEventListener('pause', handlePause)
@@ -56,6 +58,7 @@ export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPr
   videoElement.addEventListener('volumechange', handleVolumeUpdate)
   videoElement.addEventListener('ratechange', handlePlaybackRateUpdate)
   videoElement.addEventListener('seeking', handleSeeking)
+  videoElement.addEventListener('durationchange', handleDurationChange)
 
   return () => {
     videoElement.removeEventListener('play', handlePlay)
@@ -65,5 +68,6 @@ export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPr
     videoElement.removeEventListener('volumechange', handleVolumeUpdate)
     videoElement.removeEventListener('ratechange', handlePlaybackRateUpdate)
     videoElement.removeEventListener('seeking', handleSeeking)
+    videoElement.removeEventListener('durationchange', handleDurationChange)
   }
 })

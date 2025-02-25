@@ -4,7 +4,7 @@ import { makeRemuxer } from 'libav-wasm'
 import { assign, setup, sendTo, enqueueActions, emit } from 'xstate'
 
 import mediaPropertiesLogic from './media-properties'
-import mediaSourceLogic from './media-source'
+import mediaSourceLogic, { MediaSourceOptions } from './media-source'
 import dataSourceLogic from './data-source'
 import subtitlesLogic from './subtitles'
 import { JassubOptions } from 'jassub'
@@ -12,11 +12,13 @@ import { JassubOptions } from 'jassub'
 export default setup({
   types: {} as {
     context: {
+      mediaSourceOptions: MediaSourceOptions | undefined
       subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'> | undefined
       remuxerOptions: Parameters<typeof makeRemuxer>[0] | undefined
       videoElement: HTMLVideoElement | undefined
       canvasElement: HTMLCanvasElement | undefined
       media: {
+        duration: number
         paused: boolean
         currentTime: number
         volume: number
@@ -27,6 +29,7 @@ export default setup({
       subtitleFragments: SubtitleFragment[]
     },
     events:
+      | { type: 'MEDIA_SOURCE_OPTIONS', mediaSourceOptions: MediaSourceOptions }
       | { type: 'SUBTITLES_RENDERER_OPTIONS', subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'> }
       | { type: 'REMUXER_OPTIONS', remuxerOptions: Parameters<typeof makeRemuxer>[0] }
       | { type: 'SET_VIDEO_ELEMENT', videoElement: HTMLVideoElement }
@@ -39,8 +42,9 @@ export default setup({
       | { type: 'PAUSED' }
       | { type: 'ENDED' }
       | { type: 'TIME_UPDATE', currentTime: number }
-      | { type: 'VOLUME_UPDATE', volume: number }
+      | { type: 'VOLUME_UPDATE', muted: boolean, volume: number }
       | { type: 'PLAYBACK_RATE_UPDATE', playbackRate: number }
+      | { type: 'DURATION_UPDATE', duration: number }
       | { type: 'SET_VOLUME', volume: number }
       | { type: 'SET_PLAYBACK_RATE', playbackRate: number }
       | { type: 'SEEKING', currentTime: number }
@@ -54,7 +58,7 @@ export default setup({
   },
   actions: {
     isReady: enqueueActions(({ context, enqueue }) => {
-      if (context.videoElement && context.canvasElement && context.remuxerOptions && context.subtitlesRendererOptions) {
+      if (context.videoElement && context.canvasElement && context.remuxerOptions && context.subtitlesRendererOptions && context.mediaSourceOptions) {
         enqueue.raise({ type: 'IS_READY' })
       }
     })
@@ -67,6 +71,7 @@ export default setup({
   },
 }).createMachine({
   context: {
+    mediaSourceOptions: undefined,
     subtitlesRendererOptions: undefined,
     remuxerOptions: undefined,
     videoElement: undefined,
@@ -106,6 +111,14 @@ export default setup({
   states: {
     WAITING: {
       on: {
+        'MEDIA_SOURCE_OPTIONS': {
+          actions: [
+            assign({
+              mediaSourceOptions: ({ event }) => event.mediaSourceOptions
+            }),
+            { type: 'isReady' }
+          ]
+        },
         'REMUXER_OPTIONS': {
           actions: [
             assign({
@@ -164,6 +177,7 @@ export default setup({
         'TIME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, currentTime: event.currentTime }) }) },
         'VOLUME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, muted: event.muted, volume: event.volume }) }) },
         'PLAYBACK_RATE_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, playbackRate: event.playbackRate }) }) },
+        'DURATION_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, duration: event.duration }) }) },
         'NEED_DATA': { actions: sendTo('dataSource', ({ event }) => event) },
         'METADATA': { actions: sendTo('mediaSource', ({ event }) => event) },
         'SEEKING': { actions: sendTo('dataSource', ({ event }) => event) },

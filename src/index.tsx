@@ -1,14 +1,16 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, MutableRefObject, ReactNode, RefCallback } from 'react'
+import type { MediaPlayerContextType } from './context'
+
 import { useCallback, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 
-import Chrome from './chrome'
 import { MediaMachineContext } from './state-machines'
+import { MediaPlayerContext, DownloadedRange } from './context'
+import Chrome from './chrome'
 
 const BUFFER_SIZE = 2_500_000
 // const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
-
 
 const FKNVideoRootStyle = css`
   display: flex;
@@ -17,6 +19,8 @@ const FKNVideoRootStyle = css`
 `
 
 export type FKNVideoOptions = {
+  title?: string
+  downloadedRanges?: DownloadedRange[]
   fetchData?: (offset: number, end?: number) => Promise<Response>
   size?: number
   bufferSize?: number
@@ -33,6 +37,14 @@ export const FKNVideoRoot = (
 ) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const status = MediaMachineContext.useSelector((state) => state.value)
+
+  useEffect(
+    () => mediaActor.send({
+      type: 'MEDIA_SOURCE_OPTIONS',
+      mediaSourceOptions: {}
+    }),
+    []
+  )
 
   useEffect(() => {
     const { size, fetchData, publicPath, libavWorkerUrl, jassubWasmUrl } = options
@@ -94,6 +106,17 @@ const FKNVideo = (
   { ref, ...options }:
   FKNVideoOptions & { ref?: RefCallback<HTMLVideoElement> | MutableRefObject<HTMLVideoElement | null> }
 ) => {
+  const updateContextFunction = (context: Parameters<MediaPlayerContextType['update']>[0]) => setMediaPlayerContext({ ...context, update: updateContextFunction })
+  const [chromeContext, setMediaPlayerContext] = useState<MediaPlayerContextType>({ update: updateContextFunction } as MediaPlayerContextType)
+
+  useEffect(() => {
+    setMediaPlayerContext((previousContext) => ({
+      ...previousContext,
+      title: options?.title,
+      downloadedRanges: options?.downloadedRanges
+    }))
+  }, [options?.title, options?.downloadedRanges])
+
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | undefined>()
 
   const refFunction: ClassAttributes<HTMLVideoElement>['ref'] = useCallback((element: HTMLVideoElement | null) => {
@@ -103,11 +126,13 @@ const FKNVideo = (
   }, [])
 
   return (
-    <MediaMachineContext.Provider>
-      <FKNVideoRoot options={options} videoElement={videoElement}>
-        <video ref={refFunction} controls={true} width={'1920rem'} height={'1080rem'}/>
-      </FKNVideoRoot>
-    </MediaMachineContext.Provider>
+    <MediaPlayerContext.Provider value={chromeContext}>
+      <MediaMachineContext.Provider>
+        <FKNVideoRoot options={options} videoElement={videoElement}>
+          <video ref={refFunction} controls={false}/>
+        </FKNVideoRoot>
+      </MediaMachineContext.Provider>
+    </MediaPlayerContext.Provider>
   )
 }
 

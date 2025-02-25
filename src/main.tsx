@@ -65,6 +65,8 @@ const Mount = () => {
   return (
     <div css={mountStyle}>
       <MediaPlayer
+        title={'video.mkv'}
+        downloadedRanges={size ? [{ startByteOffset: 0, endByteOffset: size / 2 }] : undefined}
         fetchData={fetchData}
         size={size}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}

@@ -14,8 +14,17 @@ type MediaSourceEmittedEvents =
   | { type: 'SOURCE_ERROR' }
   | { type: 'NEED_DATA' }
 
+export type MediaSourceOptions = {
+  preEvictionTime?: number
+  postEvictionTime?: number
+  bufferTargetTime?: number
+}
+
 type MediaSourceInput = {
   videoElement: HTMLVideoElement
+  preEvictionTime?: number
+  postEvictionTime?: number
+  bufferTargetTime?: number
 }
 
 const defaultPreEvictionTime = -20
@@ -23,7 +32,7 @@ const defaultPostEvictionTime = 60
 const defaultBufferTargetTime = 30
 
 export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
-  const { videoElement } = input
+  const { videoElement, preEvictionTime, postEvictionTime, bufferTargetTime } = input
 
   const handlError = () => console.error(videoElement.error)
   videoElement.addEventListener('error', handlError)
@@ -32,9 +41,9 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
   const mediaSourceUrl = URL.createObjectURL(mediaSource)
   videoElement.src = mediaSourceUrl
 
-  const getPreEvictionTime = () => videoElement.currentTime + defaultPreEvictionTime
-  const getPostEvictionTime = () => videoElement.currentTime + defaultPostEvictionTime
-  const getBufferTargetTime = () => videoElement.currentTime + defaultBufferTargetTime
+  const getPreEvictionTime = () => videoElement.currentTime + (preEvictionTime ?? defaultPreEvictionTime)
+  const getPostEvictionTime = () => videoElement.currentTime + (postEvictionTime ?? defaultPostEvictionTime)
+  const getBufferTargetTime = () => videoElement.currentTime + (bufferTargetTime ?? defaultBufferTargetTime)
 
   let headerBuffer: ArrayBuffer | undefined
   const sourceBuffer =
