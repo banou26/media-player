@@ -7,8 +7,8 @@ import MediaPlayer from './index'
 
 const mountStyle = css`
   display: grid;
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: 100vw;
 `
 
 const BASE_BUFFER_SIZE = 5_000_000

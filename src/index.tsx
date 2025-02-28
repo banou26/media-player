@@ -16,6 +16,8 @@ const FKNVideoRootStyle = css`
   display: flex;
   justify-content: center;
   background-color: #111;
+  height: 100%;
+  overflow: hidden;
 `
 
 export type FKNVideoOptions = {
