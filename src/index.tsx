@@ -7,7 +7,7 @@ import { css } from '@emotion/react'
 
 import { MediaMachineContext } from './state-machines'
 import { MediaPlayerContext, DownloadedRange } from './context'
-import Chrome from './chrome'
+import Chrome from './components'
 
 const BUFFER_SIZE = 2_500_000
 // const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
@@ -115,9 +115,10 @@ const FKNVideo = (
     setMediaPlayerContext((previousContext) => ({
       ...previousContext,
       title: options?.title,
+      size: options?.size,
       downloadedRanges: options?.downloadedRanges
     }))
-  }, [options?.title, options?.downloadedRanges])
+  }, [options?.title, options?.size, options?.downloadedRanges])
 
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | undefined>()
 

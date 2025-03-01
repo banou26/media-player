@@ -16,12 +16,10 @@ const style = css`
   justify-content: center;
   align-items: center;
 
-  /* & > div {
-    height: 100%;
-    width: 100%;
+  & > div:first-of-type {
     position: absolute;
-    z-index: 99999999;
-  } */
+    z-index: 999999999;
+  }
 
   canvas {
     height: 100%;
@@ -50,15 +48,15 @@ export type ChromeOptions = {
 export const Chrome = ({ children }: ChromeOptions) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const status = MediaMachineContext.useSelector((state) => state.value)
-  const chromeContext = useContext(MediaPlayerContext)
+  const mediaPlayerContext = useContext(MediaPlayerContext)
   const autoHide = useRef<number>()
 
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
     return
-    chromeContext.update({ hideUI: false })
+    mediaPlayerContext.update({ hideUI: false })
     if (autoHide.current) clearInterval(autoHide.current)
     const timeout = setTimeout(() => {
-      chromeContext.update({ hideUI: true })
+      mediaPlayerContext.update({ hideUI: true })
     }, 3_000) as unknown as number
     autoHide.current = timeout
   }
@@ -68,15 +66,15 @@ export const Chrome = ({ children }: ChromeOptions) => {
     return
     // const root = canvasElement?.parentElement?.parentElement
     // if (!root?.contains(ev?.relatedTarget as Element)) {
-    //   chromeContext.update({ hideUI: true })
+    //   mediaPlayerContext.update({ hideUI: true })
     //   return
     // }
     if (ev.currentTarget.parentElement !== ev.relatedTarget && ev.relatedTarget !== null) return
-    chromeContext.update({ hideUI: true })
+    mediaPlayerContext.update({ hideUI: true })
   }
 
   return (
-    <div css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={chromeContext.hideUI ? 'hide' : ''}>
+    <div css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={mediaPlayerContext.hideUI ? 'hide' : ''}>
       <ControlBar/>
       <Overlay/>
       {children}

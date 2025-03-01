@@ -13,6 +13,7 @@ export type DownloadedRange =
 export type MediaPlayerContextType = {
   title?: string
   subtitle?: string
+  size?: number
   downloadedRanges?: DownloadedRange[]
   hideUI: boolean
   update: (context: Omit<MediaPlayerContextType, 'update'>) => void

@@ -163,17 +163,6 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
             attachment.filename,
             new Uint8Array(attachment.data)
           ])
-      console.log('attachments', attachments)
-      for (const [filename, attachment] of attachments) {
-        const font = new FontFace(filename, attachment)
-        font.load()
-        document.fonts.add(font)
-      }
-      // setTimeout(() => {
-      //   for (const [filename, attachment] of attachments) {
-      //     jassubInstance?.addFont(attachment)
-      //   }
-      // }, 1_000)
     }
   })
 

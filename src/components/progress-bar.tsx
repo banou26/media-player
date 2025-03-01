@@ -17,7 +17,12 @@ const style = css`
     .background-bar {
       transform: scaleY(1.5);
     }
+    .loaded {
+      transform: scaleY(1.5);
+      top: -.1rem;
+    }
   }
+
   .background-bar {
     position: absolute;
     inset: 0;
@@ -34,14 +39,20 @@ const style = css`
     justify-content: center;
   }
 
-  .load {
+  .loaded {
     transform-origin: 0 0;
-    background-color: hsla(0, 100%, 100%, .4);
     position: absolute;
     bottom: 0;
     height: .4rem;
     width: 100%;
+    div {
+      width: 100%;
+      transform-origin: 0 0;
+      height: .4rem;
+      background-color: hsla(0, 100%, 100%, .4);
+    }
   }
+
   .play {
     transform-origin: 0 0;
     background-color: hsla(0, 100%, 50%, .8);
@@ -50,10 +61,11 @@ const style = css`
     height: .4rem;
     width: 100%;
   }
+  
   .padding {
     position: absolute;
-    bottom: -4px;
-    height: 1.6rem;
+    bottom: -7.5px;
+    height: 2rem;
     width: 100%;
   }
 `
@@ -63,7 +75,7 @@ export const ProgressBar = () => {
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
 
-  const chromeContext = useContext(MediaPlayerContext)
+  const mediaPlayerContext = useContext(MediaPlayerContext)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
   const { scrub: seekScrub, value: seekScrubValue, setValue: setSeekValue } = useScrub({ ref: progressBarRef })
@@ -80,6 +92,29 @@ export const ProgressBar = () => {
     if (!progressBarRef.current) return
     setProgressBarOverTime(undefined)
   }
+
+  const loadedParts =
+    mediaPlayerContext
+      .downloadedRanges
+      ?.map((range, i) => {
+        if ('startByteOffset' in range && 'endByteOffset' in range && mediaPlayerContext.size) {
+          const start = range.startByteOffset / mediaPlayerContext.size
+          const end = range.endByteOffset / mediaPlayerContext.size
+          console.log('mediaPlayerContext.size', mediaPlayerContext.size)
+          console.log('range.startByteOffset', range.startByteOffset)
+          console.log('start', start)
+          console.log('range.endByteOffset', range.endByteOffset)
+          console.log('end', end)
+          const duration = end - start
+          const left = start * 100
+          return (
+            <div key={i} style={{ transform: `scaleX(${duration})`, marginLeft: `${left}%` }}></div>
+          )
+        } else {
+          return null
+        }
+      })
+    ?? []
 
   return (
     <div
@@ -113,6 +148,9 @@ export const ProgressBar = () => {
       }
       <div className="progress"></div>
       {/* bar showing the currently loaded progress */}
+      <div className="loaded">
+        {loadedParts}
+      </div>
       {/* <div className="load" style={{ transform: `scaleX(${1 / ((duration ?? 0) / (loadedTime?.[1] ?? 0))})` }}></div> */}
       {/* bar to show when hovering to potentially seek */}
       <div className="hover"></div>

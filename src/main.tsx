@@ -20,7 +20,7 @@ const Mount = () => {
   const fetchData = useCallback(
     async (offset: number, end?: number) =>
       fetch(
-        '/video.mkv',
+        '/video2.mkv',
         {
           headers: {
             Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
