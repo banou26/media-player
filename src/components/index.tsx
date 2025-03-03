@@ -8,6 +8,7 @@ import { MediaMachineContext } from '../state-machines'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import { MediaPlayerContext } from '../context'
+import Bottom from './bottom'
 
 const style = css`
   position: relative;
@@ -16,9 +17,9 @@ const style = css`
   justify-content: center;
   align-items: center;
 
-  & > div:first-of-type {
+  & > div {
     position: absolute;
-    z-index: 999999999;
+    z-index: 2;
   }
 
   canvas {
@@ -26,7 +27,7 @@ const style = css`
     width: 100%;
     pointer-events: none;
     position: absolute;
-    z-index: 99999999;
+    z-index: 1;
   }
 
   video {
@@ -77,6 +78,7 @@ export const Chrome = ({ children }: ChromeOptions) => {
     <div css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={mediaPlayerContext.hideUI ? 'hide' : ''}>
       <ControlBar/>
       <Overlay/>
+      <Bottom/>
       {children}
     </div>
   )
