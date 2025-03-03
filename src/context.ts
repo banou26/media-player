@@ -11,6 +11,7 @@ export type DownloadedRange =
   }
 
 export type MediaPlayerContextType = {
+  videoElement?: HTMLVideoElement
   title?: string
   subtitle?: string
   size?: number

@@ -1,4 +1,4 @@
-import { DOMAttributes, useContext, useRef, useState } from 'react'
+import { DOMAttributes, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import useScrub from '../use-scrub'
@@ -11,7 +11,7 @@ const style = css`
   cursor: pointer;
   user-select: none;
   transition: transform .2s ease-in-out;
-
+  margin: 0rem 1.5rem;
 
   &:hover {
     .background-bar {
@@ -80,7 +80,7 @@ export const ProgressBar = () => {
   const progressBarRef = useRef<HTMLDivElement>(null)
   const { scrub: seekScrub, value: seekScrubValue, setValue: setSeekValue } = useScrub({ ref: progressBarRef })
   
-  const [progressBarOverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
+  const [progressBarHoverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
 
   const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
     const percentage = ev.nativeEvent.offsetX / ev.currentTarget.offsetWidth
@@ -100,11 +100,6 @@ export const ProgressBar = () => {
         if ('startByteOffset' in range && 'endByteOffset' in range && mediaPlayerContext.size) {
           const start = range.startByteOffset / mediaPlayerContext.size
           const end = range.endByteOffset / mediaPlayerContext.size
-          console.log('mediaPlayerContext.size', mediaPlayerContext.size)
-          console.log('range.startByteOffset', range.startByteOffset)
-          console.log('start', start)
-          console.log('range.endByteOffset', range.endByteOffset)
-          console.log('end', end)
           const duration = end - start
           const left = start * 100
           return (
@@ -116,6 +111,24 @@ export const ProgressBar = () => {
       })
     ?? []
 
+  const cusorTimeString = useMemo(() => {
+    if (!progressBarHoverTime) return undefined
+    const hours = Math.floor(progressBarHoverTime! / 3600)
+    const minutes = Math.floor((progressBarHoverTime! - hours * 3600) / 60)
+    const seconds = Math.floor(progressBarHoverTime! - hours * 3600 - minutes * 60)
+    const hoursString =
+      hours > 0
+        ? `${hours}:`
+        : ''
+    return `${hoursString}${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
+  }, [progressBarHoverTime])
+
+  useEffect(() => {
+    if (!mediaPlayerContext.videoElement || seekScrubValue === undefined) return
+    const timestamp = seekScrubValue * duration
+    mediaPlayerContext.videoElement.currentTime = timestamp
+  }, [mediaPlayerContext.videoElement && seekScrubValue])
+
   return (
     <div
       css={style}
@@ -126,22 +139,10 @@ export const ProgressBar = () => {
     >
       <div className="background-bar"></div>
       {
-        progressBarOverTime
+        progressBarHoverTime
           ? (
-            <div className="cursor-time" data-tip={progressBarOverTime} style={{ left: `${1 / ((duration ?? 0) / (progressBarOverTime ?? 1)) * 100}%` }}>
-              {
-              new Date((progressBarOverTime ?? 0) * 1000)
-                .toISOString()
-                .substr(
-                  (duration ?? 0) >= 3600
-                    ? 11
-                    : 14,
-                  (duration ?? 0) >= 3600
-                    ? 8
-                    : 5
-                  
-                )
-              }
+            <div className="cursor-time" data-tip={progressBarHoverTime} style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
+              {cusorTimeString}
             </div>
           )
           : undefined

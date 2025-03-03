@@ -111,15 +111,6 @@ const FKNVideo = (
   const updateContextFunction = (context: Parameters<MediaPlayerContextType['update']>[0]) => setMediaPlayerContext({ ...context, update: updateContextFunction })
   const [chromeContext, setMediaPlayerContext] = useState<MediaPlayerContextType>({ update: updateContextFunction } as MediaPlayerContextType)
 
-  useEffect(() => {
-    setMediaPlayerContext((previousContext) => ({
-      ...previousContext,
-      title: options?.title,
-      size: options?.size,
-      downloadedRanges: options?.downloadedRanges
-    }))
-  }, [options?.title, options?.size, options?.downloadedRanges])
-
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | undefined>()
 
   const refFunction: ClassAttributes<HTMLVideoElement>['ref'] = useCallback((element: HTMLVideoElement | null) => {
@@ -127,6 +118,16 @@ const FKNVideo = (
     else if (ref && 'current' in ref) ref.current = element
     setVideoElement(element ?? undefined)
   }, [])
+
+  useEffect(() => {
+    setMediaPlayerContext((previousContext) => ({
+      ...previousContext,
+      videoElement,
+      title: options?.title,
+      size: options?.size,
+      downloadedRanges: options?.downloadedRanges
+    }))
+  }, [videoElement, options?.title, options?.size, options?.downloadedRanges])
 
   return (
     <MediaPlayerContext.Provider value={chromeContext}>
