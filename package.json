@@ -41,7 +41,6 @@
     "ass-compiler": "^0.1.15",
     "jassub": "^1.7.18",
     "libav-wasm": "^0.4.0",
-    "mp4box": "^0.5.2",
     "osra": "^0.1.2",
     "p-queue": "^7.3.4",
     "react": "^19.0.0",
