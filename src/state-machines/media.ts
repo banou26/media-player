@@ -167,8 +167,8 @@ export default setup({
         }
       ],
       on: {
-        'PLAY': { actions: sendTo('media', 'PLAY') },
-        'PAUSE': { actions: sendTo('media', 'PAUSE') },
+        'PLAY': { actions: sendTo('media', ({ event }) => event) },
+        'PAUSE': { actions: sendTo('media', ({ event }) => event) },
         'SET_TIME': { actions: sendTo('media', ({ event }) => event) },
         'SET_PLAYBACK_RATE': { actions: sendTo('media', ({ event }) => event) },
         'PLAYING': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: false }) }) },
