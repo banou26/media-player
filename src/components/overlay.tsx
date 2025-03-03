@@ -6,7 +6,6 @@ import { MediaMachineContext } from '../state-machines'
 
 export const Overlay = () => {
   const mediaActor = MediaMachineContext.useActorRef()
-  const status = MediaMachineContext.useSelector((state) => state.value)
 
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>()
   const refFunction: ClassAttributes<HTMLCanvasElement>['ref'] = useCallback((element: HTMLCanvasElement | null) => {

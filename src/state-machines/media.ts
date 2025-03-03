@@ -45,7 +45,7 @@ export default setup({
       | { type: 'VOLUME_UPDATE', muted: boolean, volume: number }
       | { type: 'PLAYBACK_RATE_UPDATE', playbackRate: number }
       | { type: 'DURATION_UPDATE', duration: number }
-      | { type: 'SET_VOLUME', volume: number }
+      | { type: 'SET_VOLUME', muted: boolean, volume: number }
       | { type: 'SET_PLAYBACK_RATE', playbackRate: number }
       | { type: 'SEEKING', currentTime: number }
       | { type: 'NEED_DATA' }
@@ -176,6 +176,7 @@ export default setup({
         'ENDED': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: true }) }) },
         'TIME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, currentTime: event.currentTime }) }) },
         'VOLUME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, muted: event.muted, volume: event.volume }) }) },
+        'SET_VOLUME': { actions: sendTo('media', ({ event }) => event) },
         'PLAYBACK_RATE_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, playbackRate: event.playbackRate }) }) },
         'DURATION_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, duration: event.duration }) }) },
         'NEED_DATA': { actions: sendTo('dataSource', ({ event }) => event) },

@@ -1,14 +1,12 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { createContext, MouseEventHandler, useContext, useEffect, useRef, useState, type HTMLAttributes } from 'react'
+import { MouseEventHandler, useContext, useEffect, useRef, useState, type HTMLAttributes } from 'react'
 
-import type { MediaPlayerContextType } from '../context'
 import { css } from '@emotion/react'
 
 import { MediaMachineContext } from '../state-machines'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import { MediaPlayerContext } from '../context'
-import Bottom from './bottom'
 
 const style = css`
   position: relative;
@@ -17,7 +15,7 @@ const style = css`
   justify-content: center;
   align-items: center;
 
-  & > div {
+  & > div:not(:last-of-type) {
     position: absolute;
     z-index: 2;
   }
@@ -30,7 +28,7 @@ const style = css`
     z-index: 1;
   }
 
-  video {
+  .video, video {
     /* pointer-events: none; */
     height: 100%;
     width: 100%;
@@ -51,6 +49,7 @@ export const Chrome = ({ children }: ChromeOptions) => {
   const status = MediaMachineContext.useSelector((state) => state.value)
   const mediaPlayerContext = useContext(MediaPlayerContext)
   const autoHide = useRef<number>()
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
     return
@@ -74,12 +73,30 @@ export const Chrome = ({ children }: ChromeOptions) => {
     mediaPlayerContext.update({ hideUI: true })
   }
 
+  const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
+  
+  const togglePlay = () => {
+    if (!mediaActor) return
+    if (isPaused) {
+      mediaActor.send({ type: 'PLAY' })
+    } else {
+      mediaActor.send({ type: 'PAUSE' })
+    }
+  }
+
   return (
-    <div css={style} onMouseMove={mouseMove} onMouseOut={mouseOut} className={mediaPlayerContext.hideUI ? 'hide' : ''}>
-      <ControlBar/>
-      <Overlay/>
-      <Bottom/>
-      {children}
+    <div
+      css={style}
+      ref={containerRef}
+      onMouseMove={mouseMove}
+      onMouseOut={mouseOut}
+      className={mediaPlayerContext.hideUI ? 'hide' : ''}
+    >
+      <Overlay />
+      <ControlBar containerRef={containerRef} />
+      <div className='video' onClick={() => togglePlay()}>
+        {children}
+      </div>
     </div>
   )
 }

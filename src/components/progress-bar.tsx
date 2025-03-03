@@ -4,14 +4,15 @@ import { css } from '@emotion/react'
 import useScrub from '../use-scrub'
 import { MediaMachineContext } from '../state-machines'
 import { MediaPlayerContext } from '../context'
+import useWindowSize from '../utils/window-height'
 
-const style = css`
+const style = (height: number) => css`
   position: relative;
   height: .4rem;
   cursor: pointer;
   user-select: none;
   transition: transform .2s ease-in-out;
-  margin: 0rem 1.5rem;
+  margin: 0rem ${height * 0.2}px;
 
   &:hover {
     .background-bar {
@@ -74,6 +75,8 @@ export const ProgressBar = () => {
   const mediaActor = MediaMachineContext.useActorRef()
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
+  const [height] = useWindowSize()
+  const dynamicHeight = height * 0.1 // 10% of the screen height
 
   const mediaPlayerContext = useContext(MediaPlayerContext)
 
@@ -131,7 +134,7 @@ export const ProgressBar = () => {
 
   return (
     <div
-      css={style}
+      css={style(dynamicHeight)}
       ref={progressBarRef}
       className="progress-bar"
       onMouseMove={onProgressBarOver}
