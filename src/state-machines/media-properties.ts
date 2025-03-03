@@ -4,7 +4,7 @@ type MediaPropertiesEvents =
   | { type: 'PLAY' }
   | { type: 'PAUSE' }
   | { type: 'SET_TIME', value: number }
-  | { type: 'SET_VOLUME', muted: boolean,volume: number }
+  | { type: 'SET_VOLUME', muted: boolean, volume: number }
   | { type: 'SET_PLAYBACK_RATE', playbackRate: number }
   | { type: 'DESTROY' }
 

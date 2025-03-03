@@ -37,7 +37,7 @@ export default setup({
       | { type: 'IS_READY' }
       | { type: 'PLAY' }
       | { type: 'PAUSE' }
-      | { type: 'SET_TIME', currentTime: number }
+      | { type: 'SET_TIME', value: number }
       | { type: 'PLAYING' }
       | { type: 'PAUSED' }
       | { type: 'ENDED' }

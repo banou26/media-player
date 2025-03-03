@@ -124,10 +124,10 @@ export const ProgressBar = () => {
   }, [progressBarHoverTime])
 
   useEffect(() => {
-    if (!mediaPlayerContext.videoElement || seekScrubValue === undefined) return
+    if (!mediaActor || seekScrubValue === undefined) return
     const timestamp = seekScrubValue * duration
-    mediaPlayerContext.videoElement.currentTime = timestamp
-  }, [mediaPlayerContext.videoElement && seekScrubValue])
+    mediaActor.send({ type: 'SET_TIME', value: timestamp })
+  }, [mediaActor && seekScrubValue])
 
   return (
     <div
