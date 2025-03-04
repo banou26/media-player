@@ -45,7 +45,7 @@
     "p-queue": "^7.3.4",
     "react": "^19.0.0",
     "react-feather": "^2.0.10",
-    "react-tooltip": "^5.26.3",
+    "react-tooltip": "^5.28.0",
     "xstate": "^5.19.1"
   }
 }

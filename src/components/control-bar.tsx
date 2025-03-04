@@ -3,11 +3,12 @@ import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, Settings, Volume, Volume1, Volume2, VolumeX } from 'react-feather'
 
 import { MediaMachineContext } from '../state-machines'
+import { TooltipDisplay } from './tooltip-display'
 import { togglePlay } from '../utils/actor-utils'
 import { MediaPlayerContext } from '../context'
 import { ProgressBar } from './progress-bar'
 import useWindowSize from '../utils/window-height'
-import colors from '../colors'
+import colors from '../utils/colors'
 
 const style = (height: number) => css`
   position: absolute;
@@ -63,6 +64,7 @@ const style = (height: number) => css`
     }
     .right {
       .full-screen {
+
       }
     }
   }
@@ -164,17 +166,32 @@ export const ControlBar = ({
           >
             <Settings size={18} color='#fff' />
           </button>
-          <button
-            className='full-screen'
-            type='button'
-            onClick={() => toggleFullScreen()}
-          >
-            {
-              isFullscreen
-                ? <Minimize size={18} color='#fff' />
-                : <Maximize size={18} color='#fff' />
+          <TooltipDisplay
+            id='full-screen'
+            tooltipPlace='top-end'
+            text={
+              <button
+                className='full-screen'
+                type='button'
+                onClick={() => toggleFullScreen()}
+              >
+                {
+                  isFullscreen
+                    ? <Minimize size={18} color='#fff' />
+                    : <Maximize size={18} color='#fff' />
+                }
+              </button>
             }
-          </button>
+            toolTipText={
+              <span>
+                {
+                  isFullscreen
+                    ? 'Exit full screen (f)'
+                    : 'Full screen (f)'
+                }
+              </span>
+            }
+          />
         </div>
       </div>
     </div>
