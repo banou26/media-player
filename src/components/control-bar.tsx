@@ -3,6 +3,7 @@ import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, Settings, Volume, Volume1, Volume2, VolumeX } from 'react-feather'
 
 import { MediaMachineContext } from '../state-machines'
+import { togglePlay } from '../utils/actor-utils'
 import { MediaPlayerContext } from '../context'
 import { ProgressBar } from './progress-bar'
 import useWindowSize from '../utils/window-height'
@@ -76,8 +77,10 @@ export const ControlBar = ({
   const chromeContext = useContext(MediaPlayerContext)
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
+  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+
   const [height] = useWindowSize()
-  const dynamicHeight = height * 0.08 // 10% of the screen height
+  const dynamicHeight = height * 0.08 // 8% of the screen height
 
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -85,26 +88,11 @@ export const ControlBar = ({
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement)
     }
-
     document.addEventListener('fullscreenchange', handleFullscreenChange)
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange)
     }
   }, [])
-
-  const togglePlay = () => {
-    if (!mediaActor) return
-    if (isPaused) {
-      mediaActor.send({ type: 'PLAY' })
-    } else {
-      mediaActor.send({ type: 'PAUSE' })
-    }
-  }
-
-  const toggleVolumeUpdate = (volume: number) => {
-    if (!mediaActor) return
-    mediaActor.send({ type: 'SET_VOLUME', volume })
-  }
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -115,14 +103,15 @@ export const ControlBar = ({
       document.exitFullscreen()
     }
   }
-console.log('volume', volume);
 
   useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
       if (ev.key === 'f') toggleFullScreen()
-      if (ev.key === 'k') togglePlay()
-      if (ev.key === ' ') togglePlay()
-      // if (ev.key === 'm') toggleMute()
+      if (ev.key === 'k') togglePlay(mediaActor, isPaused)
+      if (ev.key === ' ') togglePlay(mediaActor, isPaused)
+      if (ev.key === 'm') {
+        mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
+      }
       if (ev.key === 'ArrowUp') {
         if (volume <= 0.95) {
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: Math.round(volume * 100 + 5) / 100 })
@@ -140,7 +129,7 @@ console.log('volume', volume);
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [toggleFullScreen, togglePlay])
+  }, [mediaActor, volume, isPaused])
 
   return (
     <div css={style(dynamicHeight)} style={{ ...chromeContext.hideUI ? { display: 'none' } : {} }}>
@@ -150,7 +139,7 @@ console.log('volume', volume);
           <button
             className='play'
             type='button'
-            onClick={() => togglePlay()}
+            onClick={() => togglePlay(mediaActor, isPaused)}
           >
             {
               isPaused

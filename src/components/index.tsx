@@ -7,6 +7,7 @@ import { MediaMachineContext } from '../state-machines'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import { MediaPlayerContext } from '../context'
+import { togglePlay } from '../utils/actor-utils'
 
 const style = css`
   position: relative;
@@ -74,15 +75,6 @@ export const Chrome = ({ children }: ChromeOptions) => {
   }
 
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
-  
-  const togglePlay = () => {
-    if (!mediaActor) return
-    if (isPaused) {
-      mediaActor.send({ type: 'PLAY' })
-    } else {
-      mediaActor.send({ type: 'PAUSE' })
-    }
-  }
 
   return (
     <div
@@ -94,7 +86,7 @@ export const Chrome = ({ children }: ChromeOptions) => {
     >
       <Overlay />
       <ControlBar containerRef={containerRef} />
-      <div className='video' onClick={() => togglePlay()}>
+      <div className='video' onClick={() => togglePlay(mediaActor, isPaused)}>
         {children}
       </div>
     </div>

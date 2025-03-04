@@ -76,7 +76,7 @@ export const ProgressBar = () => {
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
   const [height] = useWindowSize()
-  const dynamicHeight = height * 0.1 // 10% of the screen height
+  const dynamicHeight = height * 0.08 // 8% of the screen height
 
   const mediaPlayerContext = useContext(MediaPlayerContext)
 
