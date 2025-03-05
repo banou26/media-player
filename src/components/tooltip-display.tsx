@@ -3,7 +3,6 @@ import { css } from '@emotion/react'
 import { PlacesType, Tooltip } from 'react-tooltip'
 
 import { fonts } from '../utils/fonts'
-import colors from '../utils/colors'
 
 const style = (size: buttonSize) => css`
   display: flex;
@@ -56,24 +55,20 @@ export const TooltipDisplay = ({
   offset = 20,
   tooltipPlace = 'top',
   size = buttonSize.md
-}: TooltipDisplayProps) => {
-  
-
-  return (
-    <>
-      <div
-        data-tooltip-id={id}
-        data-open={true}
-        data-tooltip-offset={offset}
-        data-tooltip-delay-show={delayShow}
-        data-tooltip-delay-hide={closeDelay}
-        data-tooltip-place={tooltipPlace}
-      >
-        {text}
-      </div>
-      <Tooltip css={style(size)} id={id}>
-        {toolTipText}
-      </Tooltip>
-    </>
-  )
-}
+}: TooltipDisplayProps) => (
+  <>
+    <div
+      data-tooltip-id={id}
+      data-open={true}
+      data-tooltip-offset={offset}
+      data-tooltip-delay-show={delayShow}
+      data-tooltip-delay-hide={closeDelay}
+      data-tooltip-place={tooltipPlace}
+    >
+      {text}
+    </div>
+    <Tooltip css={style(size)} id={id}>
+      {toolTipText}
+    </Tooltip>
+  </>
+)

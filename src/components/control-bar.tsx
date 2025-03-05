@@ -1,14 +1,53 @@
 import { RefObject, useContext, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, Settings, Volume, Volume1, Volume2, VolumeX } from 'react-feather'
+import { Maximize, Minimize, Pause, Play, Settings, Volume1, Volume2, VolumeX } from 'react-feather'
 
 import { MediaMachineContext } from '../state-machines'
 import { TooltipDisplay } from './tooltip-display'
 import { togglePlay } from '../utils/actor-utils'
 import { MediaPlayerContext } from '../context'
 import { ProgressBar } from './progress-bar'
+import { fonts } from '../utils/fonts'
 import useWindowSize from '../utils/window-height'
 import colors from '../utils/colors'
+import VolumeSlider from './volume-slider'
+
+const volumeContainerStyle = css`
+  position: relative;
+  display: flex;
+  align-items: center;
+
+  .volume-slider-container {
+    display: flex;
+    align-items: center;
+
+    position: absolute;
+    left: 17.5px;
+
+    opacity: 0;
+    pointer-events: none;
+
+    .volume-slider-background {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+
+      border-radius: 4px;
+
+      padding: 4px 8px;
+
+      .volume-value {
+        ${fonts.bMedium.regular};
+        color: #ffffff;
+      }
+    }
+  }
+
+  :hover .volume-slider-container {
+    pointer-events: auto;
+    opacity: 1;
+  }
+`
 
 const style = (height: number) => css`
   position: absolute;
@@ -138,34 +177,92 @@ export const ControlBar = ({
       <ProgressBar />
       <div className='actions'>
         <div className='left'>
-          <button
-            className='play'
-            type='button'
-            onClick={() => togglePlay(mediaActor, isPaused)}
-          >
-            {
-              isPaused
-                ? <Play size={18} color='#fff' />
-                : <Pause size={18} color='#fff' />
+          <TooltipDisplay
+            id='play'
+            tooltipPlace='top-start'
+            text={
+              <button
+                className='play'
+                type='button'
+                onClick={() => togglePlay(mediaActor, isPaused)}
+              >
+                {
+                  isPaused
+                    ? <Play size={18} color='#fff' />
+                    : <Pause size={18} color='#fff' />
+                }
+              </button>
             }
-          </button>
-          <button
-            className='sound'
-            type='button'
-          >
-            <VolumeX size={18} color='#fff' />
-            {/* <Volume size={18} color='#fff' />
-            <Volume1 size={18} color='#fff' />
-            <Volume2 size={18} color='#fff' /> */}
-          </button>
+            toolTipText={
+              <span>
+                {
+                  isPaused
+                    ? 'Play (k)'
+                    : 'Pause (k)'
+                }
+              </span>
+            }
+          />
+
+          <div css={volumeContainerStyle}>
+            <TooltipDisplay
+              id='sound'
+              text={
+                <button
+                  className='sound'
+                  type='button'
+                  onClick={() =>
+                    mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
+                  }
+                >
+                  {muted || volume === 0
+                    ? <VolumeX size={18} color='#fff' />
+                    : volume <= 0.5
+                      ? <Volume1 size={18} color='#fff' />
+                      : <Volume2 size={18} color='#fff' />
+                  }
+                </button>
+              }
+              toolTipText={
+                <span>{muted ? 'Unmute (m)' : 'Mute (m)'}</span>
+              }
+            />
+            <div className='volume-slider-container'>
+              <div className='volume-slider-background'>
+                <VolumeSlider
+                  value={muted ? 0 : volume}
+                  onChange={(newVolume) => {
+                    mediaActor.send({
+                      type: 'SET_VOLUME',
+                      muted: false,
+                      volume: parseFloat(newVolume.toFixed(2))
+                    })
+                  }}
+                />
+                <div className='volume-value'>
+                  {muted ? '0%' : `${Math.round(volume * 100)}%`}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         <div className='right'>
-          <button
-            className='settings'
-            type='button'
-          >
-            <Settings size={18} color='#fff' />
-          </button>
+          <TooltipDisplay
+            id='settings'
+            text={
+              <button
+                className='settings'
+                type='button'
+              >
+                <Settings size={18} color='#fff' />
+              </button>
+            }
+            toolTipText={
+              <span>
+                Settings
+              </span>
+            }
+          />
           <TooltipDisplay
             id='full-screen'
             tooltipPlace='top-end'
