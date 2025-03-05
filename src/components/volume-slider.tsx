@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { css } from '@emotion/react'
 
-
 const style = css`
   display: flex;
   align-items: center;
@@ -68,6 +67,20 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
     setIsDragging(false)
   }
 
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const step = 0.01
+    let newVol = value
+    if (e.deltaY < 0) {
+      // scroll up
+      newVol = Math.min(1, newVol + step)
+    } else {
+      // scroll down
+      newVol = Math.max(0, newVol - step)
+    }
+    onChange(newVol)
+  }
+
   useEffect(() => {
     window.addEventListener('mousemove', handlePointerMove)
     window.addEventListener('mouseup', handlePointerUp)
@@ -78,7 +91,6 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
   }, [isDragging])
 
   const fillPercent = value * 100
-
   const fillColor = '#fff'
   const emptyColor = '#3A3A3A'
 
@@ -87,8 +99,9 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
       ref={sliderRef}
       css={style}
       onMouseDown={handlePointerDown}
+      onWheel={handleWheel}
     >
-      <div 
+      <div
         style={{
           background: `linear-gradient(to right, 
             ${fillColor} 0% ${fillPercent}%, 
@@ -96,7 +109,7 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
           )`
         }}
       >
-        <div 
+        <div
           className="volume-handle"
           style={{
             left: `${value * 100}%`
