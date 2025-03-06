@@ -26,19 +26,24 @@ export default fromCallback<MediaPropertiesEvents, MediaPropertiesInput, MediaPr
   receive((event) => {
     if (event.type === 'PLAY') {
       videoElement.play()
+      handlePlay()
     }
     if (event.type === 'PAUSE') {
       videoElement.pause()
+      handlePlay()
     }
     if (event.type === 'SET_TIME') {
       videoElement.currentTime = event.value
+      handleTimeUpdate()
     }
     if (event.type === 'SET_VOLUME') {
       videoElement.volume = event.volume
       videoElement.muted = event.muted
+      handleVolumeUpdate()
     }
     if (event.type === 'SET_PLAYBACK_RATE') {
       videoElement.playbackRate = event.playbackRate
+      handlePlaybackRateUpdate()
     }
   })
 

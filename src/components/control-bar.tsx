@@ -177,6 +177,14 @@ export const ControlBar = ({
     return () => window.removeEventListener('keydown', eventListener)
   }, [mediaActor, volume, isPaused])
 
+  const setVolume = (newVolume: number, muted: boolean) => {
+    mediaActor.send({
+      type: 'SET_VOLUME',
+      muted,
+      volume: Number(newVolume.toFixed(2))
+    })
+  }
+
   return (
     <div css={style(dynamicHeight)} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
       <ProgressBar />
@@ -216,9 +224,7 @@ export const ControlBar = ({
                 <button
                   className='sound'
                   type='button'
-                  onClick={() =>
-                    mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
-                  }
+                  onClick={() => setVolume(volume, !muted)}
                 >
                   {muted || volume === 0
                     ? <VolumeX size={18} color='#fff' />
@@ -234,16 +240,7 @@ export const ControlBar = ({
             />
             <div className='volume-slider-container'>
               <div className='volume-slider-background'>
-                <VolumeSlider
-                  value={muted ? 0 : volume}
-                  onChange={(newVolume) => {
-                    mediaActor.send({
-                      type: 'SET_VOLUME',
-                      muted: false,
-                      volume: parseFloat(newVolume.toFixed(2))
-                    })
-                  }}
-                />
+                <VolumeSlider value={muted ? 0 : volume} onChange={volume => setVolume(volume, muted)} />
                 <div className='volume-value'>
                   {muted ? '0%' : `${Math.round(volume * 100)}%`}
                 </div>
@@ -275,7 +272,7 @@ export const ControlBar = ({
               <button
                 className='full-screen'
                 type='button'
-                onClick={() => toggleFullScreen()}
+                onClick={toggleFullScreen}
               >
                 {
                   isFullscreen

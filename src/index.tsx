@@ -41,6 +41,7 @@ export const FKNVideoRoot = (
   const status = MediaMachineContext.useSelector((state) => state.value)
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+  const isReady = MediaMachineContext.useSelector((state) => state.context.isReady)
   const [mediaVolume, setMediaVolume] = useLocalStorage('mediaVolume', '1') as [string, (newValue: string) => void]
   const [mediaMute, setMediaMute] = useLocalStorage('mediaMute', 'false') as [mediaMutedType, (newValue: mediaVolumeType) => void]
   const [firstRender, setFirstRender] = useState(true)
@@ -94,6 +95,7 @@ export const FKNVideoRoot = (
   }, [videoElement])
 
   useEffect(() => {
+    if (!isReady) return
     if (firstRender) {
       mediaActor.send({
         type: 'SET_VOLUME',
@@ -105,12 +107,10 @@ export const FKNVideoRoot = (
       })
       setFirstRender(false)
     } else {
-      console.log('2', volume, muted)
-      
       setMediaVolume(volume.toString())
       setMediaMute(muted.toString())
     }
-  }, [volume, muted, firstRender])
+  }, [isReady, volume, muted, firstRender])
 
   useEffect(() => {
     if (status !== 'OK') return

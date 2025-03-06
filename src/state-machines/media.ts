@@ -18,7 +18,7 @@ export default setup({
       videoElement: HTMLVideoElement | undefined
       canvasElement: HTMLCanvasElement | undefined
       media: {
-        duration: number
+        duration?: number
         paused: boolean
         currentTime: number
         volume: number
@@ -27,6 +27,7 @@ export default setup({
       },
       attachments: Attachment[]
       subtitleFragments: SubtitleFragment[]
+      isReady: boolean
     },
     events:
       | { type: 'MEDIA_SOURCE_OPTIONS', mediaSourceOptions: MediaSourceOptions }
@@ -82,9 +83,11 @@ export default setup({
       volume: 1,
       muted: false,
       playbackRate: 1,
+      duration: undefined
     },
     attachments: [],
-    subtitleFragments: []
+    subtitleFragments: [],
+    isReady: false
   },
   initial: 'WAITING',
   on: {
@@ -105,7 +108,8 @@ export default setup({
       ]
     },
     'IS_READY': {
-      target: '.OK'
+      target: '.OK',
+      actions: assign({ isReady: () => true })
     },
   },
   states: {
