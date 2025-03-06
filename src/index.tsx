@@ -1,16 +1,16 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ClassAttributes, MutableRefObject, ReactNode, RefCallback } from 'react'
-import type { MediaPlayerContextType } from './context'
+import type { MediaPlayerContextType } from './utils/context'
 
 import { useCallback, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { MediaMachineContext } from './state-machines'
-import { MediaPlayerContext, DownloadedRange } from './context'
+import { MediaPlayerContext, DownloadedRange } from './utils/context'
 import Chrome from './components'
+import useLocalStorage, { mediaMutedType, mediaVolumeType } from './utils/use-local-storage'
 
 const BUFFER_SIZE = 2_500_000
-// const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 
 const FKNVideoRootStyle = css`
   display: flex;
@@ -39,6 +39,11 @@ export const FKNVideoRoot = (
 ) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const status = MediaMachineContext.useSelector((state) => state.value)
+  const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
+  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+  const [mediaVolume, setMediaVolume] = useLocalStorage('mediaVolume', '1') as [string, (newValue: string) => void]
+  const [mediaMute, setMediaMute] = useLocalStorage('mediaMute', 'false') as [mediaMutedType, (newValue: mediaVolumeType) => void]
+  const [firstRender, setFirstRender] = useState(true)
 
   useEffect(
     () => mediaActor.send({
@@ -87,6 +92,25 @@ export const FKNVideoRoot = (
       videoElement,
     })
   }, [videoElement])
+
+  useEffect(() => {
+    if (firstRender) {
+      mediaActor.send({
+        type: 'SET_VOLUME',
+        muted: mediaMute === 'true',
+        volume:
+          isNaN(Number(mediaVolume))
+            ? 1
+            : Number(mediaVolume)
+      })
+      setFirstRender(false)
+    } else {
+      console.log('2', volume, muted)
+      
+      setMediaVolume(volume.toString())
+      setMediaMute(muted.toString())
+    }
+  }, [volume, muted, firstRender])
 
   useEffect(() => {
     if (status !== 'OK') return

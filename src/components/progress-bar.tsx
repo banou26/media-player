@@ -1,10 +1,11 @@
 import { DOMAttributes, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
-import useScrub from '../use-scrub'
 import { MediaMachineContext } from '../state-machines'
-import { MediaPlayerContext } from '../context'
+import { HEIGHT_PERCENTAGE } from './control-bar'
+import { MediaPlayerContext } from '../utils/context'
 import useWindowSize from '../utils/window-height'
+import useScrub from '../utils/use-scrub'
 
 const style = (height: number) => css`
   position: relative;
@@ -76,7 +77,7 @@ export const ProgressBar = () => {
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
   const [height] = useWindowSize()
-  const dynamicHeight = height * 0.08 // 8% of the screen height
+  const dynamicHeight = height * HEIGHT_PERCENTAGE // X% of the screen height
 
   const mediaPlayerContext = useContext(MediaPlayerContext)
 

@@ -5,12 +5,12 @@ import { Maximize, Minimize, Pause, Play, Settings, Volume1, Volume2, VolumeX } 
 import { MediaMachineContext } from '../state-machines'
 import { TooltipDisplay } from './tooltip-display'
 import { togglePlay } from '../utils/actor-utils'
-import { MediaPlayerContext } from '../context'
+import { MediaPlayerContext } from '../utils/context'
 import { ProgressBar } from './progress-bar'
 import { fonts } from '../utils/fonts'
 import useWindowSize from '../utils/window-height'
-import colors from '../utils/colors'
 import VolumeSlider from './volume-slider'
+import colors from '../utils/colors'
 
 const volumeContainerStyle = css`
   position: relative;
@@ -54,6 +54,10 @@ const style = (height: number) => css`
   bottom: 0;
   height: ${height}px;
   width: 100%;
+
+  background: linear-gradient(0deg,#000 0,rgba(0,0,0,.5) 60%,transparent);
+  transition: opacity 0.1s cubic-bezier(.4,0,1,1);
+  opacity: 1;
 
   .actions {
     display: flex;
@@ -108,6 +112,7 @@ const style = (height: number) => css`
     }
   }
 `
+export const HEIGHT_PERCENTAGE = 0.05
 
 export const ControlBar = ({
   containerRef
@@ -121,7 +126,7 @@ export const ControlBar = ({
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
 
   const [height] = useWindowSize()
-  const dynamicHeight = height * 0.08 // 8% of the screen height
+  const dynamicHeight = height * HEIGHT_PERCENTAGE // X% of the screen height
 
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -173,7 +178,7 @@ export const ControlBar = ({
   }, [mediaActor, volume, isPaused])
 
   return (
-    <div css={style(dynamicHeight)} style={{ ...chromeContext.hideUI ? { display: 'none' } : {} }}>
+    <div css={style(dynamicHeight)} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
       <ProgressBar />
       <div className='actions'>
         <div className='left'>

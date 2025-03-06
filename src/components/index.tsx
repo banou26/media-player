@@ -1,13 +1,13 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { MouseEventHandler, useContext, useEffect, useRef, useState, type HTMLAttributes } from 'react'
+import { MouseEventHandler, useContext, useRef, type HTMLAttributes } from 'react'
 
 import { css } from '@emotion/react'
 
 import { MediaMachineContext } from '../state-machines'
+import { MediaPlayerContext } from '../utils/context'
+import { togglePlay } from '../utils/actor-utils'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
-import { MediaPlayerContext } from '../context'
-import { togglePlay } from '../utils/actor-utils'
 
 const style = css`
   position: relative;
@@ -30,7 +30,6 @@ const style = css`
   }
 
   .video, video {
-    /* pointer-events: none; */
     height: 100%;
     width: 100%;
     background-color: black;
@@ -41,14 +40,13 @@ const style = css`
   }
 `
 
-export type ChromeOptions = {
-
-} & HTMLAttributes<HTMLDivElement>
+export type ChromeOptions = {} & HTMLAttributes<HTMLDivElement>
 
 export const Chrome = ({ children }: ChromeOptions) => {
   const mediaActor = MediaMachineContext.useActorRef()
-  const status = MediaMachineContext.useSelector((state) => state.value)
   const mediaPlayerContext = useContext(MediaPlayerContext)
+  const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
+
   const autoHide = useRef<number>()
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -62,19 +60,11 @@ export const Chrome = ({ children }: ChromeOptions) => {
     autoHide.current = timeout
   }
 
-
   const mouseOut: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
     return
-    // const root = canvasElement?.parentElement?.parentElement
-    // if (!root?.contains(ev?.relatedTarget as Element)) {
-    //   mediaPlayerContext.update({ hideUI: true })
-    //   return
-    // }
     if (ev.currentTarget.parentElement !== ev.relatedTarget && ev.relatedTarget !== null) return
     mediaPlayerContext.update({ hideUI: true })
   }
-
-  const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
 
   return (
     <div

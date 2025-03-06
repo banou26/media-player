@@ -103,7 +103,6 @@ const globalStyle = css`
     color: #fff;
     
     font-family: Montserrat;
-    // font-family: "Segoe UI", Roboto, "Fira Sans",  "Helvetica Neue", Arial, sans-serif;
   }
 
   body > div {
