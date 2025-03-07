@@ -1,6 +1,6 @@
 import { RefObject, useContext, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, Settings } from 'react-feather'
+import { Maximize, Minimize, Pause, Play, RotateCcw, Settings } from 'react-feather'
 
 import { MediaMachineContext } from '../state-machines'
 import { TooltipDisplay } from './tooltip-display'
@@ -9,8 +9,9 @@ import { MediaPlayerContext } from '../utils/context'
 import { ProgressBar } from './progress-bar'
 import { formatMediaTime } from '../utils/time'
 import { fonts } from '../utils/fonts'
-import Sound from './control-bar/sound'
+import Sound from './sound'
 import colors from '../utils/colors'
+import pictureInPicture from '../assets/picture-in-picture.svg'
 
 const style = css`
   position: absolute;
@@ -56,10 +57,19 @@ const style = css`
             height: 28px;
           }
         }
+
+        svg {
+          stroke: #fff;
+        }
       }
 
       // Add basic styling for all the actions
-      .play, .sound, .time, .settings, .full-screen {
+      .play, .sound, .time, .settings, .picture-in-picture, .full-screen {
+        display: flex;
+        align-items: center;
+
+        height: 100%;
+
         border-radius: 4px;
         user-select: none;
 
@@ -73,7 +83,7 @@ const style = css`
       }
 
       // Add styling to the actions that have some interactivity
-      .play, .sound, .settings, .full-screen {
+      .play, .sound, .settings, .picture-in-picture, .full-screen {
         border-radius: 4px;
 
         padding: 8px;
@@ -93,17 +103,24 @@ const style = css`
     }
 
     .left {
-      .play {
-
-      }
-
       .time {
         ${fonts.bMedium.regular}
       }
     }
     .right {
-      .full-screen {
-
+      .picture-in-picture {
+        img {
+          width: 22px;
+          height: 22px;
+          @media (min-width: 768px) {
+            width: 28px;
+            height: 28px;
+          }
+          @media (min-width: 2560px) {
+            width: 32px;
+            height: 32px;
+          }
+        }
       }
     }
   }
@@ -151,8 +168,8 @@ export const ControlBar = ({
       // avoid triggering the browser's default behavior (e.g space for pause it opens the full screen)
       ev.preventDefault()
       if (ev.key === 'f') toggleFullScreen()
-      if (ev.key === 'k') togglePlay(mediaActor, isPaused)
-      if (ev.key === ' ') togglePlay(mediaActor, isPaused)
+      if (ev.key === 'k') togglePlay(mediaActor, isPaused, duration, currentTime)
+      if (ev.key === ' ') togglePlay(mediaActor, isPaused, duration, currentTime)
       if (ev.key === 'm') {
         mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
       }
@@ -170,10 +187,25 @@ export const ControlBar = ({
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: 0 })
         }
       }
+      if (ev.key === 'ArrowRight') {
+        if (!duration) return
+        if (currentTime + 5 >= duration) {
+          mediaActor.send({ type: 'SET_TIME', value: duration })
+        } else {
+          mediaActor.send({ type: 'SET_TIME', value: currentTime + 5 })
+        }
+      }
+      if (ev.key === 'ArrowLeft') {
+        if (currentTime - 5 < 0) {
+          mediaActor.send({ type: 'SET_TIME', value: 0 })
+        } else {
+          mediaActor.send({ type: 'SET_TIME', value: currentTime - 5 })
+        }
+      }
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [mediaActor, volume, muted, isPaused])
+  }, [mediaActor, volume, muted, isPaused, currentTime, duration])
 
   return (
     <div css={style} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
@@ -187,21 +219,25 @@ export const ControlBar = ({
               <button
                 className='play'
                 type='button'
-                onClick={() => togglePlay(mediaActor, isPaused)}
+                onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}
               >
                 {
-                  isPaused
-                    ? <Play size={18} color='#fff' />
-                    : <Pause size={18} color='#fff' />
+                  duration === currentTime
+                    ? <RotateCcw />
+                    : isPaused
+                      ? <Play />
+                      : <Pause />
                 }
               </button>
             }
             toolTipText={
               <span>
                 {
-                  isPaused
-                    ? 'Play (k)'
-                    : 'Pause (k)'
+                  duration === currentTime
+                    ? 'Replay (k)'
+                    : isPaused
+                      ? 'Play (k)'
+                      : 'Pause (k)'
                 }
               </span>
             }
@@ -219,12 +255,28 @@ export const ControlBar = ({
                 className='settings'
                 type='button'
               >
-                <Settings size={18} color='#fff' />
+                <Settings />
               </button>
             }
             toolTipText={
               <span>
                 Settings
+              </span>
+            }
+          />
+          <TooltipDisplay
+            id='picture-in-picture'
+            text={
+              <button
+                className='picture-in-picture'
+                type='button'
+              >
+                <img src={pictureInPicture}  />
+              </button>
+            }
+            toolTipText={
+              <span>
+                Picture in picture
               </span>
             }
           />
@@ -239,8 +291,8 @@ export const ControlBar = ({
               >
                 {
                   isFullscreen
-                    ? <Minimize size={18} color='#fff' />
-                    : <Maximize size={18} color='#fff' />
+                    ? <Minimize />
+                    : <Maximize />
                 }
               </button>
             }

@@ -46,6 +46,8 @@ export const Chrome = ({ children }: ChromeOptions) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const mediaPlayerContext = useContext(MediaPlayerContext)
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
+  const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
+  const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
 
   const autoHide = useRef<number>()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -76,7 +78,7 @@ export const Chrome = ({ children }: ChromeOptions) => {
     >
       <Overlay />
       <ControlBar containerRef={containerRef} />
-      <div className='video' onClick={() => togglePlay(mediaActor, isPaused)}>
+      <div className='video' onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}>
         {children}
       </div>
     </div>

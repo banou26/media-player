@@ -4,6 +4,7 @@ import { css } from '@emotion/react'
 import { MediaMachineContext } from '../state-machines'
 import { MediaPlayerContext } from '../utils/context'
 import useScrub from '../utils/use-scrub'
+import { fonts } from '../utils/fonts'
 
 const style = css`
   position: relative;
@@ -30,6 +31,9 @@ const style = css`
       transform: scaleY(1.5);
       top: -.1rem;
     }
+    .play-container {
+      transform: scaleY(1.5);
+    }
   }
 
   .background-bar {
@@ -39,13 +43,17 @@ const style = css`
   }
 
   .cursor-time {
-    pointer-events: none;
-    position: absolute;
-    top: -2rem;
-    width: 5rem;
-    margin-left: -2.5rem;
     display: flex;
     justify-content: center;
+
+    ${fonts.bMedium.regular}
+
+    position: absolute;
+    top: -2.5rem;
+    width: 5rem;
+
+    margin-left: -2.5rem;
+    pointer-events: none;
   }
 
   .loaded {
@@ -62,9 +70,16 @@ const style = css`
     }
   }
 
+  .play-container {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: .4rem;
+  }
+
   .play {
     transform-origin: 0 0;
-    background-color: hsla(0, 100%, 50%, .8);
+    background-color: #f03;
     position: absolute;
     bottom: 0;
     height: .4rem;
@@ -133,10 +148,16 @@ export const ProgressBar = () => {
   }, [progressBarHoverTime])
 
   useEffect(() => {
-    if (!mediaActor || seekScrubValue === undefined) return
+    if (!mediaActor || seekScrubValue === undefined || !duration) return
     const timestamp = seekScrubValue * duration
     mediaActor.send({ type: 'SET_TIME', value: timestamp })
-  }, [mediaActor && seekScrubValue])
+  }, [mediaActor, seekScrubValue, duration])
+
+  const scaleX = useMemo(() => {
+    return typeof duration !== 'number' || typeof currentTime !== 'number'
+      ? 0
+      : 1 / ((duration ?? 0) / (currentTime ?? 0))
+  }, [duration, currentTime])
 
   return (
     <div
@@ -165,13 +186,8 @@ export const ProgressBar = () => {
       {/* bar to show when hovering to potentially seek */}
       <div className="hover"></div>
       {/* bar displaying the current playback progress */}
-      <div className="play" style={{
-        transform: `scaleX(${
-          typeof duration !== 'number' || typeof currentTime !== 'number'
-            ? 0
-            : 1 / ((duration ?? 0) / (currentTime ?? 0))
-        })`
-      }}>
+      <div className='play-container'>
+        <div className="play" style={{ transform: `scaleX(${scaleX})` }}></div>
       </div>
       <div className="chapters"></div>
       <div className="scrubber"></div>

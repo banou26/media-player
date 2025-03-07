@@ -1,10 +1,10 @@
 import { Volume1, Volume2, VolumeX } from "react-feather"
 import { css } from "@emotion/react"
 
-import { MediaMachineContext } from "../../state-machines"
-import { TooltipDisplay } from "../tooltip-display"
-import { fonts } from "../../utils/fonts"
-import VolumeSlider from "../volume-slider"
+import { MediaMachineContext } from "../state-machines"
+import { TooltipDisplay } from "./tooltip-display"
+import { fonts } from "../utils/fonts"
+import VolumeSlider from "./volume-slider"
 
 const style = css`
   position: relative;

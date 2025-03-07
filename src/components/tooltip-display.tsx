@@ -66,7 +66,7 @@ export const TooltipDisplay = ({
     >
       {text}
     </div>
-    <Tooltip css={style(size)} id={id}>
+    <Tooltip css={style(size)} id={id} noArrow={true}>
       {toolTipText}
     </Tooltip>
   </>
