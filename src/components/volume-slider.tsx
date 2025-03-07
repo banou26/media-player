@@ -1,12 +1,15 @@
 import { useRef, useState, useEffect } from 'react'
 import { css } from '@emotion/react'
 
+import { TooltipDisplay } from './tooltip-display'
+import { MediaMachineContext } from '../state-machines'
+
 const style = css`
   display: flex;
   align-items: center;
 
-  padding: 15px 4px;
-  margin-right: 5px;
+  padding: 16px 4px;
+  margin: 0 2px;
 
   cursor: pointer;
 
@@ -40,6 +43,9 @@ type VolumeSliderType = {
 }
 
 const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
+  const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
+  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+
   const sliderRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
 
@@ -67,7 +73,7 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
     setIsDragging(false)
   }
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+  const handleWheel = (e: WheelEvent) => {
     e.preventDefault()
     const step = 0.01
     let newVol = value
@@ -90,33 +96,54 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
     }
   }, [isDragging])
 
+  useEffect(() => {
+    const slider = sliderRef.current
+    if (slider) {
+      slider.addEventListener('wheel', handleWheel, { passive: false })
+    }
+    return () => {
+      if (slider) {
+        slider.removeEventListener('wheel', handleWheel)
+      }
+    }
+  }, [value])
+
   const fillPercent = value * 100
   const fillColor = '#fff'
   const emptyColor = '#3A3A3A'
 
   return (
-    <div
-      ref={sliderRef}
-      css={style}
-      onMouseDown={handlePointerDown}
-      onWheel={handleWheel}
-    >
-      <div
-        style={{
-          background: `linear-gradient(to right, 
-            ${fillColor} 0% ${fillPercent}%, 
-            ${emptyColor} ${fillPercent}% 100%
-          )`
-        }}
-      >
+    <TooltipDisplay
+      id='volume-slider'
+      text={
         <div
-          className="volume-handle"
-          style={{
-            left: `${value * 100}%`
-          }}
-        />
-      </div>
-    </div>
+          ref={sliderRef}
+          css={style}
+          onMouseDown={handlePointerDown}
+        >
+          <div
+            style={{
+              background: `linear-gradient(to right, 
+                ${fillColor} 0% ${fillPercent}%, 
+                ${emptyColor} ${fillPercent}% 100%
+              )`
+            }}
+          >
+            <div
+              className="volume-handle"
+              style={{
+                left: `${value * 100}%`
+              }}
+            />
+          </div>
+        </div>
+      }
+      toolTipText={
+        <div className='volume-value'>
+          {muted ? '0%' : `${Math.round(volume * 100)}%`}
+        </div>
+      }
+    />
   )
 }
 

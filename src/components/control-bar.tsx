@@ -8,7 +8,6 @@ import { togglePlay } from '../utils/actor-utils'
 import { MediaPlayerContext } from '../utils/context'
 import { ProgressBar } from './progress-bar'
 import { fonts } from '../utils/fonts'
-import useWindowSize from '../utils/window-height'
 import VolumeSlider from './volume-slider'
 import colors from '../utils/colors'
 
@@ -21,11 +20,13 @@ const volumeContainerStyle = css`
     display: flex;
     align-items: center;
 
-    position: absolute;
-    left: 17.5px;
-
-    opacity: 0;
+    width: 0;
+    margin-right: 0;
+    overflow: hidden;
     pointer-events: none;
+
+    transition: margin .2s cubic-bezier(0.4,0,1,1), width .2s cubic-bezier(0.4,0,1,1);
+    -webkit-transition: margin .2s cubic-bezier(0.4,0,1,1), width .2s cubic-bezier(0.4,0,1,1);
 
     .volume-slider-background {
       display: flex;
@@ -34,8 +35,6 @@ const volumeContainerStyle = css`
 
       border-radius: 4px;
 
-      padding: 4px 8px;
-
       .volume-value {
         ${fonts.bMedium.regular};
         color: #ffffff;
@@ -43,27 +42,35 @@ const volumeContainerStyle = css`
     }
   }
 
-  :hover .volume-slider-container {
+  &:hover .volume-slider-container {
+    width: 9rem;
+
+    transition: margin .2s cubic-bezier(0,0,0.2,1), width .2s cubic-bezier(0,0,0.2,1);
+    -webkit-transition: margin .2s cubic-bezier(0,0,0.2,1), width .2s cubic-bezier(0,0,0.2,1);
+
     pointer-events: auto;
-    opacity: 1;
   }
 `
 
-const style = (height: number) => css`
+const style = css`
   position: absolute;
   bottom: 0;
-  height: ${height}px;
   width: 100%;
 
-  background: linear-gradient(0deg,#000 0,rgba(0,0,0,.5) 60%,transparent);
+  background: linear-gradient(0deg,#000 0,rgba(0,0,0,.4) 60%,transparent);
   transition: opacity 0.1s cubic-bezier(.4,0,1,1);
-  opacity: 1;
 
   .actions {
     display: flex;
     justify-content: space-between;
 
-    padding: ${height * 0.2}px;
+    padding: 6px 12px;
+    @media (min-width: 768px) {
+      padding: 8px 16px;
+    }
+    @media (min-width: 2560px) {
+      padding: 8px 24px;
+    }
 
     .left, .right {
       display: flex;
@@ -81,8 +88,12 @@ const style = (height: number) => css`
           width: 14px;
           height: 14px;
           @media (min-width: 768px) {
-            width: 16px;
-            height: 16px;
+            width: 24px;
+            height: 24px;
+          }
+          @media (min-width: 2560px) {
+            width: 28px;
+            height: 28px;
           }
         }
       }
@@ -90,7 +101,13 @@ const style = (height: number) => css`
       .play, .sound, .settings, .full-screen {
         border-radius: 4px;
 
-        padding: 4px;
+        padding: 8px;
+        @media (min-width: 768px) {
+          padding: 8px 12px;
+        }
+        @media (min-width: 2560px) {
+          padding: 8px 12px;
+        }
 
         cursor: pointer;
 
@@ -112,7 +129,6 @@ const style = (height: number) => css`
     }
   }
 `
-export const HEIGHT_PERCENTAGE = 0.05
 
 export const ControlBar = ({
   containerRef
@@ -124,9 +140,6 @@ export const ControlBar = ({
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
-
-  const [height] = useWindowSize()
-  const dynamicHeight = height * HEIGHT_PERCENTAGE // X% of the screen height
 
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -186,7 +199,7 @@ export const ControlBar = ({
   }
 
   return (
-    <div css={style(dynamicHeight)} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
+    <div css={style} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
       <ProgressBar />
       <div className='actions'>
         <div className='left'>
@@ -240,10 +253,7 @@ export const ControlBar = ({
             />
             <div className='volume-slider-container'>
               <div className='volume-slider-background'>
-                <VolumeSlider value={muted ? 0 : volume} onChange={volume => setVolume(volume, muted)} />
-                <div className='volume-value'>
-                  {muted ? '0%' : `${Math.round(volume * 100)}%`}
-                </div>
+                <VolumeSlider value={muted ? 0 : volume} onChange={volume => setVolume(volume, false)} />
               </div>
             </div>
           </div>
