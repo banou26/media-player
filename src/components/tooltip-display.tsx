@@ -9,9 +9,8 @@ const style = (size: buttonSize) => css`
   justify-content: flex-end;
 
   border-radius: 0.4rem;
+  user-select: none;
 
-  overflow: hidden;
-  overflow-wrap: anywhere;
   z-index: 10;
 
   * {
