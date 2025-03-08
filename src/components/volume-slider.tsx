@@ -75,7 +75,7 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault()
-    const step = 0.01
+    const step = 0.05
     let newVol = value
     if (e.deltaY < 0) {
       // scroll up

@@ -227,9 +227,9 @@ export const ControlBar = ({
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
     if (e.deltaY < 0) { // scroll up
-      modifyVolume({ direction: 'up', stepSize: 0.01 })
+      modifyVolume({ direction: 'up', stepSize: 0.05 })
     } else { // scroll down
-      modifyVolume({ direction: 'down', stepSize: 0.01 })
+      modifyVolume({ direction: 'down', stepSize: 0.05 })
     }
   }, [modifyVolume])
 
