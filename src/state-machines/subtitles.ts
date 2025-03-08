@@ -23,11 +23,11 @@ type SubtitlesInput = {
 
 type SubtitlePart =
   | { type: 'header', streamIndex: number, content: string, eventsContent: string, dialogueFormatContent: string, parsed: ParsedASS }
-  | { type: 'text', streamIndex: number, index: number, content: string, parsed: ParsedASS, assEvent: ASS_Event }
+  | { type: 'dialogue', streamIndex: number, index: number, content: string, parsed: ParsedASS, assEvent: ASS_Event }
 
 type SubtitleStream = {
   header: SubtitlePart & { type: 'header' }
-  dialogues: (SubtitlePart & { type: 'text' })[]
+  dialogues: (SubtitlePart & { type: 'dialogue' })[]
 }
 
 const convertTimestamp = (ms: number) =>
@@ -42,6 +42,7 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
   let jassubInstance: JASSUB | undefined
 
   const subtitlesStreams = new Map<number, SubtitleStream>()
+  const appendedSubtitleParts: SubtitlePart[] = []
 
   receive((event) => {
     if (event.type === 'NEW_SUBTITLE_FRAGMENTS') {
@@ -67,7 +68,7 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
             eventsContent,
             dialogueFormatContent,
             parsed: parse(subtitleFragment.content)
-          } as const
+          } as SubtitlePart & { type: 'header' }
           subtitlesStreams.set(subtitleFragment.streamIndex, { header, dialogues: [] })
           return header
         } else {
@@ -102,14 +103,25 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
               ReadOrder: dialogueIndex,
               _index: dialogueIndex
             } as ASS_Event
-          } as const
+          } as SubtitlePart & { type: 'dialogue' }
           return dialogue
         }
       })
 
       for (const subtitlePart of subtitleParts) {
         if (subtitlePart.type === 'dialogue') {
+          const alreadyAppended =
+            appendedSubtitleParts
+              .filter(appendedSubtitlePart => appendedSubtitlePart.type === 'dialogue')
+              .find(appendedSubtitlePart =>
+                appendedSubtitlePart.streamIndex === subtitlePart.streamIndex
+                && appendedSubtitlePart.index === subtitlePart.index
+              )
+          if (alreadyAppended) {
+            continue
+          }
           jassubInstance?.createEvent(subtitlePart.assEvent)
+          appendedSubtitleParts.push(subtitlePart)
         } else {
           if (!jassubInstance) {
             jassubInstance = new JASSUB({
