@@ -199,7 +199,7 @@ export const ProgressBar = () => {
       {
         progressBarHoverTime
           ? (
-            <div className="cursor-time" data-tip={progressBarHoverTime} style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
+            <div className="cursor-time" style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
               {cusorTimeString}
             </div>
           )

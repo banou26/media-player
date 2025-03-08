@@ -5,6 +5,7 @@ import { MediaMachineContext } from "../state-machines"
 import { TooltipDisplay } from "./tooltip-display"
 import { fonts } from "../utils/fonts"
 import VolumeSlider from "./volume-slider"
+import { MutableRefObject } from 'react'
 
 const style = css`
   position: relative;
@@ -47,11 +48,10 @@ const style = css`
   }
 `
 
-const Sound = () => {
+const Sound = ({ ref }: { ref: MutableRefObject<HTMLDivElement> }) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
-
 
   const setVolume = (newVolume: number, muted: boolean) => {
     mediaActor.send({
@@ -70,6 +70,7 @@ const Sound = () => {
             className='sound'
             type='button'
             onClick={() => setVolume(volume, !muted)}
+            ref={ref}
           >
             {muted || volume === 0
               ? <VolumeX size={18} color='#fff' />

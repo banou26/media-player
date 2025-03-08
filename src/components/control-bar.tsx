@@ -1,4 +1,4 @@
-import { RefObject, useContext, useEffect, useRef, useState } from 'react'
+import { RefObject, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
@@ -140,6 +140,7 @@ export const ControlBar = ({
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
+  const [volumeElement, setVolumeElement] = useState<HTMLDivElement | undefined>()
   
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -163,6 +164,23 @@ export const ControlBar = ({
     }
   }
 
+  const modifyVolume = useCallback(({ direction, stepSize }: { direction: 'up' | 'down', stepSize: number }) => {
+    if (!mediaActor) return
+    const step = (direction === 'up' ? stepSize : -stepSize)
+    mediaActor.send({
+      type: 'SET_VOLUME',
+      muted,
+      volume:
+        Math.max(
+          0,
+          Math.min(
+            1,
+            Math.round((volume + step) * 100) / 100
+          )
+        )
+    })
+  }, [mediaActor.id, muted, volume])
+
   useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
       let shouldPreventDefault = true
@@ -174,18 +192,10 @@ export const ControlBar = ({
         mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
       }
       else if (ev.key === 'ArrowUp') {
-        if (volume <= 0.95) {
-          mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: Math.round(volume * 100 + 5) / 100 })
-        } else {
-          mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: 1 })
-        }
+        modifyVolume({ direction: 'up', stepSize: 0.05 })
       }
       else if (ev.key === 'ArrowDown') {
-        if (volume >= 0.05) {
-          mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: Math.round(volume * 100 - 5) / 100 })
-        } else {
-          mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: 0 })
-        }
+        modifyVolume({ direction: 'down', stepSize: 0.05 })
       }
       else if (ev.key === 'ArrowRight') {
         if (!duration) return
@@ -213,6 +223,21 @@ export const ControlBar = ({
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
   }, [mediaActor, volume, muted, isPaused, currentTime, duration])
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault()
+    if (e.deltaY < 0) { // scroll up
+      modifyVolume({ direction: 'up', stepSize: 0.01 })
+    } else { // scroll down
+      modifyVolume({ direction: 'down', stepSize: 0.01 })
+    }
+  }, [modifyVolume])
+
+  useEffect(() => {
+    if (!volumeElement) return
+    volumeElement.addEventListener('wheel', handleWheel, { passive: false })
+    return () => volumeElement.removeEventListener('wheel', handleWheel)
+  }, [volumeElement, modifyVolume])
 
   return (
     <div css={style} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
@@ -249,7 +274,7 @@ export const ControlBar = ({
               </span>
             }
           /> 
-          <Sound />
+          <Sound ref={setVolumeElement}/>
           <div className='time'>
             {formatMediaTime(currentTime, duration)}
           </div>
