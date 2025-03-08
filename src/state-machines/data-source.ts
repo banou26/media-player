@@ -37,11 +37,15 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
   sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: metadata.subtitles })
   sendBack({ type: 'METADATA', ...metadata })
 
+  let isFinished = false
   let currentSeeks: { currentTime: number }[] = []
   const loadMore = queuedThrottleWithLastCall(100, async () => {
-    if (currentSeeks.length) return
+    if (currentSeeks.length || isFinished) return
     try {
-      const { data, subtitles } = await remuxer.read()
+      const { data, subtitles, finished } = await remuxer.read()
+      if (finished) {
+        isFinished = true
+      }
       if (subtitles.length) {
         sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles })
       }
@@ -56,6 +60,7 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
     if (event.type === 'NEED_DATA') {
       loadMore()
     } else if (event.type === 'SEEKING') {
+      isFinished = false
       const { currentTime } = event
       const seekObject = { currentTime }
       currentSeeks = [...currentSeeks, seekObject]
