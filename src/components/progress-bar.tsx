@@ -183,7 +183,9 @@ export const ProgressBar = () => {
     if (!thumbnails.length || !progressBarHoverTime) return undefined
     return (
       thumbnails
-        .find(({ timestamp, duration }) => timestamp <= progressBarHoverTime && progressBarHoverTime <= timestamp + duration)
+        .find(({ timestamp, duration }) =>
+          timestamp <= progressBarHoverTime && progressBarHoverTime <= timestamp + duration
+        )
     )
   }, [thumbnails.length, progressBarHoverTime])
 
@@ -223,11 +225,7 @@ export const ProgressBar = () => {
       <div className="thumbnail" style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
         {
           thumbnail
-            ? (
-              <img
-                src={URL.createObjectURL(new Blob([thumbnail.blob], { type: 'image/png' }))}
-              />
-            )
+            ? <img src={thumbnail.url}/>
             : undefined
         }
       </div>

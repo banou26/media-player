@@ -4,15 +4,17 @@ import { makeRemuxer } from 'libav-wasm'
 import PQueue from 'p-queue'
 
 import { fromAsyncCallback } from './utils'
-import { queuedThrottleWithLastCall, toStreamChunkSize } from '../utils'
+import { toStreamChunkSize } from '../utils'
 import { DownloadedRange } from '../utils/context'
+
+type ExtendedIndex = Index & { duration?: number }
 
 export type Thumbnail = {
   url: string
   blob: Blob
   timestamp: number
   duration: number
-  index: Index
+  index: ExtendedIndex
 }
 
 type DataSourceEvents =
@@ -37,9 +39,27 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
   receive(async (event) => {
     await readyPromise
     if (event.type === 'DOWNLOADED_RANGES_UPDATED') {
-      const readyIndexes =
+      // take 1 index every 5seconds
+      const selectedIndexes =
         metadata
           .indexes
+          .reduce((acc, index) => {
+            const lastIndex = acc.at(-1)
+            if (lastIndex && index.timestamp - lastIndex.timestamp < 5) {
+              return acc
+            } else {
+              const nextValidIndex =
+                metadata
+                  .indexes
+                  .slice(index.index + 1)
+                  .find(nextIndex => nextIndex.timestamp > index.timestamp + 5)
+              if (!nextValidIndex) return [...acc, index]
+              return [...acc, { ...index, duration: nextValidIndex.timestamp - index.timestamp }]
+            }
+          }, [] as Index[])
+
+      const readyIndexes =
+        selectedIndexes
           .filter((index) => {
             const nextIndex = metadata.indexes.at(index.index + 1)
             const endByte = nextIndex ? nextIndex.pos : remuxerOptions.length
@@ -73,7 +93,7 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
   const queue = new PQueue({ concurrency: 1 })
   
   let thumbnails: Thumbnail[] = []
-  const loadMore = (index: Index) =>
+  const loadMore = (index: ExtendedIndex) =>
     queue.add(async () => {
       if (thumbnails.find(thumbnail => thumbnail.index.index === index.index)) return
       const buffer = await remuxer.readKeyframe(index.timestamp)
@@ -89,7 +109,7 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
         blob,
         url,
         timestamp: index.timestamp,
-        duration,
+        duration: index.duration ?? duration,
         index
       } satisfies Thumbnail
       thumbnails.push(thumbnail)
