@@ -19,16 +19,20 @@ const Mount = () => {
   const [size, setSize] = useState<number>()
 
   const fetchData = useCallback(
-    async (offset: number, end?: number) =>
-      fetch(
-        '/video2.mkv',
-        {
-          headers: {
-            Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
+    async (offset: number, end?: number) => {
+      if (end && size && end >= size) return Promise.resolve(new Uint8Array(0))
+      if (size && offset >= size) return Promise.resolve(new Uint8Array(0))
+      return (
+        fetch(
+          '/video2.mkv',
+          {
+            headers: {
+              Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
+            }
           }
-        }
-      ),
-    []
+        ))
+    },
+    [size]
   )
 
   useEffect(() => {
