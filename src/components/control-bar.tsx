@@ -165,29 +165,29 @@ export const ControlBar = ({
 
   useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
+      let shouldPreventDefault = true
       // avoid triggering the browser's default behavior (e.g space for pause it opens the full screen)
-      ev.preventDefault()
       if (ev.key === 'f') toggleFullScreen()
-      if (ev.key === 'k') togglePlay(mediaActor, isPaused, duration, currentTime)
-      if (ev.key === ' ') togglePlay(mediaActor, isPaused, duration, currentTime)
-      if (ev.key === 'm') {
+      else if (ev.key === 'k') togglePlay(mediaActor, isPaused, duration, currentTime)
+      else if (ev.key === ' ') togglePlay(mediaActor, isPaused, duration, currentTime)
+      else if (ev.key === 'm') {
         mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
       }
-      if (ev.key === 'ArrowUp') {
+      else if (ev.key === 'ArrowUp') {
         if (volume <= 0.95) {
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: Math.round(volume * 100 + 5) / 100 })
         } else {
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: 1 })
         }
       }
-      if (ev.key === 'ArrowDown') {
+      else if (ev.key === 'ArrowDown') {
         if (volume >= 0.05) {
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: Math.round(volume * 100 - 5) / 100 })
         } else {
           mediaActor.send({ type: 'SET_VOLUME', muted: false, volume: 0 })
         }
       }
-      if (ev.key === 'ArrowRight') {
+      else if (ev.key === 'ArrowRight') {
         if (!duration) return
         if (currentTime + 5 >= duration) {
           mediaActor.send({ type: 'SET_TIME', value: duration })
@@ -195,12 +195,19 @@ export const ControlBar = ({
           mediaActor.send({ type: 'SET_TIME', value: currentTime + 5 })
         }
       }
-      if (ev.key === 'ArrowLeft') {
+      else if (ev.key === 'ArrowLeft') {
         if (currentTime - 5 < 0) {
           mediaActor.send({ type: 'SET_TIME', value: 0 })
         } else {
           mediaActor.send({ type: 'SET_TIME', value: currentTime - 5 })
         }
+      }
+      else {
+        shouldPreventDefault = false
+      }
+      
+      if (shouldPreventDefault) {
+        ev.preventDefault()
       }
     }
     window.addEventListener('keydown', eventListener)
