@@ -107,7 +107,6 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
         }
       })
 
-      console.log('subtitleParts', subtitleParts)
       for (const subtitlePart of subtitleParts) {
         if (subtitlePart.type === 'dialogue') {
           jassubInstance?.createEvent(subtitlePart.assEvent)

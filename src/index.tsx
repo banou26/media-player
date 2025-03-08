@@ -2,7 +2,7 @@
 import type { ClassAttributes, MutableRefObject, ReactNode, RefCallback } from 'react'
 import type { MediaPlayerContextType } from './utils/context'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { MediaMachineContext } from './state-machines'
@@ -37,6 +37,7 @@ export const FKNVideoRoot = (
   { options, videoElement, children }:
   { options: FKNVideoOptions, videoElement: HTMLVideoElement | undefined, children: ReactNode }
 ) => {
+  const mediaPlayerContext = useContext(MediaPlayerContext)
   const mediaActor = MediaMachineContext.useActorRef()
   const status = MediaMachineContext.useSelector((state) => state.value)
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
@@ -52,6 +53,26 @@ export const FKNVideoRoot = (
       mediaSourceOptions: {}
     }),
     []
+  )
+
+  useEffect(
+    () => {
+      if (!mediaActor || !isReady || !mediaPlayerContext.downloadedRanges) return
+      mediaActor.send({
+        type: 'DOWNLOADED_RANGES_UPDATED',
+        downloadedRanges: mediaPlayerContext.downloadedRanges
+      })
+    },
+    [
+      mediaActor,
+      isReady,
+      (
+        mediaPlayerContext
+          .downloadedRanges
+          ?.map(range => `${range.startByteOffset}-${range.endByteOffset}`)
+          ?? []
+      ).join(',')
+    ]
   )
 
   useEffect(() => {

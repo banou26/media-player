@@ -1,10 +1,10 @@
 import { createContext } from 'react'
 
 export type DownloadedRange =
-  | {
-    startTimestamp: number
-    endTimestamp: number
-  }
+  // | {
+  //   startTimestamp: number
+  //   endTimestamp: number
+  // }
   | {
     startByteOffset: number
     endByteOffset: number

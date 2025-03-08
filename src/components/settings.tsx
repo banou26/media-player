@@ -81,7 +81,6 @@ const SettingsAction = () => {
   const mediaActor = MediaMachineContext.useActorRef()
   const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
   const subtitle = MediaMachineContext.useSelector((state) => state.context.subtitleFragments)
-  console.log('subtitle', subtitle);
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)

@@ -92,12 +92,32 @@ const style = css`
     height: 2rem;
     width: 100%;
   }
+
+  .thumbnail {
+    display: flex;
+    justify-content: center;
+
+    position: absolute;
+    top: -17.5rem;
+    height: calc(25rem * 9/16);
+    width: 25rem;
+
+    margin-left: -12.5rem;
+    pointer-events: none;
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+  }
 `
 
 export const ProgressBar = () => {
   const mediaActor = MediaMachineContext.useActorRef()
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
+  const thumbnails = MediaMachineContext.useSelector((state) => state.context.thumbnails)
 
   const mediaPlayerContext = useContext(MediaPlayerContext)
 
@@ -159,6 +179,14 @@ export const ProgressBar = () => {
       : 1 / ((duration ?? 0) / (currentTime ?? 0))
   }, [duration, currentTime])
 
+  const thumbnail = useMemo(() => {
+    if (!thumbnails.length || !progressBarHoverTime) return undefined
+    return (
+      thumbnails
+        .find(({ timestamp, duration }) => timestamp <= progressBarHoverTime && progressBarHoverTime <= timestamp + duration)
+    )
+  }, [thumbnails.length, progressBarHoverTime])
+
   return (
     <div
       css={style}
@@ -192,6 +220,17 @@ export const ProgressBar = () => {
       <div className="chapters"></div>
       <div className="scrubber"></div>
       <div className="padding" onMouseDown={seekScrub}></div>
+      <div className="thumbnail" style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
+        {
+          thumbnail
+            ? (
+              <img
+                src={URL.createObjectURL(new Blob([thumbnail.blob], { type: 'image/png' }))}
+              />
+            )
+            : undefined
+        }
+      </div>
     </div>
   )
 }

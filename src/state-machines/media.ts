@@ -1,4 +1,4 @@
-import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
+import type { Attachment, SubtitleFragment, ThumbnailReadResult } from 'libav-wasm/build/worker'
 
 import { makeRemuxer } from 'libav-wasm'
 import { assign, setup, sendTo, enqueueActions, emit } from 'xstate'
@@ -7,7 +7,9 @@ import mediaPropertiesLogic from './media-properties'
 import mediaSourceLogic, { MediaSourceOptions } from './media-source'
 import dataSourceLogic from './data-source'
 import subtitlesLogic from './subtitles'
+import thumbnailsLogic, { Thumbnail } from './thumbnails'
 import { JassubOptions } from 'jassub'
+import { DownloadedRange } from '../utils/context'
 
 export default setup({
   types: {} as {
@@ -27,6 +29,7 @@ export default setup({
       },
       attachments: Attachment[]
       subtitleFragments: SubtitleFragment[]
+      thumbnails: Thumbnail[]
       isReady: boolean
     },
     events:
@@ -55,6 +58,8 @@ export default setup({
       | { type: 'TIMESTAMP_OFFSET', timestampOffset: number }
       | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
       | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
+      | { type: 'NEW_THUMBNAIL', thumbnail: Thumbnail }
+      | { type: 'DOWNLOADED_RANGES_UPDATED', downloadedRanges: DownloadedRange[] }
       | { type: 'DESTROY' }
   },
   actions: {
@@ -68,6 +73,7 @@ export default setup({
     mediaLogic: mediaPropertiesLogic,
     mediaSourceLogic: mediaSourceLogic,
     dataSourceLogic: dataSourceLogic,
+    thumbnailsLogic: thumbnailsLogic,
     subtitlesLogic: subtitlesLogic,
   },
 }).createMachine({
@@ -87,6 +93,7 @@ export default setup({
     },
     attachments: [],
     subtitleFragments: [],
+    thumbnails: [],
     isReady: false
   },
   initial: 'WAITING',
@@ -160,6 +167,11 @@ export default setup({
           input: ({ context }) => ({ remuxerOptions: context.remuxerOptions! }),
         },
         {
+          id: 'thumbnails',
+          src: 'thumbnailsLogic',
+          input: ({ context }) => ({ remuxerOptions: context.remuxerOptions! }),
+        },
+        {
           id: 'subtitles',
           src: 'subtitlesLogic',
           input: ({ context }) => ({
@@ -188,6 +200,8 @@ export default setup({
         'SEEKING': { actions: sendTo('dataSource', ({ event }) => event) },
         'DATA': { actions: sendTo('mediaSource', ({ event }) => event) },
         'TIMESTAMP_OFFSET': { actions: sendTo('mediaSource', ({ event }) => event) },
+        'NEW_THUMBNAIL': { actions: [assign({ thumbnails: ({ context, event }) => [...context.thumbnails, event.thumbnail] })] },
+        'DOWNLOADED_RANGES_UPDATED': { actions: sendTo('thumbnails', ({ event }) => event) },
         'NEW_ATTACHMENTS': {
           actions: [
             assign({ attachments: ({ context, event }) => [...context.attachments, ...event.attachments] }),

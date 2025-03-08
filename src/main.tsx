@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import MediaPlayer from './index'
+import { DownloadedRange } from './utils/context'
 
 const mountStyle = css`
   display: grid;
@@ -62,11 +63,34 @@ const Mount = () => {
     return new URL('/build/jassub-modern-worker.wasm', new URL(window.location.toString()).origin).toString()
   }, [])
 
+  const [downloadedRanges, setDownloadedRanges] = useState<DownloadedRange[]>([])
+
+  useEffect(() => {
+    if (!size) return
+    
+    let i = 0
+
+    const increaseDownloadedRanges = () => {
+      setDownloadedRanges(() => [
+        {
+          startByteOffset: 0,
+          endByteOffset: size * i
+        }
+      ])
+      i += 0.1
+      if (i < 1) {
+        setTimeout(increaseDownloadedRanges, 1000)
+      }
+    }
+
+    increaseDownloadedRanges()
+  }, [size])
+
   return (
     <div css={mountStyle}>
       <MediaPlayer
         title={'video.mkv'}
-        downloadedRanges={size ? [{ startByteOffset: 0, endByteOffset: size / 2 }] : undefined}
+        downloadedRanges={size ? downloadedRanges : undefined}
         fetchData={fetchData}
         size={size}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
