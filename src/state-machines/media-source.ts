@@ -70,14 +70,14 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
 
   if (!headerBuffer) throw new Error('No header buffer')
 
-  const { appendBuffer, unbufferRange } = updateSourceBuffer(sourceBuffer)
+  const { appendBuffer, unbufferRange, updateTimestampOffset } = updateSourceBuffer(sourceBuffer)
   appendBuffer(headerBuffer)
 
   receive(async (event) => {
     if (event.type === 'DATA') {
       await appendBuffer(event.data)
     } else if (event.type === 'TIMESTAMP_OFFSET') {
-      sourceBuffer.timestampOffset = event.timestampOffset
+      await updateTimestampOffset(event.timestampOffset)
     }
   })
 

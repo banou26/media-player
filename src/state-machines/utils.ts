@@ -81,8 +81,14 @@ export const updateSourceBuffer = (sourceBuffer: SourceBuffer) => {
       })
     )
 
+  const updateTimestampOffset = (timestampOffset: number) =>
+    queue.add(() => {
+      sourceBuffer.timestampOffset = timestampOffset
+    })
+
   return {
     appendBuffer,
-    unbufferRange
+    unbufferRange,
+    updateTimestampOffset
   }
 }
