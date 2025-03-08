@@ -1,6 +1,6 @@
-import { RefObject, useContext, useEffect, useState } from 'react'
+import { RefObject, useContext, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, RotateCcw, Settings } from 'react-feather'
+import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
 import { MediaMachineContext } from '../state-machines'
 import { TooltipDisplay } from './tooltip-display'
@@ -9,9 +9,10 @@ import { MediaPlayerContext } from '../utils/context'
 import { ProgressBar } from './progress-bar'
 import { formatMediaTime } from '../utils/time'
 import { fonts } from '../utils/fonts'
-import Sound from './sound'
-import colors from '../utils/colors'
 import pictureInPicture from '../assets/picture-in-picture.svg'
+import SettingsAction from './settings'
+import colors from '../utils/colors'
+import Sound from './sound'
 
 const style = css`
   position: absolute;
@@ -108,6 +109,7 @@ const style = css`
       }
     }
     .right {
+
       .picture-in-picture {
         img {
           width: 22px;
@@ -138,8 +140,6 @@ export const ControlBar = ({
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
-  const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
-  console.log('ControlBar', { currentTime, duration, playbackRate })
   
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -248,22 +248,7 @@ export const ControlBar = ({
           </div>
         </div>
         <div className='right'>
-          <TooltipDisplay
-            id='settings'
-            text={
-              <button
-                className='settings'
-                type='button'
-              >
-                <Settings />
-              </button>
-            }
-            toolTipText={
-              <span>
-                Settings
-              </span>
-            }
-          />
+          <SettingsAction />
           <TooltipDisplay
             id='picture-in-picture'
             text={

@@ -78,7 +78,10 @@ export const Chrome = ({ children }: ChromeOptions) => {
     >
       <Overlay />
       <ControlBar containerRef={containerRef} />
-      <div className='video' onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}>
+      <div
+        className='video'
+        onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}
+      >
         {children}
       </div>
     </div>

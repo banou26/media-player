@@ -11,7 +11,7 @@ const style = (size: buttonSize) => css`
   border-radius: 0.4rem;
   user-select: none;
 
-  z-index: 10;
+  z-index: 3;
 
   * {
     ${fonts.bSmall.regular}
@@ -37,6 +37,7 @@ interface TooltipDisplayProps {
   offset?: number
   tooltipPlace?: PlacesType
   size?: buttonSize
+  disabled?: boolean
 }
 
 export enum buttonSize {
@@ -53,6 +54,7 @@ export const TooltipDisplay = ({
   closeDelay = 0,
   offset = 20,
   tooltipPlace = 'top',
+  disabled = false,
   size = buttonSize.md
 }: TooltipDisplayProps) => (
   <>
@@ -66,8 +68,16 @@ export const TooltipDisplay = ({
     >
       {text}
     </div>
-    <Tooltip css={style(size)} id={id} noArrow={true}>
-      {toolTipText}
-    </Tooltip>
+    {
+      !disabled && (
+        <Tooltip
+          css={style(size)}
+          id={id}
+          noArrow={true}
+        >
+          {toolTipText}
+        </Tooltip>
+      )
+    }
   </>
 )
