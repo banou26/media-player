@@ -46,7 +46,8 @@ const style = css`
     display: flex;
     justify-content: center;
 
-    ${fonts.bMedium.regular}
+    text-shadow: 0 0 4px rgba(0, 0, 0, 1);
+    ${fonts.bMedium.bold}
 
     position: absolute;
     top: -2.5rem;
@@ -106,6 +107,9 @@ const style = css`
     pointer-events: none;
 
     img {
+      border-radius: .4rem;
+      box-shadow: 0 0 1rem rgba(0, 0, 0, .5);
+
       width: 100%;
       height: 100%;
       object-fit: cover;
@@ -189,6 +193,11 @@ export const ProgressBar = () => {
     )
   }, [thumbnails.length, progressBarHoverTime])
 
+  const thumbnailPercentage = useMemo(() => {
+    if (!thumbnail || !progressBarHoverTime) return 0
+    return 1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100
+  }, [thumbnail, progressBarHoverTime])
+
   return (
     <div
       css={style}
@@ -197,11 +206,14 @@ export const ProgressBar = () => {
       onMouseMove={onProgressBarOver}
       onMouseOut={hideProgressBarTime}
     >
-      <div className="background-bar"></div>
+      <div className="background-bar" />
       {
         progressBarHoverTime
           ? (
-            <div className="cursor-time" style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
+            <div
+              className="cursor-time"
+              style={{ left: `clamp(12.5rem, ${thumbnailPercentage}%, calc(100% - 12.5rem))` }}
+            >
               {cusorTimeString}
             </div>
           )
@@ -222,7 +234,10 @@ export const ProgressBar = () => {
       <div className="chapters"></div>
       <div className="scrubber"></div>
       <div className="padding" onMouseDown={seekScrub}></div>
-      <div className="thumbnail" style={{ left: `${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%` }}>
+      <div
+        className="thumbnail"
+        style={{ left: `clamp(12.5rem, ${thumbnailPercentage}%, calc(100% - 12.5rem))` }}
+      >
         {
           thumbnail
             ? <img src={thumbnail.url}/>
