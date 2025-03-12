@@ -193,11 +193,6 @@ export const ProgressBar = () => {
     )
   }, [thumbnails.length, progressBarHoverTime])
 
-  const thumbnailPercentage = useMemo(() => {
-    if (!thumbnail || !progressBarHoverTime) return 0
-    return 1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100
-  }, [thumbnail, progressBarHoverTime])
-
   return (
     <div
       css={style}
@@ -212,7 +207,7 @@ export const ProgressBar = () => {
           ? (
             <div
               className="cursor-time"
-              style={{ left: `clamp(12.5rem, ${thumbnailPercentage}%, calc(100% - 12.5rem))` }}
+              style={{ left: `clamp(1.8rem, ${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%, calc(100% - 1.8rem))` }}
             >
               {cusorTimeString}
             </div>
@@ -236,7 +231,7 @@ export const ProgressBar = () => {
       <div className="padding" onMouseDown={seekScrub}></div>
       <div
         className="thumbnail"
-        style={{ left: `clamp(12.5rem, ${thumbnailPercentage}%, calc(100% - 12.5rem))` }}
+        style={{ left: `clamp(12.5rem, ${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%, calc(100% - 12.5rem))` }}
       >
         {
           thumbnail
