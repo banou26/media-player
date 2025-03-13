@@ -160,7 +160,7 @@ export const ProgressBar = () => {
     ?? []
 
   const cusorTimeString = useMemo(() => {
-    if (!progressBarHoverTime) return undefined
+    if (!progressBarHoverTime || progressBarHoverTime < 0) return undefined
     const hours = Math.floor(progressBarHoverTime! / 3600)
     const minutes = Math.floor((progressBarHoverTime! - hours * 3600) / 60)
     const seconds = Math.floor(progressBarHoverTime! - hours * 3600 - minutes * 60)
