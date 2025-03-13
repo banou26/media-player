@@ -1,40 +1,42 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import MediaPlayer from './index'
+import { DownloadedRange } from './utils/context'
 
 const mountStyle = css`
   display: grid;
-  height: 100%;
-  width: 100%;
+  height: 100vh;
+  width: 100vw;
 `
 
 const BASE_BUFFER_SIZE = 5_000_000
 const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
 
 const Mount = () => {
-  const [videoElemRef, setVideoElemRef] = useState<HTMLVideoElement | null>()
   const [size, setSize] = useState<number>()
 
-  useEffect(() => {
-    if (!videoElemRef) return
-    videoElemRef.addEventListener('error', err => console.log('err', err))
-  }, [videoElemRef])
+  const fetchData = useCallback(
+    async (offset: number, end?: number) => {
+      if (end && size && end >= size) return Promise.resolve(new Uint8Array(0))
+      if (size && offset >= size) return Promise.resolve(new Uint8Array(0))
+      return (
+        fetch(
+          '/video2.mkv',
+          {
+            headers: {
+              Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
+            }
+          }
+        ))
+    },
+    [size]
+  )
 
-  const onFetch = async (offset: number, end?: number) =>
-    fetch(
-      '/video9.mkv',
-      {
-        headers: {
-          Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
-        }
-      }
-    )
-
   useEffect(() => {
-    onFetch(0, 1).then(async ({ headers, body }) => {
+    fetchData(0, 1).then(async ({ headers, body }) => {
       if (!body) throw new Error('no body')
       const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
       const contentLength =
@@ -57,17 +59,49 @@ const Mount = () => {
     return URL.createObjectURL(blob)
   }, [])
 
+  const jassubWasmUrl = useMemo(() => {
+    return new URL('/build/jassub-worker.wasm', new URL(window.location.toString()).origin).toString()
+  }, [])
+
+  const jassubModernWasmUrl = useMemo(() => {
+    return new URL('/build/jassub-modern-worker.wasm', new URL(window.location.toString()).origin).toString()
+  }, [])
+
+  const [downloadedRanges, setDownloadedRanges] = useState<DownloadedRange[]>([])
+
+  useEffect(() => {
+    if (!size) return
+    
+    let i = 0
+
+    const increaseDownloadedRanges = () => {
+      setDownloadedRanges(() => [
+        {
+          startByteOffset: 0,
+          endByteOffset: size * i
+        }
+      ])
+      i += 0.1
+      if (i < 1) {
+        setTimeout(increaseDownloadedRanges, 1000)
+      }
+    }
+
+    increaseDownloadedRanges()
+  }, [size])
+
   return (
     <div css={mountStyle}>
       <MediaPlayer
-        baseBufferSize={BASE_BUFFER_SIZE}
-        ref={setVideoElemRef}
+        title={'video.mkv'}
+        downloadedRanges={size ? downloadedRanges : undefined}
+        fetchData={fetchData}
         size={size}
-        fetch={(offset, end) => onFetch(offset, end)}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
-        wasmUrl={new URL('/build/jassub-worker-modern.wasm', new URL(import.meta.url).origin).toString()}
+        jassubModernWasmUrl={jassubModernWasmUrl}
+        jassubWorkerUrl={jassubWorkerUrl}
+        jassubWasmUrl={jassubWasmUrl}
         libavWorkerUrl={libavWorkerUrl}
-        libassWorkerUrl={jassubWorkerUrl}
       />
     </div>
   )
@@ -97,7 +131,6 @@ const globalStyle = css`
     color: #fff;
     
     font-family: Montserrat;
-    // font-family: "Segoe UI", Roboto, "Fira Sans",  "Helvetica Neue", Arial, sans-serif;
   }
 
   body > div {
@@ -134,7 +167,7 @@ root.render(
 )
 
 if (import.meta.hot) {
-  import.meta.hot.dispose((data) => {
+  import.meta.hot.dispose(() => {
     root.unmount()
     mountElement.remove()
   })

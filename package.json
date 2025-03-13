@@ -30,20 +30,22 @@
     "concurrently": "^7.6.0",
     "copyfiles": "^2.4.1",
     "mime": "^3.0.0",
-    "react-dom": "^18.2.0",
+    "react-dom": "^19.0.0",
     "shx": "^0.3.4",
     "typescript": "^4.9.4",
     "vite": "^4.0.4"
   },
   "dependencies": {
     "@emotion/react": "^11.10.5",
-    "jassub": "^1.7.1",
-    "libav-wasm": "^0.3.4",
-    "mp4box": "^0.5.2",
-    "osra": "^0.0.11",
+    "@xstate/react": "^5.0.1",
+    "ass-compiler": "^0.1.15",
+    "jassub": "^1.7.18",
+    "libav-wasm": "^0.5.2",
+    "osra": "^0.1.2",
     "p-queue": "^7.3.4",
-    "react": "^18.2.0",
+    "react": "^19.0.0",
     "react-feather": "^2.0.10",
-    "react-tooltip": "^5.26.3"
+    "react-tooltip": "^5.28.0",
+    "xstate": "^5.19.1"
   }
 }

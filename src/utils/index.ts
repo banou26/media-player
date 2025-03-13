@@ -1,11 +1,3 @@
-export type Chunk = {
-  offset: number
-  buffer: Uint8Array
-  pts: number
-  duration: number
-  pos: number
-  buffered: boolean
-}
 
 export function debounceImmediateAndLatest<T extends (...args: any[]) => any>(
   wait: number,
@@ -40,7 +32,7 @@ export function debounceImmediateAndLatest<T extends (...args: any[]) => any>(
   return debouncedFunction as T;
 }
 
-export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args: T2) => any>(time: number, func: T) => {
+export const queuedThrottleWithLastCall = <T2 extends any[], T extends (...args: T2) => any>(time: number, func: T) => {
   let runningFunction: Promise<ReturnType<T>> | undefined
   let lastCall: Promise<ReturnType<T>> | undefined
   let lastCallArguments: T2 | undefined
@@ -116,22 +108,6 @@ export const queuedDebounceWithLastCall = <T2 extends any[], T extends (...args:
     }
   }
 }
-
-const getTimeRanges = (sourceBuffer: SourceBuffer) =>
-  Array(sourceBuffer.buffered.length)
-    .fill(undefined)
-    .map((_, index) => ({
-      index,
-      start: sourceBuffer.buffered.start(index),
-      end: sourceBuffer.buffered.end(index)
-    }))
-
-const getTimeRange =
-  (sourceBuffer: SourceBuffer) =>
-    (time: number) =>
-      getTimeRanges(sourceBuffer)
-        .find(({ start, end }) => time >= start && time <= end)
-
 
 // todo: reimplement this into a ReadableByteStream https://web.dev/streams/ once Safari gets support
 export const toStreamChunkSize = (SIZE: number) => (stream: ReadableStream) =>
