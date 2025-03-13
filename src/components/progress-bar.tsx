@@ -141,7 +141,7 @@ export const ProgressBar = () => {
     setProgressBarOverTime(undefined)
   }
 
-  const loadedParts =
+  const loadedParts = useMemo(() =>
     mediaPlayerContext
       .downloadedRanges
       ?.map((range, i) => {
@@ -157,7 +157,9 @@ export const ProgressBar = () => {
           return null
         }
       })
-    ?? []
+    ?? [],
+    [mediaPlayerContext.downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
+  )
 
   const cusorTimeString = useMemo(() => {
     if (!progressBarHoverTime || progressBarHoverTime < 0) return undefined
