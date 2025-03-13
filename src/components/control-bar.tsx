@@ -13,6 +13,7 @@ import pictureInPicture from '../assets/picture-in-picture.svg'
 import SettingsAction from './settings'
 import colors from '../utils/colors'
 import Sound from './sound'
+import { linearToLogVolume, logToLinearVolume } from '../utils/volume-utils'
 
 const style = css`
   position: absolute;
@@ -166,18 +167,15 @@ export const ControlBar = ({
 
   const modifyVolume = useCallback(({ direction, stepSize }: { direction: 'up' | 'down', stepSize: number }) => {
     if (!mediaActor) return
+    const linearVolume = logToLinearVolume(volume)
     const step = (direction === 'up' ? stepSize : -stepSize)
+    const newLinearVolume = Math.max(0, Math.min(1, linearVolume + step))
+    const newLogVolume = linearToLogVolume(newLinearVolume)
+    
     mediaActor.send({
       type: 'SET_VOLUME',
       muted,
-      volume:
-        Math.max(
-          0,
-          Math.min(
-            1,
-            Math.round((volume + step) * 100) / 100
-          )
-        )
+      volume: newLogVolume
     })
   }, [mediaActor.id, muted, volume])
 

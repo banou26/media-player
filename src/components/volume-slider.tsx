@@ -1,8 +1,9 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import { css } from '@emotion/react'
 
 import { TooltipDisplay } from './tooltip-display'
 import { MediaMachineContext } from '../state-machines'
+import { logToLinearVolume } from '../utils/volume-utils'
 
 const style = css`
   display: flex;
@@ -112,6 +113,11 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
   const fillColor = '#fff'
   const emptyColor = '#3A3A3A'
 
+  const displayVolumePercent = useMemo(
+    () => Math.round(muted ? 0 : logToLinearVolume(volume) * 100),
+    [volume]
+  )
+
   return (
     <TooltipDisplay
       id='volume-slider'
@@ -140,7 +146,7 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
       }
       toolTipText={
         <div className='volume-value'>
-          {muted ? '0%' : `${Math.round(volume * 100)}%`}
+          {displayVolumePercent}%
         </div>
       }
     />

@@ -5,7 +5,8 @@ import { MediaMachineContext } from "../state-machines"
 import { TooltipDisplay } from "./tooltip-display"
 import { fonts } from "../utils/fonts"
 import VolumeSlider from "./volume-slider"
-import { MutableRefObject } from 'react'
+import { MutableRefObject, useMemo } from 'react'
+import { linearToLogVolume, logToLinearVolume } from "../utils/volume-utils"
 
 const style = css`
   position: relative;
@@ -53,13 +54,13 @@ const Sound = ({ ref }: { ref: MutableRefObject<HTMLDivElement> }) => {
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
 
-  const setVolume = (newVolume: number, muted: boolean) => {
+  const linearVolume = useMemo(() => logToLinearVolume(volume), [volume])
+  const setVolume = (newLinearVolume: number, muted: boolean) =>
     mediaActor.send({
       type: 'SET_VOLUME',
       muted,
-      volume: Number(newVolume.toFixed(2))
+      volume: linearToLogVolume(newLinearVolume)
     })
-  }
 
   return (
     <div css={style}>
@@ -69,7 +70,7 @@ const Sound = ({ ref }: { ref: MutableRefObject<HTMLDivElement> }) => {
           <button
             className='sound'
             type='button'
-            onClick={() => setVolume(volume, !muted)}
+            onClick={() => setVolume(linearVolume, !muted)}
             ref={ref}
           >
             {muted || volume === 0
@@ -86,7 +87,10 @@ const Sound = ({ ref }: { ref: MutableRefObject<HTMLDivElement> }) => {
       />
       <div className='volume-slider-container'>
         <div className='volume-slider-background'>
-          <VolumeSlider value={muted ? 0 : volume} onChange={volume => setVolume(volume, false)} />
+          <VolumeSlider 
+            value={muted ? 0 : linearVolume} 
+            onChange={linearValue => setVolume(linearValue, false)} 
+          />
         </div>
       </div>
     </div>
