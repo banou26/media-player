@@ -1,12 +1,12 @@
-import type { Attachment, SubtitleFragment, ThumbnailReadResult } from 'libav-wasm/build/worker'
+import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
 
 import { makeRemuxer } from 'libav-wasm'
-import { assign, setup, sendTo, enqueueActions, emit } from 'xstate'
+import { assign, setup, sendTo, enqueueActions } from 'xstate'
 
 import mediaPropertiesLogic from './media-properties'
 import mediaSourceLogic, { MediaSourceOptions } from './media-source'
 import dataSourceLogic from './data-source'
-import subtitlesLogic from './subtitles'
+import subtitlesLogic, { SubtitleStream } from './subtitles'
 import thumbnailsLogic, { Thumbnail } from './thumbnails'
 import { JassubOptions } from 'jassub'
 import { DownloadedRange } from '../utils/context'
@@ -29,6 +29,8 @@ export default setup({
       },
       attachments: Attachment[]
       subtitleFragments: SubtitleFragment[]
+      subtitleStreams: SubtitleStream[]
+      selectedSubtitleStreamIndex: number | undefined
       thumbnails: Thumbnail[]
       isReady: boolean
     },
@@ -58,6 +60,8 @@ export default setup({
       | { type: 'TIMESTAMP_OFFSET', timestampOffset: number }
       | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
       | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
+      | { type: 'SUBTITLE_STREAMS_UPDATED', subtitlesStreams: SubtitleStream[] }
+      | { type: 'SELECT_SUBTITLE_STREAM', streamIndex: number }
       | { type: 'NEW_THUMBNAIL', thumbnail: Thumbnail }
       | { type: 'DOWNLOADED_RANGES_UPDATED', downloadedRanges: DownloadedRange[] }
       | { type: 'DESTROY' }
@@ -93,6 +97,8 @@ export default setup({
     },
     attachments: [],
     subtitleFragments: [],
+    subtitleStreams: [],
+    selectedSubtitleStreamIndex: undefined,
     thumbnails: [],
     isReady: false
   },
@@ -213,6 +219,22 @@ export default setup({
             assign({ subtitleFragments: ({ context, event }) => [...context.subtitleFragments, ...event.subtitles] }),
             sendTo('subtitles', ({ event }) => event)
             // emit(({ event }) => ({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: event.subtitles }))
+          ]
+        },
+        'SUBTITLE_STREAMS_UPDATED': {
+          actions: [
+            assign({ subtitleStreams: ({ event }) => event.subtitlesStreams }),
+            sendTo('subtitles', ({ event }) => event)
+          ]
+        },
+        'SELECT_SUBTITLE_STREAM': {
+          actions: [
+            sendTo('subtitles', ({ event }) => event)
+          ]
+        },
+        'SELECTED_SUBTITLE_STREAM_UPDATED': {
+          actions: [
+            assign({ selectedSubtitleStreamIndex: ({ event }) => event.streamIndex })
           ]
         },
         'DESTROY': { target: 'WAITING' }

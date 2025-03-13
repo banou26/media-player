@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { css } from "@emotion/react"
 import { ChevronRight, Settings } from "react-feather"
 
@@ -80,7 +80,8 @@ enum PopoverContent {
 const SettingsAction = () => {
   const mediaActor = MediaMachineContext.useActorRef()
   const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
-  const subtitle = MediaMachineContext.useSelector((state) => state.context.subtitleFragments)
+  const subtitleStreams = MediaMachineContext.useSelector((state) => state.context.subtitleStreams)
+  const selectedSubtitleStreamIndex = MediaMachineContext.useSelector((state) => state.context.selectedSubtitleStreamIndex)
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -110,6 +111,20 @@ const SettingsAction = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [isOpenPopover])
 
+  const languagesWithStreamIndex = useMemo(
+    () => subtitleStreams.map(({ header }) => ({ streamIndex: header.streamIndex, language: header.parsed.info.Title })),
+    [subtitleStreams.length]
+  )
+
+  const setLanguage = (languageWithStreamIndex: { streamIndex: number, language: string }) => () => {
+    mediaActor.send({ type: 'SELECT_SUBTITLE_STREAM', streamIndex: languageWithStreamIndex.streamIndex })
+    togglePopover()
+  }
+
+  const changePopoverContent = (newPopoverContent: PopoverContent) => () => {
+    setPopoverContent(newPopoverContent)
+  }
+
   return (
     <div css={style} ref={settingsContainerRef}>
       <TooltipDisplay
@@ -133,25 +148,25 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.Default && (
           <div className='popover'>
-            <div onClick={() => setPopoverContent(PopoverContent.Advanced)}>
+            <div onClick={changePopoverContent(PopoverContent.Advanced)}>
               <span>Advanced</span>
               <div>
                 <ChevronRight />
               </div>
             </div>
-            <div onClick={() => setPopoverContent(PopoverContent.SelectNewSources)}>
+            <div onClick={changePopoverContent(PopoverContent.SelectNewSources)}>
               <div>Select new sources</div>
               <div>
                 <ChevronRight />
               </div>
             </div>
-            <div onClick={() => setPopoverContent(PopoverContent.Subtitles)}>
+            <div onClick={changePopoverContent(PopoverContent.Subtitles)}>
               <div>Subtitles</div>
               <div>
                 <ChevronRight />
               </div>
             </div>
-            <div onClick={() => setPopoverContent(PopoverContent.PlaybackRate)}>
+            <div onClick={changePopoverContent(PopoverContent.PlaybackRate)}>
               <div>Vitesse de lecture</div>
               <div>
                 <span className='secondary'>
@@ -170,7 +185,7 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.PlaybackRate && (
           <div className='popover'>
-            <div onClick={() => setPopoverContent(PopoverContent.Default)}>
+            <div onClick={changePopoverContent(PopoverContent.Default)}>
               <div>Retour</div>
               <div></div>
             </div>
@@ -209,7 +224,7 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.Advanced && (
           <div className='popover'>
-            <div onClick={() => setPopoverContent(PopoverContent.Default)}>
+            <div onClick={changePopoverContent(PopoverContent.Default)}>
               <div>Retour</div>
               <div></div>
             </div>
@@ -223,7 +238,7 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.SelectNewSources && (
           <div className='popover'>
-            <div onClick={() => setPopoverContent(PopoverContent.Default)}>
+            <div onClick={changePopoverContent(PopoverContent.Default)}>
               <div>Retour</div>
               <div></div>
             </div>
@@ -237,7 +252,18 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.Subtitles && (
           <div className='popover'>
-            <div onClick={() => setPopoverContent(PopoverContent.Default)}>
+            {
+              languagesWithStreamIndex.map((languageWithStreamIndex) => (
+                <div
+                  key={languageWithStreamIndex.streamIndex}
+                  onClick={setLanguage(languageWithStreamIndex)}
+                >
+                  <div>{languageWithStreamIndex.language}</div>
+                  <div>{selectedSubtitleStreamIndex === languageWithStreamIndex.streamIndex ? '✓' : ''}</div>
+                </div>
+              ))
+            }
+            <div onClick={changePopoverContent(PopoverContent.Default)}>
               <div>Retour</div>
               <div></div>
             </div>

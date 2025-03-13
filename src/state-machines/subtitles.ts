@@ -1,4 +1,4 @@
-import type { ParsedASS } from 'ass-compiler'
+import type { ParsedASS, ParsedASSStyles } from 'ass-compiler'
 import type { ASS_Event, JassubOptions } from 'jassub'
 
 import JASSUB from 'jassub'
@@ -10,9 +10,12 @@ import { fromAsyncCallback } from './utils'
 type SubtitlesEvents =
   | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
   | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
+  | { type: 'SELECT_SUBTITLE_STREAM', streamIndex: number }
 
 type SubtitlesEmittedEvents =
   | { type: 'WAITING' }
+  | { type: 'SUBTITLE_STREAMS_UPDATED', subtitlesStreams: SubtitleStream[] }
+  | { type: 'SELECTED_SUBTITLE_STREAM_UPDATED', streamIndex: number }
 
 type SubtitlesInput = {
   publicPath: string
@@ -21,11 +24,11 @@ type SubtitlesInput = {
   subtitlesRendererOptions: Omit<JassubOptions, 'video' | 'canvas'>
 }
 
-type SubtitlePart =
+export type SubtitlePart =
   | { type: 'header', streamIndex: number, content: string, eventsContent: string, dialogueFormatContent: string, parsed: ParsedASS }
   | { type: 'dialogue', streamIndex: number, index: number, content: string, parsed: ParsedASS, assEvent: ASS_Event }
 
-type SubtitleStream = {
+export type SubtitleStream = {
   header: SubtitlePart & { type: 'header' }
   dialogues: (SubtitlePart & { type: 'dialogue' })[]
 }
@@ -35,6 +38,91 @@ const convertTimestamp = (ms: number) =>
     .toISOString()
     .slice(11, 22)
 
+const appendParsedStyle = (jassubInstance: JASSUB, style: ParsedASSStyles['style'][number]) => {
+  jassubInstance.createStyle({
+    ...style,
+    FontName: style.Fontname,
+    FontSize: style.Fontsize,
+    PrimaryColour: style.PrimaryColour,
+    BackColour: style.BackColour,
+    OutlineColour: style.OutlineColour,
+    Bold: style.Bold,
+    Italic: style.Italic,
+    Underline: style.Underline,
+    StrikeOut: style.StrikeOut,
+    ScaleX: style.ScaleX,
+    ScaleY: style.ScaleY,
+    Spacing: style.Spacing,
+    Angle: style.Angle,
+    BorderStyle: style.BorderStyle,
+    Outline: style.Outline,
+    Shadow: style.Shadow,
+    Alignment: style.Alignment,
+    MarginL: style.MarginL,
+    MarginR: style.MarginR,
+    MarginV: style.MarginV,
+    Encoding: style.Encoding
+  })
+}
+
+const subtitleHeaderFragmentToSubtitleHeaderPart = (subtitleHeaderFragment: SubtitleFragment) => {
+  const eventsContent =
+    subtitleHeaderFragment
+      .content
+      .match(/\r\n\[Events\]\r\nFormat: (.*)/)
+      ?.[0]
+  const dialogueFormatContent =
+    eventsContent
+      ?.trim()
+      .split('\n')
+      [1]
+  if (!eventsContent || !dialogueFormatContent) {
+    throw new Error('dialogueFormatContent is undefined')
+  }
+  return {
+    type: 'header',
+    streamIndex: subtitleHeaderFragment.streamIndex,
+    content: subtitleHeaderFragment.content,
+    eventsContent,
+    dialogueFormatContent,
+    parsed: parse(subtitleHeaderFragment.content)
+  } as SubtitlePart & { type: 'header' }
+}
+
+const subtitleDialogueFragmentToSubtitleDialoguePart = (
+  header: SubtitlePart & { type: 'header' },
+  subtitleFragment: SubtitleFragment & { type: 'dialogue' }
+) => {
+  const [dialogueIndexString, layer] = subtitleFragment.content.split(',')
+  const dialogueIndex = Number(dialogueIndexString)
+  const startTimestamp = convertTimestamp(subtitleFragment.start)
+  const endTimestamp = convertTimestamp(subtitleFragment.end)
+  const dialogueSourceContent = subtitleFragment.content.replace(`${dialogueIndex},${layer},`, '')
+  const dialogueContent = `Dialogue: ${layer},${startTimestamp},${endTimestamp},${dialogueSourceContent}`
+  const parsedEvent = parse(`${header.eventsContent}\r\n${dialogueContent}`)
+  const dialogueEvent = parsedEvent.events.dialogue[0]
+  if (!dialogueEvent) {
+    throw new Error('dialogueEvent is undefined')
+  }
+  return {
+    type: 'dialogue',
+    streamIndex: subtitleFragment.streamIndex,
+    index: dialogueIndex,
+    content: dialogueContent,
+    parsed: parse(`${header.eventsContent}\r\n${dialogueContent}`),
+    assEvent: {
+      ...dialogueEvent,
+      Effect: dialogueEvent.Effect ?? '',
+      Text: dialogueEvent.Text.raw,
+      Duration: (dialogueEvent.End - dialogueEvent.Start) * 1000,
+      Start: dialogueEvent.Start * 1000,
+      End: dialogueEvent.End * 1000,
+      ReadOrder: dialogueIndex,
+      _index: dialogueIndex
+    } as ASS_Event
+  } as SubtitlePart & { type: 'dialogue' }
+}
+
 export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
   const { publicPath, subtitlesRendererOptions, videoElement: video, canvasElement: canvas } = input
 
@@ -42,68 +130,61 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
   let jassubInstance: JASSUB | undefined
 
   const subtitlesStreams = new Map<number, SubtitleStream>()
-  const appendedSubtitleParts: SubtitlePart[] = []
+  let appendedSubtitleParts: SubtitlePart[] = []
+  let selectedStreamIndex: number | undefined
 
   receive((event) => {
+    if (event.type === 'SELECT_SUBTITLE_STREAM') {
+      selectedStreamIndex = event.streamIndex
+      sendBack({ type: 'SELECTED_SUBTITLE_STREAM_UPDATED', streamIndex: event.streamIndex })
+      if (!jassubInstance) return
+      jassubInstance.freeTrack()
+      appendedSubtitleParts = []
+      const newSubtitleStreams = subtitlesStreams.get(selectedStreamIndex)
+      if (!newSubtitleStreams) {
+        throw new Error('newSubtitleStreams is undefined')
+      }
+      jassubInstance.setTrack(newSubtitleStreams.header.content)
+      jassubInstance.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
+      for (const styleIndex in newSubtitleStreams.header.parsed.styles) {
+        const style = newSubtitleStreams.header.parsed.styles.style[Number(styleIndex)]
+        if (!style) continue
+        appendParsedStyle(jassubInstance, style)
+      }
+      for (const dialogue of newSubtitleStreams?.dialogues ?? []) {
+        const alreadyAppended =
+          appendedSubtitleParts
+            .filter(appendedSubtitlePart => appendedSubtitlePart.type === 'dialogue')
+            .find(appendedSubtitlePart =>
+              appendedSubtitlePart.streamIndex === dialogue.streamIndex
+              && appendedSubtitlePart.index === dialogue.index
+            )
+        if (alreadyAppended || selectedStreamIndex !== dialogue.streamIndex) {
+          continue
+        }
+        jassubInstance?.createEvent(dialogue.assEvent)
+        appendedSubtitleParts.push(dialogue)
+      }
+    }
     if (event.type === 'NEW_SUBTITLE_FRAGMENTS') {
       const subtitleParts = event.subtitles.map((subtitleFragment) => {
         if (subtitleFragment.type === 'header') {
-          const eventsContent =
-            subtitleFragment
-              .content
-              .match(/\r\n\[Events\]\r\nFormat: (.*)/)
-              ?.[0]
-          const dialogueFormatContent =
-            eventsContent
-              ?.trim()
-              .split('\n')
-              [1]
-          if (!eventsContent || !dialogueFormatContent) {
-            throw new Error('dialogueFormatContent is undefined')
-          }
-          const header = {
-            type: 'header',
-            streamIndex: subtitleFragment.streamIndex,
-            content: subtitleFragment.content,
-            eventsContent,
-            dialogueFormatContent,
-            parsed: parse(subtitleFragment.content)
-          } as SubtitlePart & { type: 'header' }
+          const header = subtitleHeaderFragmentToSubtitleHeaderPart(subtitleFragment)
           subtitlesStreams.set(subtitleFragment.streamIndex, { header, dialogues: [] })
+          if (selectedStreamIndex === undefined) {
+            selectedStreamIndex = subtitleFragment.streamIndex
+            sendBack({ type: 'SELECTED_SUBTITLE_STREAM_UPDATED', streamIndex: subtitleFragment.streamIndex })
+          }
+          sendBack({ type: 'SUBTITLE_STREAMS_UPDATED', subtitlesStreams: [...subtitlesStreams.values()] })
           return header
         } else {
-          const subtitleStream = subtitlesStreams.get(subtitleFragment.streamIndex)
-          if (!subtitleStream) {
-            throw new Error('subtitleStream is undefined')
+          const header = subtitlesStreams.get(subtitleFragment.streamIndex)?.header
+          if (!header) {
+            throw new Error('SubtitleStream or its header is undefined')
           }
-          const [dialogueIndexString, layer] = subtitleFragment.content.split(',')
-          const dialogueIndex = Number(dialogueIndexString)
-          const startTimestamp = convertTimestamp(subtitleFragment.start)
-          const endTimestamp = convertTimestamp(subtitleFragment.end)
-          const dialogueSourceContent = subtitleFragment.content.replace(`${dialogueIndex},${layer},`, '')
-          const dialogueContent = `Dialogue: ${layer},${startTimestamp},${endTimestamp},${dialogueSourceContent}`
-          const parsedEvent = parse(`${subtitleStream.header.eventsContent}\r\n${dialogueContent}`)
-          const dialogueEvent = parsedEvent.events.dialogue[0]
-          if (!dialogueEvent) {
-            throw new Error('dialogueEvent is undefined')
-          }
-          const dialogue = {
-            type: 'dialogue',
-            streamIndex: subtitleFragment.streamIndex,
-            index: dialogueIndex,
-            content: dialogueContent,
-            parsed: parse(`${subtitleStream.header.eventsContent}\r\n${dialogueContent}`),
-            assEvent: {
-              ...dialogueEvent,
-              Effect: dialogueEvent.Effect ?? '',
-              Text: dialogueEvent.Text.raw,
-              Duration: (dialogueEvent.End - dialogueEvent.Start) * 1000,
-              Start: dialogueEvent.Start * 1000,
-              End: dialogueEvent.End * 1000,
-              ReadOrder: dialogueIndex,
-              _index: dialogueIndex
-            } as ASS_Event
-          } as SubtitlePart & { type: 'dialogue' }
+          const dialogue = subtitleDialogueFragmentToSubtitleDialoguePart(header, subtitleFragment)
+          subtitlesStreams.get(subtitleFragment.streamIndex)?.dialogues.push(dialogue)
+          sendBack({ type: 'SUBTITLE_STREAMS_UPDATED', subtitlesStreams: [...subtitlesStreams.values()] })
           return dialogue
         }
       })
@@ -117,12 +198,12 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
                 appendedSubtitlePart.streamIndex === subtitlePart.streamIndex
                 && appendedSubtitlePart.index === subtitlePart.index
               )
-          if (alreadyAppended) {
+          if (alreadyAppended || selectedStreamIndex !== subtitlePart.streamIndex) {
             continue
           }
           jassubInstance?.createEvent(subtitlePart.assEvent)
           appendedSubtitleParts.push(subtitlePart)
-        } else {
+        } else if (subtitlePart.type === 'header') {
           if (!jassubInstance) {
             jassubInstance = new JASSUB({
               video,
@@ -138,31 +219,10 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
           for (const styleIndex in subtitlePart.parsed.styles) {
             const style = subtitlePart.parsed.styles.style[Number(styleIndex)]
             if (!style) continue
-            jassubInstance.createStyle({
-              ...style,
-              FontName: style.Fontname,
-              FontSize: style.Fontsize,
-              PrimaryColour: style.PrimaryColour,
-              BackColour: style.BackColour,
-              OutlineColour: style.OutlineColour,
-              Bold: style.Bold,
-              Italic: style.Italic,
-              Underline: style.Underline,
-              StrikeOut: style.StrikeOut,
-              ScaleX: style.ScaleX,
-              ScaleY: style.ScaleY,
-              Spacing: style.Spacing,
-              Angle: style.Angle,
-              BorderStyle: style.BorderStyle,
-              Outline: style.Outline,
-              Shadow: style.Shadow,
-              Alignment: style.Alignment,
-              MarginL: style.MarginL,
-              MarginR: style.MarginR,
-              MarginV: style.MarginV,
-              Encoding: style.Encoding
-            })
+            appendParsedStyle(jassubInstance, style)
           }
+        } else {
+          throw new Error('Unknown subtitlePart type')
         }
       }
     }
