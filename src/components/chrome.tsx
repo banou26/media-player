@@ -53,19 +53,17 @@ export const Chrome = ({ children }: ChromeOptions) => {
   const containerRef = useRef<HTMLDivElement>(null)
 
   const mouseMove: MouseEventHandler<HTMLDivElement> = (ev) => {
-    return
-    mediaPlayerContext.update({ hideUI: false })
+    mediaPlayerContext.update(({ ...mediaPlayerContext, hideUI: false }))
     if (autoHide.current) clearInterval(autoHide.current)
     const timeout = setTimeout(() => {
-      mediaPlayerContext.update({ hideUI: true })
+      mediaPlayerContext.update(({ ...mediaPlayerContext, hideUI: true }))
     }, 3_000) as unknown as number
     autoHide.current = timeout
   }
 
   const mouseOut: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
-    return
     if (ev.currentTarget.parentElement !== ev.relatedTarget && ev.relatedTarget !== null) return
-    mediaPlayerContext.update({ hideUI: true })
+    mediaPlayerContext.update(({ ...mediaPlayerContext, hideUI: true }))
   }
 
   return (
