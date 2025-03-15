@@ -1,6 +1,6 @@
 {
   "name": "@banou/media-player",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "",
   "type": "module",
   "main": "build/index.js",
