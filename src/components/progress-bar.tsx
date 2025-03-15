@@ -115,6 +115,12 @@ const style = css`
       object-fit: cover;
     }
   }
+
+  .loaded-part {
+    transform-origin: 0 0;
+    position: absolute;
+    background-color: hsla(0, 100%, 100%, .4);
+  }
 `
 
 export const ProgressBar = () => {
@@ -151,7 +157,7 @@ export const ProgressBar = () => {
           const duration = end - start
           const left = start * 100
           return (
-            <div key={i} style={{ transform: `scaleX(${duration})`, marginLeft: `${left}%` }}></div>
+            <div key={i} className="loaded-part" style={{ transform: `scaleX(${duration})`, marginLeft: `${left}%` }}></div>
           )
         } else {
           return null
