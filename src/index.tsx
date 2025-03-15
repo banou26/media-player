@@ -23,7 +23,7 @@ const FKNVideoRootStyle = css`
 export type FKNVideoOptions = {
   title?: string
   downloadedRanges?: DownloadedRange[]
-  fetchData?: (offset: number, end?: number) => Promise<Response>
+  fetchData?: (offset: number, size?: number) => Promise<Response>
   size?: number
   bufferSize?: number
   publicPath: string

@@ -33,8 +33,8 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
   })
 
   const metadata = await remuxer.init()
-  sendBack({ type: 'NEW_ATTACHMENTS', attachments: metadata.attachments })
-  sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: metadata.subtitles })
+  if (metadata.attachments?.length) sendBack({ type: 'NEW_ATTACHMENTS', attachments: metadata.attachments })
+  if (metadata.subtitles?.length) sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: metadata.subtitles })
   sendBack({ type: 'METADATA', ...metadata })
 
   let isFinished = false
