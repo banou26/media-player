@@ -49,7 +49,8 @@ const style = css`
   }
 `
 
-const Sound = ({ ref }: { ref: MutableRefObject<HTMLDivElement> }) => {
+// todo: try to find a better type for `ref`
+const Sound = ({ ref }: { ref: any }) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)

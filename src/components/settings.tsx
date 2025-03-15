@@ -167,7 +167,7 @@ const SettingsAction = () => {
               </div>
             </div>
             <div onClick={changePopoverContent(PopoverContent.PlaybackRate)}>
-              <div>Vitesse de lecture</div>
+              <div>Playback speed</div>
               <div>
                 <span className='secondary'>
                   {
@@ -186,11 +186,11 @@ const SettingsAction = () => {
         isOpenPopover && popoverContent === PopoverContent.PlaybackRate && (
           <div className='popover'>
             <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Retour</div>
+              <div>Back</div>
               <div></div>
             </div>
             <div>
-              <div>Vitesse de lecture</div>
+              <div>Playback speed</div>
               <div>
                 <button
                   type='button'
@@ -225,11 +225,7 @@ const SettingsAction = () => {
         isOpenPopover && popoverContent === PopoverContent.Advanced && (
           <div className='popover'>
             <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Retour</div>
-              <div></div>
-            </div>
-            <div>
-              <div>Advanced</div>
+              <div>Back</div>
               <div></div>
             </div>
           </div>
@@ -239,11 +235,7 @@ const SettingsAction = () => {
         isOpenPopover && popoverContent === PopoverContent.SelectNewSources && (
           <div className='popover'>
             <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Retour</div>
-              <div></div>
-            </div>
-            <div>
-              <div>Select new sources</div>
+              <div>Back</div>
               <div></div>
             </div>
           </div>
@@ -264,11 +256,7 @@ const SettingsAction = () => {
               ))
             }
             <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Retour</div>
-              <div></div>
-            </div>
-            <div>
-              <div>Subtitles</div>
+              <div>Back</div>
               <div></div>
             </div>
           </div>

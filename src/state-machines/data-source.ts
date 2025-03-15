@@ -20,16 +20,14 @@ type DataSourceInput = {
 
 export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEmittedEvents>(async ({ sendBack, receive, input, self, emit }) => {
   const { remuxerOptions } = input
-  const { publicPath, workerUrl, bufferSize, length, getStream } = remuxerOptions
+  const { publicPath, workerUrl, bufferSize, length, read } = remuxerOptions
 
   const remuxer = await makeRemuxer({
     publicPath,
     workerUrl,
     bufferSize,
     length,
-    getStream: (offset, size) =>
-      getStream(offset, size)
-        .then(toStreamChunkSize(bufferSize))
+    read
   })
 
   const metadata = await remuxer.init()

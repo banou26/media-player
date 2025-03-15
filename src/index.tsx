@@ -23,7 +23,7 @@ const FKNVideoRootStyle = css`
 export type FKNVideoOptions = {
   title?: string
   downloadedRanges?: DownloadedRange[]
-  fetchData?: (offset: number, size?: number) => Promise<Response>
+  read?: (offset: number, size: number) => Promise<ArrayBuffer>
   size?: number
   bufferSize?: number
   publicPath: string
@@ -76,8 +76,8 @@ export const FKNVideoRoot = (
   )
 
   useEffect(() => {
-    const { size, fetchData, publicPath, libavWorkerUrl, jassubWasmUrl } = options
-    if (!fetchData || !size || !publicPath || !libavWorkerUrl || !jassubWasmUrl) return
+    const { size, read, publicPath, libavWorkerUrl, jassubWasmUrl } = options
+    if (!read || !size || !publicPath || !libavWorkerUrl || !jassubWasmUrl) return
 
     mediaActor.send({
       type: 'REMUXER_OPTIONS',
@@ -86,12 +86,10 @@ export const FKNVideoRoot = (
         workerUrl: libavWorkerUrl,
         bufferSize: options.bufferSize ?? BUFFER_SIZE,
         length: size,
-        getStream: async (offset, size) =>
-          fetchData(offset, size)
-            .then(res => res.body!)
+        read
       }
     })
-  }, [options.fetchData, options.size, options.publicPath, options.libavWorkerUrl, options.bufferSize])
+  }, [options.read, options.size, options.publicPath, options.libavWorkerUrl, options.bufferSize])
 
   useEffect(() => {
     const { jassubWorkerUrl, jassubWasmUrl, jassubModernWasmUrl } = options
@@ -129,7 +127,7 @@ export const FKNVideoRoot = (
       setFirstRender(false)
     } else {
       setMediaVolume(volume.toString())
-      setMediaMute(muted.toString())
+      setMediaMute(muted ? 'true' : 'false')
     }
   }, [isReady, volume, muted, firstRender])
 

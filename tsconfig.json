@@ -19,8 +19,10 @@
     "jsx": "react-jsx",
     "paths": {
       "mp4box": ["./src/utils/mp4box.ts"]
-    }
+    },
+    "types": []
   },
   "include": ["src"],
+  "exclude": ["node_modules"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

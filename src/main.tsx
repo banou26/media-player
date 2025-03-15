@@ -12,39 +12,35 @@ const mountStyle = css`
   width: 100vw;
 `
 
-const BASE_BUFFER_SIZE = 5_000_000
-const BACKPRESSURE_STREAM_ENABLED = !navigator.userAgent.includes("Firefox")
+const BASE_BUFFER_SIZE = 2_500_000
+const url = '/video2.mkv'
 
 const Mount = () => {
-  const [size, setSize] = useState<number>()
+  const [contentLength, setContentLength] = useState<number>()
 
-  const fetchData = useCallback(
-    async (offset: number, end?: number) => {
-      if (end && size && end >= size) return Promise.resolve(new Uint8Array(0))
-      if (size && offset >= size) return Promise.resolve(new Uint8Array(0))
+  const read = useCallback(
+    (offset: number, size: number) => {
+      if (contentLength === undefined) return Promise.resolve(new Uint8Array(0).buffer)
+      if (offset >= contentLength) return Promise.resolve(new Uint8Array(0).buffer)
       return (
-        fetch(
-          '/video2.mkv',
-          {
-            headers: {
-              Range: `bytes=${offset}-${end ?? (!BACKPRESSURE_STREAM_ENABLED ? Math.min(offset + BASE_BUFFER_SIZE, size!) : '')}`
-            }
-          }
-        ))
+        fetch(url, { headers: { Range: `bytes=${offset}-${Math.min(offset + size, contentLength) - 1}` } })
+          .then(res => res.arrayBuffer())
+      )
     },
-    [size]
+    [contentLength]
   )
 
   useEffect(() => {
-    fetchData(0, 1).then(async ({ headers, body }) => {
-      if (!body) throw new Error('no body')
-      const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
-      const contentLength =
-        contentRangeContentLength
-          ? Number(contentRangeContentLength)
-          : Number(headers.get('Content-Length'))
-      setSize(contentLength)
-    })
+    fetch(url, { headers: { Range: `bytes=${0}-${1}` } })
+      .then(async ({ headers, body }) => {
+        if (!body) throw new Error('no body')
+        const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
+        const contentLength =
+          contentRangeContentLength
+            ? Number(contentRangeContentLength)
+            : Number(headers.get('Content-Length'))
+        setContentLength(contentLength)
+      })
   }, [])
 
   const jassubWorkerUrl = useMemo(() => {
@@ -70,15 +66,13 @@ const Mount = () => {
   const [downloadedRanges, setDownloadedRanges] = useState<DownloadedRange[]>([])
 
   useEffect(() => {
-    if (!size) return
-    
+    if (!contentLength) return
     let i = 0
-
     const increaseDownloadedRanges = () => {
       setDownloadedRanges(() => [
         {
           startByteOffset: 0,
-          endByteOffset: size * i
+          endByteOffset: contentLength * i
         }
       ])
       i += 0.1
@@ -86,17 +80,17 @@ const Mount = () => {
         setTimeout(increaseDownloadedRanges, 1000)
       }
     }
-
     increaseDownloadedRanges()
-  }, [size])
+  }, [contentLength])
 
   return (
     <div css={mountStyle}>
       <MediaPlayer
         title={'video.mkv'}
-        downloadedRanges={size ? downloadedRanges : undefined}
-        fetchData={fetchData}
-        size={size}
+        downloadedRanges={contentLength ? downloadedRanges : undefined}
+        bufferSize={BASE_BUFFER_SIZE}
+        read={read}
+        size={contentLength}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
         jassubModernWasmUrl={jassubModernWasmUrl}
         jassubWorkerUrl={jassubWorkerUrl}
