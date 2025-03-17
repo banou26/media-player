@@ -1,8 +1,17 @@
 /// <reference types="@emotion/react/types/css-prop" />
 
 import { ClassAttributes, useCallback, useEffect, useState } from 'react'
+import { css } from '@emotion/react'
 
 import { MediaMachineContext } from '../state-machines'
+
+const style = css`
+  top: unset !important;
+  left: unset !important;
+  width: 100%;
+  height: 100%;
+  margin: auto;
+`
 
 export const Overlay = () => {
   const mediaActor = MediaMachineContext.useActorRef()
@@ -22,7 +31,7 @@ export const Overlay = () => {
 
   return (
     <>
-      <canvas ref={refFunction}/>
+      <canvas ref={refFunction} css={style}/>
     </>
   )
 }
