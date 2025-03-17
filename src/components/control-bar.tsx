@@ -1,7 +1,8 @@
-import { RefObject, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { RefObject, useCallback, useContext, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
+import { linearToLogVolume, logToLinearVolume } from '../utils/volume-utils'
 import { MediaMachineContext } from '../state-machines'
 import { TooltipDisplay } from './tooltip-display'
 import { togglePlay } from '../utils/actor-utils'
@@ -13,14 +14,13 @@ import pictureInPicture from '../assets/picture-in-picture.svg'
 import SettingsAction from './settings'
 import colors from '../utils/colors'
 import Sound from './sound'
-import { linearToLogVolume, logToLinearVolume } from '../utils/volume-utils'
 
 const style = css`
   position: absolute;
   bottom: 0;
   width: 100%;
 
-  background: linear-gradient(0deg,#000 0,rgba(0,0,0,.4) 60%,transparent);
+  background: linear-gradient(0deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.45) 20%, rgba(0,0,0,0.3) 40%, rgba(0,0,0,0.15) 70%, transparent 100%);
   transition: opacity 0.1s cubic-bezier(.4,0,1,1);
 
   .actions {
