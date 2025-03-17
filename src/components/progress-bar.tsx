@@ -63,10 +63,12 @@ const style = css`
     bottom: 0;
     height: .4rem;
     width: 100%;
-    div {
-      width: 100%;
+    .loaded-part {
       transform-origin: 0 0;
+      bottom: 0;
       height: .4rem;
+      width: 100%;
+      position: absolute;
       background-color: hsla(0, 100%, 100%, .4);
     }
   }
@@ -114,12 +116,6 @@ const style = css`
       height: 100%;
       object-fit: cover;
     }
-  }
-
-  .loaded-part {
-    transform-origin: 0 0;
-    position: absolute;
-    background-color: hsla(0, 100%, 100%, .4);
   }
 `
 
