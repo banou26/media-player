@@ -4,7 +4,7 @@ import type { ASS_Event, JassubOptions } from 'jassub'
 import JASSUB from 'jassub'
 import { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
 
-import { parse } from 'ass-compiler'
+import { parse, stringify } from 'ass-compiler'
 import { fromAsyncCallback } from './utils'
 
 type SubtitlesEvents =
@@ -148,7 +148,9 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
       if (!newSubtitleStreams) {
         throw new Error('newSubtitleStreams is undefined')
       }
-      jassubInstance.setTrack(newSubtitleStreams.header.content)
+      const parsedHeader = parse(newSubtitleStreams.header.content)
+      const modifiedHeader = { ...parsedHeader, info: { ...parsedHeader.info, ScaledBorderAndShadow: 'no' as const } }
+      jassubInstance.setTrack(stringify(modifiedHeader))
       jassubInstance.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
       for (const styleIndex in newSubtitleStreams.header.parsed.styles) {
         const style = newSubtitleStreams.header.parsed.styles.style[Number(styleIndex)]
@@ -209,10 +211,12 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
           appendedSubtitleParts.push(subtitlePart)
         } else if (subtitlePart.type === 'header') {
           if (!jassubInstance) {
+            const parsedHeader = parse(subtitlePart.content)
+            const modifiedHeader = { ...parsedHeader, info: { ...parsedHeader.info, ScaledBorderAndShadow: 'no' as const } }
             jassubInstance = new JASSUB({
               video,
               canvas,
-              subContent: subtitlePart.content,
+              subContent: stringify(modifiedHeader),
               workerUrl: subtitlesRendererOptions.workerUrl,
               modernWasmUrl: subtitlesRendererOptions.wasmUrl,
               fonts: attachments.filter(Boolean).map(([filename, data]) => data),
