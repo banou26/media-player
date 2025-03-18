@@ -143,6 +143,7 @@ export const ProgressBar = () => {
     setProgressBarOverTime(undefined)
   }
 
+  // file download % does not equal video time %, as the video contains sometimes, big headers including fonts, which might be ~50mb
   const loadedParts = useMemo(() =>
     mediaPlayerContext
       .downloadedRanges

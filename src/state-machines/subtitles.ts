@@ -149,8 +149,17 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
         throw new Error('newSubtitleStreams is undefined')
       }
       const parsedHeader = parse(newSubtitleStreams.header.content)
-      const modifiedHeader = { ...parsedHeader, info: { ...parsedHeader.info, ScaledBorderAndShadow: 'no' as const } }
-      jassubInstance.setTrack(stringify(modifiedHeader))
+      const modifiedHeader = {
+        ...parsedHeader,
+        info: {
+          ...parsedHeader.info,
+          ScaledBorderAndShadow: 'no' as const,
+          LayoutResX: '',
+          LayoutResY: ''
+        }
+      }
+      const header = stringify(modifiedHeader)
+      jassubInstance.setTrack(header)
       jassubInstance.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
       for (const styleIndex in newSubtitleStreams.header.parsed.styles) {
         const style = newSubtitleStreams.header.parsed.styles.style[Number(styleIndex)]
@@ -212,11 +221,20 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
         } else if (subtitlePart.type === 'header') {
           if (!jassubInstance) {
             const parsedHeader = parse(subtitlePart.content)
-            const modifiedHeader = { ...parsedHeader, info: { ...parsedHeader.info, ScaledBorderAndShadow: 'no' as const } }
+            const modifiedHeader = {
+              ...parsedHeader,
+              info: {
+                ...parsedHeader.info,
+                ScaledBorderAndShadow: 'no' as const,
+                LayoutResX: '',
+                LayoutResY: ''
+              }
+            }
+            const header = stringify(modifiedHeader)
             jassubInstance = new JASSUB({
               video,
               canvas,
-              subContent: stringify(modifiedHeader),
+              subContent: header,
               workerUrl: subtitlesRendererOptions.workerUrl,
               modernWasmUrl: subtitlesRendererOptions.wasmUrl,
               fonts: attachments.filter(Boolean).map(([filename, data]) => data),
