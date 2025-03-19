@@ -17,6 +17,7 @@ const FKNVideoRootStyle = css`
   justify-content: center;
   background-color: #111;
   height: 100%;
+  width: 100%;
   overflow: hidden;
 `
 

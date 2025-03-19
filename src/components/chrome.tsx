@@ -15,6 +15,8 @@ const style = css`
   display: flex;
   justify-content: center;
   align-items: center;
+  height: 100%;
+  width: 100%;
 
   & > div:not(:last-of-type) {
     position: absolute;
@@ -33,6 +35,7 @@ const style = css`
     height: 100%;
     width: 100%;
     background-color: black;
+    object-fit: contain;
   }
 
   &.hide {
