@@ -31,6 +31,7 @@ export default fromAsyncCallback<DataSourceEvents, DataSourceInput, DataSourceEm
   })
 
   const metadata = await remuxer.init()
+  if (metadata.indexes) sendBack({ type: 'INDEXES', indexes: metadata.indexes })
   if (metadata.attachments?.length) sendBack({ type: 'NEW_ATTACHMENTS', attachments: metadata.attachments })
   if (metadata.subtitles?.length) sendBack({ type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: metadata.subtitles })
   sendBack({ type: 'METADATA', ...metadata })

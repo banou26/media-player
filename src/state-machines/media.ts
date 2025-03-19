@@ -1,4 +1,4 @@
-import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
+import type { Attachment, Index, SubtitleFragment } from 'libav-wasm/build/worker'
 
 import { makeRemuxer } from 'libav-wasm'
 import { assign, setup, sendTo, enqueueActions } from 'xstate'
@@ -31,6 +31,7 @@ export default setup({
       subtitleFragments: SubtitleFragment[]
       subtitleStreams: SubtitleStream[]
       selectedSubtitleStreamIndex: number | undefined
+      indexes: Index[]
       thumbnails: Thumbnail[]
       isReady: boolean
     },
@@ -99,6 +100,7 @@ export default setup({
     subtitleFragments: [],
     subtitleStreams: [],
     selectedSubtitleStreamIndex: undefined,
+    indexes: [],
     thumbnails: [],
     isReady: false
   },
@@ -208,6 +210,11 @@ export default setup({
         'TIMESTAMP_OFFSET': { actions: sendTo('mediaSource', ({ event }) => event) },
         'NEW_THUMBNAIL': { actions: [assign({ thumbnails: ({ context, event }) => [...context.thumbnails, event.thumbnail] })] },
         'DOWNLOADED_RANGES_UPDATED': { actions: sendTo('thumbnails', ({ event }) => event) },
+        'INDEXES': {
+          actions: [
+            assign({ indexes: ({ event }) => event.indexes })
+          ]
+        },
         'NEW_ATTACHMENTS': {
           actions: [
             assign({ attachments: ({ context, event }) => [...context.attachments, ...event.attachments] }),

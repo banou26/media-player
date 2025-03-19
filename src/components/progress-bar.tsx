@@ -123,6 +123,7 @@ export const ProgressBar = () => {
   const mediaActor = MediaMachineContext.useActorRef()
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
+  const indexes = MediaMachineContext.useSelector((state) => state.context.indexes)
   const thumbnails = MediaMachineContext.useSelector((state) => state.context.thumbnails)
 
   const mediaPlayerContext = useContext(MediaPlayerContext)
@@ -148,20 +149,21 @@ export const ProgressBar = () => {
     mediaPlayerContext
       .downloadedRanges
       ?.map((range, i) => {
-        if ('startByteOffset' in range && 'endByteOffset' in range && mediaPlayerContext.size) {
-          const start = range.startByteOffset / mediaPlayerContext.size
-          const end = range.endByteOffset / mediaPlayerContext.size
-          const duration = end - start
-          const left = start * 100
-          return (
-            <div key={i} className="loaded-part" style={{ transform: `scaleX(${duration})`, marginLeft: `${left}%` }}></div>
-          )
-        } else {
-          return null
-        }
+        if (!mediaPlayerContext.size || !duration) return null
+        const matchingIndexes = indexes.filter(index => range.startByteOffset <= index.pos && index.pos <= range.endByteOffset)
+        const firstIndex = matchingIndexes.at(0)
+        const lastIndex = matchingIndexes.at(-1)
+        if (!firstIndex || !lastIndex) return null
+        const start = firstIndex.timestamp / duration
+        const end = lastIndex.timestamp  / duration
+        const rangeDuration = Number((end - start).toFixed(2)) // to prevent cases like `0.9995140832939585`
+        const left = start * 100
+        return (
+          <div key={i} className="loaded-part" style={{ transform: `scaleX(${rangeDuration})`, marginLeft: `${left}%` }}></div>
+        )
       })
     ?? [],
-    [mediaPlayerContext.downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
+    [duration, indexes.length, mediaPlayerContext.downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
   )
 
   const cusorTimeString = useMemo(() => {
