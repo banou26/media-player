@@ -27,6 +27,7 @@ export type FKNVideoOptions = {
   read?: (offset: number, size: number) => Promise<ArrayBuffer>
   size?: number
   bufferSize?: number
+  autoplay?: boolean
   publicPath: string
   jassubWorkerUrl: string
   jassubWasmUrl: string
@@ -44,17 +45,22 @@ export const FKNVideoRoot = (
   const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
   const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
   const isReady = MediaMachineContext.useSelector((state) => state.context.isReady)
+  const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
   const [mediaVolume, setMediaVolume] = useLocalStorage('mediaVolume', '1') as [string, (newValue: string) => void]
   const [mediaMute, setMediaMute] = useLocalStorage('mediaMute', 'false') as [mediaMutedType, (newValue: mediaMutedType) => void]
   const [firstRender, setFirstRender] = useState(true)
 
-  useEffect(
-    () => mediaActor.send({
+  useEffect(() => {
+    mediaActor.send({
       type: 'MEDIA_SOURCE_OPTIONS',
       mediaSourceOptions: {}
-    }),
-    []
-  )
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!options.autoplay || duration === undefined) return
+    mediaActor.send({ type: 'PLAY' })
+  }, [duration, options.autoplay])
 
   useEffect(
     () => {

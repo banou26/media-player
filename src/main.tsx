@@ -91,6 +91,7 @@ const Mount = () => {
         bufferSize={BASE_BUFFER_SIZE}
         read={read}
         size={contentLength}
+        autoplay={true}
         publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
         jassubModernWasmUrl={jassubModernWasmUrl}
         jassubWorkerUrl={jassubWorkerUrl}
