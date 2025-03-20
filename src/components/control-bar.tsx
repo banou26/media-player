@@ -1,4 +1,4 @@
-import { RefObject, useCallback, useContext, useEffect, useState } from 'react'
+import { ReactNode, RefObject, useCallback, useContext, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
@@ -129,11 +129,7 @@ const style = css`
   }
 `
 
-export const ControlBar = ({
-  containerRef
-}: {
-  containerRef: RefObject<HTMLDivElement>
-}) => {
+export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformation?: ReactNode, containerRef: RefObject<HTMLDivElement> }) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const chromeContext = useContext(MediaPlayerContext)
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
@@ -278,6 +274,7 @@ export const ControlBar = ({
           </div>
         </div>
         <div className='right'>
+          {mediaInformation}
           <SettingsAction />
           <TooltipDisplay
             id='picture-in-picture'

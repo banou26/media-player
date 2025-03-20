@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { MouseEventHandler, useContext, useRef, type HTMLAttributes } from 'react'
+import { MouseEventHandler, ReactNode, useContext, useRef, type HTMLAttributes } from 'react'
 
 import { css } from '@emotion/react'
 
@@ -43,9 +43,11 @@ const style = css`
   }
 `
 
-export type ChromeOptions = {} & HTMLAttributes<HTMLDivElement>
+export type ChromeOptions = {
+  mediaInformation?: ReactNode
+} & HTMLAttributes<HTMLDivElement>
 
-export const Chrome = ({ children }: ChromeOptions) => {
+export const Chrome = ({ children, mediaInformation }: ChromeOptions) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const mediaPlayerContext = useContext(MediaPlayerContext)
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
@@ -77,8 +79,8 @@ export const Chrome = ({ children }: ChromeOptions) => {
       onMouseOut={mouseOut}
       className={mediaPlayerContext.hideUI ? 'hide' : ''}
     >
-      <Overlay />
-      <ControlBar containerRef={containerRef} />
+      <Overlay/>
+      <ControlBar mediaInformation={mediaInformation} containerRef={containerRef}/>
       <div
         className='video'
         onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}

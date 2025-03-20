@@ -28,6 +28,7 @@ export type FKNVideoOptions = {
   size?: number
   bufferSize?: number
   autoplay?: boolean
+  mediaInformation?: ReactNode
   publicPath: string
   jassubWorkerUrl: string
   jassubWasmUrl: string
@@ -147,7 +148,7 @@ export const FKNVideoRoot = (
 
   return (
     <div css={FKNVideoRootStyle}>
-      <Chrome>
+      <Chrome mediaInformation={options.mediaInformation}>
         {children}
       </Chrome>
     </div>
