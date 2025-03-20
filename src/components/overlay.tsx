@@ -5,6 +5,7 @@ import { css } from '@emotion/react'
 
 import { MediaMachineContext } from '../state-machines'
 import { MediaPlayerContext } from '../utils/context'
+import { fonts } from '../utils/fonts'
 
 const style = css`
   top: unset !important;
@@ -20,14 +21,15 @@ const titleStyle = css`
   top: 0;
   left: 0;
   width: 100%;
-  height: 100%;
-  margin-left: 2.5rem;
-  margin-top: 2.5rem;
-  font-size: 2rem;
+  padding: 2.4rem;
+  ${fonts.headings.small}
   color: white;
   text-shadow: 0 0 4px rgba(0, 0, 0, 1);
   z-index: 2;
   pointer-events: none;
+
+  background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.3) 30%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0.1) 80%, transparent 100%);
+  transition: opacity 0.1s cubic-bezier(.4,0,1,1);
 `
 
 const loadingInformationStyle = css`
@@ -67,8 +69,15 @@ export const Overlay = ({ loadingInformation }: { loadingInformation?: ReactNode
   return (
     <>
       {
-        mediaPlayerContext.title && !mediaPlayerContext.hideUI
-          ? <div css={titleStyle}>{mediaPlayerContext.title}</div>
+        mediaPlayerContext.title
+          ? (
+            <div
+              css={titleStyle}
+              style={{ ...mediaPlayerContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}
+            >
+              {mediaPlayerContext.title}
+            </div>
+          )
           : undefined
       }
       {

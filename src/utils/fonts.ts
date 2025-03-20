@@ -26,6 +26,10 @@ export const fonts = {
         font-size: 1.8rem;
         line-height: 2.2rem;
       }
+      @media (min-width: 2560px) {
+        font-size: 2.2rem;
+        line-height: 2.6rem;
+      }
     `,
     extraSmall: `
       font-weight: 500;
