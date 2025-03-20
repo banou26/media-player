@@ -45,9 +45,10 @@ const style = css`
 
 export type ChromeOptions = {
   mediaInformation?: ReactNode
+  loadingInformation?: ReactNode
 } & HTMLAttributes<HTMLDivElement>
 
-export const Chrome = ({ children, mediaInformation }: ChromeOptions) => {
+export const Chrome = ({ children, mediaInformation, loadingInformation }: ChromeOptions) => {
   const mediaActor = MediaMachineContext.useActorRef()
   const mediaPlayerContext = useContext(MediaPlayerContext)
   const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
@@ -79,7 +80,7 @@ export const Chrome = ({ children, mediaInformation }: ChromeOptions) => {
       onMouseOut={mouseOut}
       className={mediaPlayerContext.hideUI ? 'hide' : ''}
     >
-      <Overlay/>
+      <Overlay loadingInformation={loadingInformation}/>
       <ControlBar mediaInformation={mediaInformation} containerRef={containerRef}/>
       <div
         className='video'
