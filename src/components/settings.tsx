@@ -14,6 +14,7 @@ position: relative;
   right: 50%;
   transform: translateX(50%);
 
+  overflow-y: auto;
   width: 180px;
   height: 160px;
   top: -180px;
@@ -42,7 +43,6 @@ position: relative;
     padding: 8px 6px 8px 12px;
 
     width: 100%;
-    height: 100%;
     cursor: pointer;
 
     :first-of-type {
@@ -244,6 +244,10 @@ const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.Subtitles && (
           <div className='popover'>
+            <div onClick={changePopoverContent(PopoverContent.Default)}>
+              <div>Back</div>
+              <div></div>
+            </div>
             {
               languagesWithStreamIndex.map((languageWithStreamIndex) => (
                 <div
@@ -255,10 +259,6 @@ const SettingsAction = () => {
                 </div>
               ))
             }
-            <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Back</div>
-              <div></div>
-            </div>
           </div>
         )
       }
