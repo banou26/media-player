@@ -6,6 +6,7 @@ import { MediaMachineContext } from "../state-machines"
 import { TooltipDisplay } from "./tooltip-display"
 import { fonts } from "../utils/fonts"
 import PlaybackSlider from "./playback-slider"
+import useLocalStorage, { booleanType } from "../utils/use-local-storage"
 
 const style = css`
 position: relative;
@@ -136,6 +137,7 @@ const SettingsAction = () => {
   const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
   const subtitleStreams = MediaMachineContext.useSelector((state) => state.context.subtitleStreams)
   const selectedSubtitleStreamIndex = MediaMachineContext.useSelector((state) => state.context.selectedSubtitleStreamIndex)
+  const [hideMediaStats, setHideMediaStats] = useLocalStorage('hideMediaStats', 'false') as [booleanType, (newValue: booleanType) => void]
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -208,12 +210,12 @@ const SettingsAction = () => {
                 <ChevronRight />
               </div>
             </div>
-            <div onClick={changePopoverContent(PopoverContent.SelectNewSources)}>
+            {/* <div onClick={changePopoverContent(PopoverContent.SelectNewSources)}>
               <div>Select new sources</div>
               <div>
                 <ChevronRight />
               </div>
-            </div>
+            </div> */}
             <div onClick={changePopoverContent(PopoverContent.Subtitles)}>
               <div>Subtitles</div>
               <div>
@@ -269,6 +271,10 @@ const SettingsAction = () => {
             <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
               <ChevronLeft />
               <span>Advanced</span>
+            </div>
+            <div onClick={() => setHideMediaStats(hideMediaStats === 'true' ? 'false' : 'true')}>
+              <span>Hide stats</span>
+              <span>{hideMediaStats === 'true' ? '✓' : ''}</span>
             </div>
           </div>
         )

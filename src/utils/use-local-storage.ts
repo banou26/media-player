@@ -26,5 +26,5 @@ export const useLocalStorage = <T,>(name: string, defaultValue?: T) => {
 
 export default useLocalStorage
 
-export type mediaMutedType = 'true' | 'false' | undefined
+export type booleanType = 'true' | 'false' | undefined
 

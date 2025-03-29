@@ -14,6 +14,7 @@ import pictureInPicture from '../assets/picture-in-picture.svg'
 import SettingsAction from './settings'
 import colors from '../utils/colors'
 import Sound from './sound'
+import useLocalStorage, { booleanType } from '../utils/use-local-storage'
 
 const style = css`
   position: absolute;
@@ -107,10 +108,22 @@ const style = css`
     .left {
       .time {
         ${fonts.bMedium.regular}
+        text-shadow: 0 0 4px rgba(0, 0, 0, 1);
       }
     }
     .right {
+      .media-info {
+        ${fonts.bMedium.regular}
+        text-shadow: 0 0 4px rgba(0, 0, 0, 1);
 
+        margin-right: 8px;
+        @media (min-width: 768px) {
+          margin-right: 12px;
+        }
+        @media (min-width: 2560px) {
+          margin-right: 16px;
+        }
+      }
       .picture-in-picture {
         img {
           width: 22px;
@@ -138,6 +151,7 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
   const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
   const [volumeElement, setVolumeElement] = useState<HTMLDivElement | undefined>()
+  const [hideMediaStats, _] = useLocalStorage('hideMediaStats', 'false') as [booleanType, (newValue: booleanType) => void]
   
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -274,7 +288,11 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
           </div>
         </div>
         <div className='right'>
-          {mediaInformation}
+          {
+            hideMediaStats !== 'true'
+              ? <span className='media-info'>{mediaInformation}</span>
+              : null
+          }
           <SettingsAction />
           <TooltipDisplay
             id='picture-in-picture'

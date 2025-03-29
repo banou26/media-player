@@ -7,7 +7,7 @@ import { css } from '@emotion/react'
 
 import { MediaMachineContext } from './state-machines'
 import { MediaPlayerContext, DownloadedRange } from './utils/context'
-import useLocalStorage, { mediaMutedType } from './utils/use-local-storage'
+import useLocalStorage, { booleanType } from './utils/use-local-storage'
 import Chrome from './components/chrome'
 
 const BUFFER_SIZE = 2_500_000
@@ -49,7 +49,7 @@ export const FKNVideoRoot = (
   const isReady = MediaMachineContext.useSelector((state) => state.context.isReady)
   const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
   const [mediaVolume, setMediaVolume] = useLocalStorage('mediaVolume', '1') as [string, (newValue: string) => void]
-  const [mediaMute, setMediaMute] = useLocalStorage('mediaMute', 'false') as [mediaMutedType, (newValue: mediaMutedType) => void]
+  const [mediaMute, setMediaMute] = useLocalStorage('mediaMute', 'false') as [booleanType, (newValue: booleanType) => void]
   const [firstRender, setFirstRender] = useState(true)
 
   useEffect(() => {
