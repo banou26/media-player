@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { css } from "@emotion/react"
-import { ChevronRight, Settings } from "react-feather"
+import { ChevronLeft, ChevronRight, Settings } from "react-feather"
 
 import { MediaMachineContext } from "../state-machines"
 import { TooltipDisplay } from "./tooltip-display"
 import { fonts } from "../utils/fonts"
+import PlaybackSlider from "./playback-slider"
 
 const style = css`
 position: relative;
@@ -43,7 +44,6 @@ position: relative;
     padding: 8px 6px 8px 12px;
 
     width: 100%;
-    cursor: pointer;
 
     :first-of-type {
       border-radius: 8px 8px 0 0;
@@ -51,7 +51,10 @@ position: relative;
     :last-of-type {
       border-radius: 0 0 8px 8px;
     }
-    :hover {
+    :not(&.no-hover) {
+      cursor: pointer;
+    }
+    :not(&.no-hover):hover {
       background-color: rgba(255,255,255,.1);
     }
 
@@ -65,6 +68,57 @@ position: relative;
         ${fonts.bSmall.regular}
       }
     }
+  }
+
+  .back {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    border-bottom: 1px solid #4D4D4E;
+
+    svg {
+      transform: translateX(-4px);
+      transition: transform 0.2s ease-in-out;
+    }
+
+    :hover {
+      svg {
+        transform: translateX(-8px);
+      }
+    }
+  }
+}
+
+.playback-rate {
+  .slider {
+    width: 100%;
+  }
+  .options {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    align-items: center;
+    
+    padding: 8px 12px;
+
+    > div {
+      display: flex;
+      align-items: center;
+      border-radius: 4px;
+
+      padding: 8px 6px;
+      height: 100%;
+
+      cursor: pointer;
+      :hover {
+        background-color: rgba(255,255,255,.1);
+      }
+    }
+  }
+}
+
+.subtitle {
+  .description {
+    word-break: break-word;
   }
 }
 `
@@ -147,7 +201,7 @@ const SettingsAction = () => {
       />
       {
         isOpenPopover && popoverContent === PopoverContent.Default && (
-          <div className='popover'>
+          <div className='popover menu'>
             <div onClick={changePopoverContent(PopoverContent.Advanced)}>
               <span>Advanced</span>
               <div>
@@ -184,38 +238,26 @@ const SettingsAction = () => {
       }
       {
         isOpenPopover && popoverContent === PopoverContent.PlaybackRate && (
-          <div className='popover'>
-            <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Back</div>
-              <div></div>
+          <div className='popover playback-rate'>
+            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
+              <ChevronLeft />
+              <span>Plackback speed</span>
             </div>
-            <div>
-              <div>Playback speed</div>
-              <div>
-                <button
-                  type='button'
-                  onClick={() => setPlaybackRate(0.5)}
-                >
-                  0.5x
-                </button>
-                <button
-                  type='button'
-                  onClick={() => setPlaybackRate(1)}
-                >
-                  1x
-                </button>
-                <button
-                  type='button'
-                  onClick={() => setPlaybackRate(1.5)}
-                >
+            <div className="slider no-hover">
+              <PlaybackSlider />
+            </div>
+            <div className="options no-hover">
+              <div onClick={() => setPlaybackRate(0.5)}>
+                0.5x
+              </div>
+              <div onClick={() => setPlaybackRate(1)}>
+                1x
+              </div>
+              <div onClick={() => setPlaybackRate(1.5)}>
                   1.5x
-                </button>
-                <button
-                  type='button'
-                  onClick={() => setPlaybackRate(2)}
-                >
-                  2x
-                </button>
+              </div>
+              <div onClick={() => setPlaybackRate(2)}>
+                2x
               </div>
             </div>
           </div>
@@ -223,36 +265,37 @@ const SettingsAction = () => {
       }
       {
         isOpenPopover && popoverContent === PopoverContent.Advanced && (
-          <div className='popover'>
-            <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Back</div>
-              <div></div>
+          <div className='popover advanced'>
+            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
+              <ChevronLeft />
+              <span>Advanced</span>
             </div>
           </div>
         )
       }
       {
         isOpenPopover && popoverContent === PopoverContent.SelectNewSources && (
-          <div className='popover'>
-            <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Back</div>
-              <div></div>
+          <div className='popover sources'>
+            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
+              <ChevronLeft />
+              <span>Select new sources</span>
             </div>
           </div>
         )
       }
       {
         isOpenPopover && popoverContent === PopoverContent.Subtitles && (
-          <div className='popover'>
-            <div onClick={changePopoverContent(PopoverContent.Default)}>
-              <div>Back</div>
-              <div></div>
+          <div className='popover subtitle'>
+            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
+              <ChevronLeft />
+              <span>Subtitles</span>
             </div>
             {
               languagesWithStreamIndex.map((languageWithStreamIndex) => (
                 <div
                   key={languageWithStreamIndex.streamIndex}
                   onClick={setLanguage(languageWithStreamIndex)}
+                  className="description"
                 >
                   <div>{languageWithStreamIndex.language}</div>
                   <div>{selectedSubtitleStreamIndex === languageWithStreamIndex.streamIndex ? '✓' : ''}</div>
