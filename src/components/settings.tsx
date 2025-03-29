@@ -170,7 +170,7 @@ const SettingsAction = () => {
     [subtitleStreams.length]
   )
 
-  const setLanguage = (languageWithStreamIndex: { streamIndex: number, language: string }) => () => {
+  const setLanguage = (languageWithStreamIndex: { streamIndex: number | undefined, language?: string }) => () => {
     mediaActor.send({ type: 'SELECT_SUBTITLE_STREAM', streamIndex: languageWithStreamIndex.streamIndex })
     togglePopover()
   }
@@ -290,6 +290,10 @@ const SettingsAction = () => {
               <ChevronLeft />
               <span>Subtitles</span>
             </div>
+            <div onClick={setLanguage({ streamIndex: undefined })}>
+              <span>Disable</span>
+              <span>{selectedSubtitleStreamIndex === undefined ? '✓' : ''}</span>
+              </div>
             {
               languagesWithStreamIndex.map((languageWithStreamIndex) => (
                 <div
@@ -297,8 +301,8 @@ const SettingsAction = () => {
                   onClick={setLanguage(languageWithStreamIndex)}
                   className="description"
                 >
-                  <div>{languageWithStreamIndex.language}</div>
-                  <div>{selectedSubtitleStreamIndex === languageWithStreamIndex.streamIndex ? '✓' : ''}</div>
+                  <span>{languageWithStreamIndex.language}</span>
+                  <span>{selectedSubtitleStreamIndex === languageWithStreamIndex.streamIndex ? '✓' : ''}</span>
                 </div>
               ))
             }

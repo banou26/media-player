@@ -11,6 +11,7 @@ type SubtitlesEvents =
   | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
   | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
   | { type: 'SELECT_SUBTITLE_STREAM', streamIndex: number }
+  | { type: 'TIME_UPDATE', currentTime: number }
 
 type SubtitlesEmittedEvents =
   | { type: 'WAITING' }
@@ -137,12 +138,25 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
   let appendedSubtitleParts: SubtitlePart[] = []
   let selectedStreamIndex: number | undefined
 
+  const currentTimeInterval = setInterval(() => {
+    if (jassubInstance) {
+      jassubInstance.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
+    }
+  }, 100)
+
   receive((event) => {
+    if (event.type === 'TIME_UPDATE' && jassubInstance) {
+      jassubInstance.setCurrentTime(video.paused, event.currentTime, video.playbackRate)
+    }
     if (event.type === 'SELECT_SUBTITLE_STREAM') {
       selectedStreamIndex = event.streamIndex
       sendBack({ type: 'SELECTED_SUBTITLE_STREAM_UPDATED', streamIndex: event.streamIndex })
       if (!jassubInstance) return
       jassubInstance.freeTrack()
+      jassubInstance.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
+      if (selectedStreamIndex === undefined) {
+        return
+      }
       appendedSubtitleParts = []
       const newSubtitleStreams = subtitlesStreams.get(selectedStreamIndex)
       if (!newSubtitleStreams) {
@@ -232,6 +246,7 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
             }
             const header = stringify(modifiedHeader)
             jassubInstance = new JASSUB({
+              onDemandRender: false,
               video,
               canvas,
               subContent: header,
@@ -264,6 +279,7 @@ export default fromAsyncCallback<SubtitlesEvents, SubtitlesInput, SubtitlesEmitt
   })
 
   return () => {
+    clearInterval(currentTimeInterval)
     jassubInstance?.destroy()
   }
 })

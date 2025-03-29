@@ -62,7 +62,7 @@ export default setup({
       | { type: 'NEW_ATTACHMENTS', attachments: Attachment[] }
       | { type: 'NEW_SUBTITLE_FRAGMENTS', subtitles: SubtitleFragment[] }
       | { type: 'SUBTITLE_STREAMS_UPDATED', subtitlesStreams: SubtitleStream[] }
-      | { type: 'SELECT_SUBTITLE_STREAM', streamIndex: number }
+      | { type: 'SELECT_SUBTITLE_STREAM', streamIndex: number | undefined }
       | { type: 'NEW_THUMBNAIL', thumbnail: Thumbnail }
       | { type: 'DOWNLOADED_RANGES_UPDATED', downloadedRanges: DownloadedRange[] }
       | { type: 'DESTROY' }
@@ -198,7 +198,10 @@ export default setup({
         'PLAYING': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: false }) }) },
         'PAUSED': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: true }) }) },
         'ENDED': { actions: assign({ media: ({ context }) => ({ ...context.media, paused: true }) }) },
-        'TIME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, currentTime: event.currentTime }) }) },
+        'TIME_UPDATE': { actions: [
+          assign({ media: ({ context, event }) => ({ ...context.media, currentTime: event.currentTime }) }),
+          sendTo('subtitles', ({ event }) => event)
+        ] },
         'VOLUME_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, muted: event.muted, volume: event.volume }) }) },
         'SET_VOLUME': { actions: sendTo('media', ({ event }) => event) },
         'PLAYBACK_RATE_UPDATE': { actions: assign({ media: ({ context, event }) => ({ ...context.media, playbackRate: event.playbackRate }) }) },
