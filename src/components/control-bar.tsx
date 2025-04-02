@@ -112,18 +112,6 @@ const style = css`
       }
     }
     .right {
-      .media-info {
-        ${fonts.bMedium.regular}
-        text-shadow: 0 0 4px rgba(0, 0, 0, 1);
-
-        margin-right: 8px;
-        @media (min-width: 768px) {
-          margin-right: 12px;
-        }
-        @media (min-width: 2560px) {
-          margin-right: 16px;
-        }
-      }
       .picture-in-picture {
         img {
           width: 22px;
@@ -290,7 +278,7 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
         <div className='right'>
           {
             hideMediaStats !== 'true'
-              ? <span className='media-info'>{mediaInformation}</span>
+              ? mediaInformation
               : null
           }
           <SettingsAction />

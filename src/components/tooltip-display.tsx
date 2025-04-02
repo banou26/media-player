@@ -14,7 +14,7 @@ const style = (size: buttonSize) => css`
   z-index: 3;
 
   * {
-    ${fonts.bSmall.regular}
+    ${fonts.bMedium.regular}
   }
 
   ${size === buttonSize.sm && css`
