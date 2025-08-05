@@ -55,7 +55,7 @@ export default fromAsyncCallback<MediaSourceEvents, MediaSourceInput, MediaSourc
           receive((event) => {
             if (resolved) return
             if (event.type === 'METADATA') {
-              const sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${event.info.input.videoMimeType},${event.info.input.audioMimeType}"`)
+              const sourceBuffer = mediaSource.addSourceBuffer(`video/mp4; codecs="${[event.info.output.videoMimeType, event.info.output.audioMimeType].filter(Boolean).join(',')}"`)
               sourceBuffer.mode = 'segments'
               mediaSource.duration = event.info.input.duration
               headerBuffer = event.data
