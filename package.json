@@ -11,10 +11,10 @@
     "src"
   ],
   "scripts": {
-    "dev": "vite --port 4560",
-    "build-dev": "vite build --watch",
-    "build": "vite build && npm run types",
-    "build-for-dev": "vite build && npm run copy-dependencies && npm run types",
+    "dev": "vp dev --port 4560",
+    "build-dev": "vp build --watch",
+    "build": "vp build && npm run types",
+    "build-for-dev": "vp build && npm run copy-dependencies && npm run types",
     "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-wasm",
     "copy-worker": "shx cp node_modules/libav-wasm/build/worker.js build/libav.js",
     "copy-worker-wasm": "shx cp node_modules/libav-wasm/build/libav.wasm build/libav.wasm",
@@ -23,16 +23,17 @@
   },
   "author": "Banou26",
   "devDependencies": {
-    "@types/node": "^18.11.18",
+    "@types/node": "^22.20.1",
     "@types/react": "^18.0.27",
     "@types/react-dom": "^18.0.10",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^7.6.0",
     "copyfiles": "^2.4.1",
     "mime": "^3.0.0",
     "shx": "^0.3.4",
     "typescript": "^5.8.2",
-    "vite": "^6.2.1"
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
+    "vite-plus": "0.2.4"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -47,5 +48,15 @@
     "react-feather": "^2.0.10",
     "react-tooltip": "^5.28.0",
     "xstate": "^5.19.1"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.0.1",
+      "onFail": "download"
+    }
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4"
   }
 }
