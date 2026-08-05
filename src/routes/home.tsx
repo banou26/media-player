@@ -12,112 +12,43 @@ import { createCloudSettings } from '../settings/cloud'
 // is modal inside the broker's own full-viewport frame and would be drawn over a third party's page.
 const settings = createCloudSettings()
 
-const pageStyle = css`
+const style = css`
+  position: relative;
   height: 100%;
   width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #111;
-  color: #fff;
+  background: #000;
 
-  .panel {
-    width: min(56rem, 90vw);
-    text-align: center;
-    padding: 2.4rem 1.8rem;
-    border: 2px dashed rgba(255, 255, 255, 0.18);
-    border-radius: 1.2rem;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
-    @media (min-width: 768px) {
-      padding: 4rem 3rem;
-    }
+  /* The empty player is deliberately bare, so there is no chrome at rest. This appears only while a
+     file is actually over the window, and goes away with it. */
+  .drop-hint {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    pointer-events: none;
+    border: 2px dashed rgba(255, 255, 255, 0.35);
+    background: rgba(255, 0, 51, 0.06);
   }
 
-  &.dragging .panel {
-    border-color: #f03;
-    background-color: rgba(255, 0, 51, 0.06);
-  }
-
-  h1 {
-    font-size: 2.1rem;
-    font-weight: 600;
-    margin-bottom: 0.8rem;
-    @media (min-width: 768px) {
-      font-size: 2.8rem;
-    }
-  }
-
-  p {
-    color: #aaa;
-    font-size: 1.4rem;
-    line-height: 2rem;
-    margin-bottom: 2.4rem;
-    @media (min-width: 768px) {
-      font-size: 1.5rem;
-      line-height: 2.2rem;
-    }
-  }
-
-  button {
-    font: inherit;
-    font-size: 1.5rem;
-    color: #fff;
-    background: #f03;
-    border: none;
-    border-radius: 0.6rem;
-    padding: 1rem 2rem;
-    min-height: 4.4rem;
+  /* Covers the picture while nothing is loaded, so a click anywhere opens a file. Not rendered once a
+     source exists, which leaves the player's own click-to-pause alone. */
+  .picker {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
     cursor: pointer;
   }
 
-  button:hover {
-    filter: brightness(1.1);
-  }
-
-  .url {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-    margin-top: 2rem;
-    @media (min-width: 480px) {
-      flex-direction: row;
-    }
-  }
-
-  .url input {
-    flex: 1;
-    min-width: 0;
-    font: inherit;
-    /* under 16px iOS Safari zooms the page when the field takes focus */
-    font-size: 1.6rem;
-    color: #fff;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    border-radius: 0.6rem;
-    padding: 1rem 1.2rem;
-    min-height: 4.4rem;
-  }
-
-  .url button {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .error {
-    margin-top: 1.6rem;
+  .source-error {
+    position: absolute;
+    inset: auto 0 12%;
+    z-index: 4;
+    padding: 0 2rem;
+    text-align: center;
     color: #ff8080;
     font-size: 1.4rem;
+    text-shadow: 0 0 4px rgba(0, 0, 0, 1);
+    pointer-events: none;
   }
-
-  .note {
-    margin-top: 2.4rem;
-    font-size: 1.3rem;
-    color: #777;
-  }
-`
-
-const playerStyle = css`
-  height: 100%;
-  width: 100%;
 `
 
 export const Home = () => {
@@ -125,31 +56,22 @@ export const Home = () => {
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [url, setUrl] = useState('')
 
   // Fire and forget. Nothing here is awaited and nothing gates playback on it: with no account, no
   // broker or no network the player runs exactly as it does for an anonymous visitor.
   useEffect(() => settings.attach(), [])
 
-  const openBlob = useCallback(async (file: File) => {
+  const open = useCallback(async (next: Parameters<typeof resolveSource>[0]) => {
     setError(null)
     try {
-      setSource(await resolveSource({ kind: 'blob', blob: file, name: file.name }))
+      setSource(await resolveSource(next))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     }
   }, [])
 
-  const openUrl = useCallback(async (value: string) => {
-    setError(null)
-    try {
-      setSource(await resolveSource({ kind: 'url', url: value, name: value.split('/').pop() }))
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
-    }
-  }, [])
+  const openFile = useCallback((file: File) => open({ kind: 'blob', blob: file, name: file.name }), [open])
 
-  // Dropping anywhere works, so the whole document listens rather than only the panel
   useEffect(() => {
     const over = (event: DragEvent) => { event.preventDefault(); setDragging(true) }
     const leave = (event: DragEvent) => { if (!event.relatedTarget) setDragging(false) }
@@ -157,71 +79,67 @@ export const Home = () => {
       event.preventDefault()
       setDragging(false)
       const file = event.dataTransfer?.files?.[0]
-      if (file) void openBlob(file)
+      if (file) void openFile(file)
+    }
+    // With no field on screen to paste into, the document takes the paste. A URL is the only thing
+    // worth reading out of it; a pasted file goes through the same path as a dropped one.
+    const paste = (event: ClipboardEvent) => {
+      const file = event.clipboardData?.files?.[0]
+      if (file) { void openFile(file); return }
+      const text = event.clipboardData?.getData('text')?.trim()
+      if (!text) return
+      try {
+        const url = new URL(text)
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return
+        void open({ kind: 'url', url: text, name: decodeURIComponent(url.pathname.split('/').pop() || '') })
+      } catch {}
     }
     document.addEventListener('dragover', over)
     document.addEventListener('dragleave', leave)
     document.addEventListener('drop', drop)
+    document.addEventListener('paste', paste)
     return () => {
       document.removeEventListener('dragover', over)
       document.removeEventListener('dragleave', leave)
       document.removeEventListener('drop', drop)
+      document.removeEventListener('paste', paste)
     }
-  }, [openBlob])
-
-  if (source) {
-    return (
-      <div css={playerStyle}>
-        <MediaPlayer
-          {...playerAssets}
-          read={source.read}
-          thumbnailRead={source.readQuiet}
-          size={source.length}
-          title={source.name}
-          settings={settings}
-          autoplay
-          thumbnails
-          loadingInformation="Reading the file..."
-        />
-      </div>
-    )
-  }
+  }, [open, openFile])
 
   return (
-    <div css={pageStyle} className={dragging ? 'dragging' : ''}>
-      <div className="panel">
-        <h1>Play any video, in your browser</h1>
-        <p>
-          Drop a file anywhere on this page. Containers and codecs your browser cannot open natively
-          are remuxed as they play, a piece at a time. Nothing is uploaded and nothing leaves your
-          device.
-        </p>
-        <button type="button" onClick={() => inputRef.current?.click()}>Choose a file</button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="video/*,.mkv,.avi,.ts,.mov,.webm,.flv,.ogv,.m2ts"
-          style={{ display: 'none' }}
-          onChange={(event) => {
-            const file = event.target.files?.[0]
-            if (file) void openBlob(file)
-          }}
-        />
-        <div className="url">
-          <input
-            type="url"
-            placeholder="or paste a video URL"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Enter' && url) void openUrl(url) }}
-          />
-          <button type="button" onClick={() => url && void openUrl(url)}>Open</button>
-        </div>
-        {error ? <div className="error">{error}</div> : null}
-        <div className="note">
-          A URL has to allow this origin and answer range requests.
-        </div>
-      </div>
+    <div css={style}>
+      <MediaPlayer
+        {...playerAssets}
+        read={source?.read}
+        thumbnailRead={source?.readQuiet}
+        size={source?.length}
+        title={source?.name}
+        settings={settings}
+        autoplay
+        thumbnails={!!source}
+        loadingInformation={source ? 'Reading the file...' : undefined}
+      >
+        {source
+          ? null
+          : (
+            <div
+              className="picker"
+              onClick={(event) => { event.stopPropagation(); inputRef.current?.click() }}
+            />
+          )}
+        {error ? <div className="source-error">{error}</div> : null}
+      </MediaPlayer>
+      {dragging ? <div className="drop-hint" /> : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*,.mkv,.avi,.ts,.mov,.webm,.flv,.ogv,.m2ts"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) void openFile(file)
+        }}
+      />
     </div>
   )
 }
