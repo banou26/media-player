@@ -16,6 +16,9 @@ const isExternal = (id: string) => externals.some((name) => id === name || id.st
 // The published library, built from src/lib. The app at src/ is built by vite.config.ts.
 export default defineConfig({
   fmt: { semi: false, singleQuote: true },
+  // public/ holds the app's worker and wasm assets, which vite copies into whatever outDir it is
+  // building. Left on, that puts 17 MB of libav and jassub into the published package.
+  publicDir: false,
   build: {
     target: 'esnext',
     outDir: 'dist',
