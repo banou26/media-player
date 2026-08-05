@@ -48,12 +48,18 @@ every control renders 1.6x too large.
 
 ## Layout
 
-- `src/engine/` the pipeline, with no React in it: MediaSource feeding, remux, jassub, thumbnails.
-  Published separately as `@banou/media-player/engine`.
-- `src/react/` the player component, its chrome, and the hooks.
-- `src/embed/` the cross-origin embed protocol, its client and its host.
+One package. `src/` is video.fkn.app, `src/lib` is the library it publishes, and the app imports it by
+its published name so it stays an honest consumer.
+
+- `src/` the app: `main.tsx`, `routes/home.tsx`, `routes/embed.tsx`, `settings/cloud.ts`.
+  Built by `vite.config.ts` into `build/`, which is what Cloudflare Pages serves.
+- `src/lib/engine/` the pipeline, with no React in it: MediaSource feeding, remux, jassub, thumbnails.
+  Published as `@banou/media-player/engine`.
+- `src/lib/react/` the player component, its chrome, and the hooks.
+- `src/lib/embed/` the cross-origin embed protocol, its client and its host.
   Published as `@banou/media-player/embed`.
-- `app/` video.fkn.app, an npm workspace and the reference consumer.
+
+Built by `vite.lib.config.ts` into `dist/`, which is what npm publishes.
 
 ## Embedding it
 
@@ -98,10 +104,13 @@ frame.
 
 ```sh
 npm install
-npm run dev        # the library, with a harness at src/main.tsx, port 4560
-npm run app-dev    # video.fkn.app, port 4570
+npm run dev        # video.fkn.app on port 4560
+npm run build      # the app, into build/
+npm run build-lib  # the library, into dist/
 ```
 
-The harness reads `/video2.mkv` from the repo root; symlink any file there. `app/tests/embedder.html`
-is a cross-origin embed harness: serve the app with `--host` and open it on `127.0.0.1` while the
-player runs on `localhost`, which makes them two real origins.
+The app opens on an empty player: black, with the chrome and nothing else. Drop a file anywhere, click
+to pick one, or paste a URL.
+
+`tests/embedder.html` is a cross-origin embed harness. Serve with `--host` and open it on `127.0.0.1`
+while the player runs on `localhost`, which makes them two real origins.

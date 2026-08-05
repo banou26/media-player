@@ -3,44 +3,36 @@
   "version": "0.7.0",
   "description": "A video player for containers and codecs the browser cannot play natively, remuxed on the fly",
   "type": "module",
-  "main": "build/index.js",
-  "types": "build/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./build/index.d.ts",
-      "import": "./build/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./engine": {
-      "types": "./build/engine/index.d.ts",
-      "import": "./build/engine/index.js"
+      "types": "./dist/engine/index.d.ts",
+      "import": "./dist/engine/index.js"
     },
     "./embed": {
-      "types": "./build/embed/index.d.ts",
-      "import": "./build/embed/index.js"
+      "types": "./dist/embed/index.d.ts",
+      "import": "./dist/embed/index.js"
     },
     "./package.json": "./package.json"
   },
-  "workspaces": [
-    "app"
-  ],
   "files": [
-    "build",
-    "tsconfig.json",
-    "tsconfig.node.json",
-    "src"
+    "dist",
+    "src/lib"
   ],
   "scripts": {
-    "dev": "vp dev --port 4560",
-    "build-dev": "vp build --watch",
-    "build": "vp build && npm run types",
-    "build-for-dev": "vp build && npm run copy-dependencies && npm run types",
-    "copy-dependencies": "npm run copy-libass && npm run copy-worker && npm run copy-worker-wasm",
-    "copy-worker": "shx cp node_modules/libav-wasm/build/worker.js build/libav-worker.js",
-    "copy-worker-wasm": "shx cp node_modules/libav-wasm/build/libav.wasm build/libav.wasm",
-    "copy-libass": "copyfiles -u 3 ./node_modules/jassub/dist/* build",
-    "types": "tsc",
-    "app-dev": "npm run dev -w app",
-    "app-build": "npm run build -w app",
+    "dev": "npm run copy-assets && vp dev --port 4560",
+    "build": "shx rm -rf build/ && npm run copy-assets && vp build",
+    "preview": "vp preview",
+    "build-lib": "shx rm -rf dist/ && vp build -c vite.lib.config.ts && npm run types",
+    "types": "tsc -p tsconfig.lib.json",
+    "copy-assets": "shx mkdir -p public && npm run copy-libav && npm run copy-libass",
+    "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm",
+    "copy-libass": "shx cp node_modules/jassub/dist/jassub-worker.js public/jassub-worker.js && shx cp node_modules/jassub/dist/jassub-worker.wasm public/jassub-worker.wasm && shx cp node_modules/jassub/dist/jassub-worker-modern.wasm public/jassub-worker-modern.wasm && shx cp node_modules/jassub/dist/default.woff2 public/default.woff2",
     "test": "playwright test"
   },
   "author": "Banou26",
@@ -52,23 +44,9 @@
       "optional": true
     }
   },
-  "devDependencies": {
-    "@playwright/test": "1.58.2",
-    "osra": "^0.6.4",
-    "@types/node": "^22.20.1",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^6.0.3",
-    "copyfiles": "^2.4.1",
-    "mime": "^3.0.0",
-    "playwright": "1.58.2",
-    "shx": "^0.3.4",
-    "typescript": "^7.0.2",
-    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
-    "vite-plus": "0.2.4"
-  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
+    "@videojs/core": "10.0.0-beta.26",
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",
     "jassub": "^1.8.6",
@@ -77,6 +55,22 @@
     "react-dom": "^19.0.0",
     "react-feather": "^2.0.10",
     "react-tooltip": "^5.28.0"
+  },
+  "devDependencies": {
+    "@fkn/lib": "^0.9.11",
+    "@playwright/test": "1.58.2",
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "copyfiles": "^2.4.1",
+    "mime": "^3.0.0",
+    "osra": "^0.6.4",
+    "playwright": "1.58.2",
+    "shx": "^0.3.4",
+    "typescript": "^7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
+    "vite-plus": "0.2.4"
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4"

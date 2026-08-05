@@ -1,13 +1,11 @@
 node_modules/
 build
+dist
+public/*
+!public/_redirects
 video.mkv
 video2.mkv
 video3.mkv
 vid.mkv
-video3-copy.mkv
-video4.mkv
-video5.mkv
-video6.mkv
-video9.mkv
 bigbunny.mp4
 .vscode/*

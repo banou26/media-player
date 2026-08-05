@@ -1,17 +1,8 @@
 import { defineConfig, lazyPlugins } from 'vite-plus'
 import react from '@vitejs/plugin-react'
 
-import { dependencies, devDependencies } from './package.json'
-
-const externals = [
-  ...(dependencies ? Object.keys(dependencies) : []),
-  ...(devDependencies ? Object.keys(devDependencies) : []),
-]
-
-// Subpath imports (libav-wasm/build/worker, react/jsx-runtime) are part of the same package and must
-// stay external too, which an exact-string list would not catch.
-const isExternal = (id: string) => externals.some((name) => id === name || id.startsWith(`${name}/`))
-
+// video.fkn.app. The library it consumes lives at src/lib and is built separately by
+// vite.lib.config.ts, so this config never sees a library concern.
 export default defineConfig({
   fmt: { semi: false, singleQuote: true },
   lint: {
@@ -24,7 +15,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     overrides: [
       {
-        files: ['tests/**', '**/*.spec.ts', '**/*.test.ts', 'examples/**', 'app/**'],
+        files: ['tests/**', '**/*.spec.ts', '**/*.test.ts'],
         rules: {
           'no-floating-promises': 'off',
           'no-unused-vars': 'off',
@@ -36,37 +27,26 @@ export default defineConfig({
   build: {
     target: 'esnext',
     outDir: 'build',
-    lib: {
-      name: 'fkn-media-player',
-      entry: {
-        index: 'src/index.tsx',
-        'engine/index': 'src/engine/index.ts',
-        'embed/index': 'src/embed/index.ts',
-      },
-      fileName: (_format, name) => `${name}.js`,
-      formats: ['es'],
+  },
+  resolve: {
+    // The app imports the library by its published name so it stays an honest consumer, but resolves
+    // to the source, so a change to either shows up with no build step in between.
+    alias: {
+      '@banou/media-player/embed': new URL('./src/lib/embed/index.ts', import.meta.url).pathname,
+      '@banou/media-player': new URL('./src/lib/index.tsx', import.meta.url).pathname,
     },
-    rollupOptions: {
-      external: isExternal,
-    },
+    // Two osra instances in one bundle break every worker socket that rides it, and an embedder that
+    // already depends on osra is exactly the case this app has to survive.
+    dedupe: ['osra', 'react', 'react-dom'],
   },
   plugins: lazyPlugins(() => [
     react({
       jsxImportSource: '@emotion/react',
     }),
-    {
-      name: 'configure-response-headers',
-      configureServer: (server) => {
-        server.middlewares.use((_req, res, next) => {
-          res.setHeader('Cache-Control', 'no-store')
-          next()
-        })
-      },
-    },
   ]),
   server: {
     fs: {
-      allow: ['../..'],
+      allow: ['..'],
     },
   },
 })

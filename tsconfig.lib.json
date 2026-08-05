@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "target": "ESNext",
+    "outDir": "dist",
+    "rootDir": "./src/lib",
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": false,
     "skipLibCheck": true,
@@ -11,15 +13,13 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@emotion/react",
-    "types": ["vite/client"],
-    "paths": {
-      "@banou/media-player": ["../src/index.tsx"],
-      "@banou/media-player/embed": ["../src/embed/index.ts"]
-    }
+    "types": []
   },
-  "include": ["src"],
-  "exclude": ["node_modules"]
+  "include": ["src/lib"],
+  "exclude": ["node_modules", "build", "dist"]
 }
