@@ -42,20 +42,6 @@ const style = css`
     }
   }
 
-  /* a finger never hovers, and a mouse drag can leave the bar while it holds, so the drag carries the
-     same emphasis as the hover */
-  &.dragging {
-    .background-bar {
-      transform: scaleY(1.5);
-    }
-    .loaded {
-      transform: scaleY(1.5);
-      top: -.1rem;
-    }
-    .play-container {
-      transform: scaleY(1.5);
-    }
-  }
 
   .background-bar {
     position: absolute;
@@ -140,9 +126,19 @@ const style = css`
   }
 
   /* a thumb is far wider than a mouse cursor, so the hit strip grows to 44px and the visible track to
-     .6rem. The strip stays centred on the track, so growing it never moves the bar itself. */
+     .6rem. Growing the strip never moves the bar itself. */
   @media (pointer: coarse) {
     height: .6rem;
+
+    /* Press feedback, coarse only. A mouse never had this: the :hover emphasis below compiles to a
+       descendant selector that cannot match, so it has always been dead, and reviving it here would
+       be a visible change on desktop rather than a port of it. A finger has no hover at all, so
+       without something the bar gives no sign it is being dragged. */
+    &.dragging {
+      .background-bar, .loaded, .play-container {
+        transform: scaleY(1.5);
+      }
+    }
 
     .loaded {
       height: .6rem;
@@ -159,9 +155,13 @@ const style = css`
       height: .6rem;
     }
 
+    /* The strip grows UPWARD, into the video, never downward. Centring a 44px box on a 6px bar hangs
+       19px of it below the track and over the control row, whose top padding is only 6px, and since
+       .progress-bar is positioned and .actions is not, the strip wins hit testing and swallows taps
+       meant for play, mute and fullscreen. Above the bar there is nothing to steal from. */
     .padding {
       height: 44px;
-      bottom: calc((.6rem - 44px) / 2);
+      bottom: 0;
     }
   }
 

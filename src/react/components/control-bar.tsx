@@ -34,19 +34,19 @@ const style = css`
     display: flex;
     justify-content: space-between;
 
-    padding: 6px 12px;
+    /* The env() terms are repeated per breakpoint rather than written once as longhands after the
+       media queries. Nested at-rules are hoisted out of the rule and emitted after it, so a later
+       padding shorthand inside a media query overrides any longhand declared above it, and the
+       safe-area insets would be silently dead at every width but the smallest.
+       They keep the controls clear of a notch or a home indicator in fullscreen, and resolve to zero
+       everywhere else. */
+    padding: 6px calc(12px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
     @media (min-width: 768px) {
-      padding: 8px 16px;
+      padding: 8px calc(16px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
     }
     @media (min-width: 2560px) {
-      padding: 8px 24px;
+      padding: 8px calc(24px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px));
     }
-
-    /* Keeps the controls clear of a notch or a home indicator once the player is fullscreen on a
-       phone. Resolves to zero everywhere else, so it costs nothing on a desktop. */
-    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
-    padding-left: calc(12px + env(safe-area-inset-left, 0px));
-    padding-right: calc(12px + env(safe-area-inset-right, 0px));
 
     .left, .right {
       display: flex;
@@ -119,6 +119,9 @@ const style = css`
            control bar looks identical and only the reachable box changes. Keyed on the pointer rather
            than the width, because a narrow desktop window still has a mouse. */
         @media (pointer: coarse) {
+          /* border-box explicitly: these already carry 8px of padding, and under content-box the
+             floor would stack on top of it and overshoot. The library cannot assume a consumer reset. */
+          box-sizing: border-box;
           min-width: 44px;
           min-height: 44px;
           justify-content: center;

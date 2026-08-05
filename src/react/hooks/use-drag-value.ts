@@ -39,9 +39,13 @@ export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabl
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (disabled || event.button > 0) return
-    // Stops the surrounding player from reading the gesture as a tap on the video
-    event.stopPropagation()
-    event.preventDefault()
+    // No preventDefault and no stopPropagation here, both of which were actively harmful.
+    // preventDefault sets the browser's prevent-mouse-event flag, which suppresses the whole
+    // compatibility mousedown/mousemove/mouseup stream for the gesture, and the seek preview is driven
+    // by those, so a mouse scrub froze its own label and thumbnail. stopPropagation kept the press from
+    // reaching document, which is where the settings popover listens to close itself and where the
+    // chrome refreshes its auto-hide timer. Text selection is already handled by user-select and
+    // scrolling by touch-action.
     activePointer.current = event.pointerId
     event.currentTarget.setPointerCapture?.(event.pointerId)
     setDragging(true)

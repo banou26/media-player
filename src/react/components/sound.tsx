@@ -57,9 +57,13 @@ const style = css`
      hovered selector is repeated because a touch browser can still synthesize a hover on tap, and a
      9rem panel does not fit next to the rest of the bar on a phone. */
   @media (pointer: coarse) {
+    /* width: auto, not a fixed rem. The container keeps overflow: hidden from the base rule, so any
+       fixed width smaller than the slider inside it silently clips the track and makes the clipped
+       part unhittable. Letting the content size it cannot be wrong, and nothing animates here because
+       on a coarse pointer the slider is already open. */
     .volume-slider-container,
     &:hover .volume-slider-container {
-      width: 5rem;
+      width: auto;
 
       pointer-events: auto;
     }
@@ -67,6 +71,10 @@ const style = css`
     /* A 44px press target around an 18px icon. The button's padding is set from the control bar at a
        higher specificity, so the box is floored here instead and the icon keeps its size. */
     .sound {
+      /* border-box explicitly: the button already carries padding from the control bar, and under
+         content-box the floor would add to it and overshoot 44px. The library cannot assume the
+         consumer ships a reset. */
+      box-sizing: border-box;
       justify-content: center;
 
       min-width: 44px;
@@ -74,12 +82,6 @@ const style = css`
     }
   }
 
-  @media (pointer: coarse) and (min-width: 768px) {
-    .volume-slider-container,
-    &:hover .volume-slider-container {
-      width: 9rem;
-    }
-  }
 `
 
 export type SoundProps = {
