@@ -50,6 +50,36 @@ const style = css`
 
     pointer-events: auto;
   }
+
+  /* A touch screen has no hover, so a slider that only opens on hover is a slider that never opens.
+     On a coarse pointer it stays open instead, which leaves the speaker button doing the one thing
+     it does, mute. The hover rules above are untouched, so a mouse keeps both transitions. The
+     hovered selector is repeated because a touch browser can still synthesize a hover on tap, and a
+     9rem panel does not fit next to the rest of the bar on a phone. */
+  @media (pointer: coarse) {
+    .volume-slider-container,
+    &:hover .volume-slider-container {
+      width: 5rem;
+
+      pointer-events: auto;
+    }
+
+    /* A 44px press target around an 18px icon. The button's padding is set from the control bar at a
+       higher specificity, so the box is floored here instead and the icon keeps its size. */
+    .sound {
+      justify-content: center;
+
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+
+  @media (pointer: coarse) and (min-width: 768px) {
+    .volume-slider-container,
+    &:hover .volume-slider-container {
+      width: 9rem;
+    }
+  }
 `
 
 export type SoundProps = {

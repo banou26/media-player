@@ -42,6 +42,12 @@ const style = css`
       padding: 8px 24px;
     }
 
+    /* Keeps the controls clear of a notch or a home indicator once the player is fullscreen on a
+       phone. Resolves to zero everywhere else, so it costs nothing on a desktop. */
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(12px + env(safe-area-inset-left, 0px));
+    padding-right: calc(12px + env(safe-area-inset-right, 0px));
+
     .left, .right {
       display: flex;
       align-items: center;
@@ -107,6 +113,15 @@ const style = css`
 
         :hover {
           background-color: ${colors.hover};
+        }
+
+        /* A finger needs a target it can actually hit. The hit area grows, the icon does not, so the
+           control bar looks identical and only the reachable box changes. Keyed on the pointer rather
+           than the width, because a narrow desktop window still has a mouse. */
+        @media (pointer: coarse) {
+          min-width: 44px;
+          min-height: 44px;
+          justify-content: center;
         }
       }
     }

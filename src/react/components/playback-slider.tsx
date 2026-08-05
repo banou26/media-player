@@ -1,8 +1,9 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useEffect } from 'react'
 import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
+import { useDragValue } from '../hooks/use-drag-value'
 
 const style = css`
 display: flex;
@@ -17,6 +18,10 @@ width: 100%;
 
   padding: 8px 4px;
   margin: 0 2px;
+  /* a finger needs a 44px band to press, so the padding grows while the track stays 3px */
+  @media (pointer: coarse) {
+    padding: 20px 8px;
+  }
 
   cursor: pointer;
 
@@ -27,6 +32,7 @@ width: 100%;
     border-radius: 4px;
 
     width: 120px;
+    max-width: 100%;
     height: 3px;
     @media (min-width: 768px) {
       height: 4px;
@@ -40,7 +46,7 @@ width: 100%;
     background: #ffffff;
     border-radius: 50%;
     transform: translateX(-50%);
-    pointer-events: none; 
+    pointer-events: none;
 
     width: 10px;
     height: 10px;
@@ -58,7 +64,7 @@ export const PlaybackSlider = () => {
   const player = usePlayer()
   const playbackRate = usePlayer((state) => state.playbackRate)
   const sliderRef = useRef<HTMLDivElement>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const trackRef = useRef<HTMLDivElement>(null)
 
   const MIN_RATE = 0.25
   const MAX_RATE = 3.0
@@ -75,33 +81,15 @@ export const PlaybackSlider = () => {
     return ((rate - MIN_RATE) / RANGE) * 100
   }
 
-  const getPlaybackRateFromEvent = (clientX: number): number => {
-    if (!sliderRef.current) return roundedRate
+  // The inverse of getHandlePosition. The fraction is measured across the track element rather than
+  // the padded row that owns the gesture, so the rate under the pointer is the rate the handle
+  // renders at, and a press on the padding clamps to an end of the range.
+  const getPlaybackRateFromFraction = (fraction: number): number => roundToStep(MIN_RATE + (fraction * RANGE))
 
-    const rect = sliderRef.current.getBoundingClientRect()
-    const xPos = clientX - rect.left
-    const percent = Math.max(0, Math.min(xPos, rect.width)) / rect.width
-
-    const rawRate = MIN_RATE + (percent * RANGE)
-
-    return roundToStep(rawRate)
-  }
-
-  const handlePointerDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true)
-    const newRate = getPlaybackRateFromEvent(e.clientX)
-    player.setPlaybackRate(newRate)
-  }
-
-  const handlePointerMove = (e: MouseEvent) => {
-    if (!isDragging) return
-    const newRate = getPlaybackRateFromEvent(e.clientX)
-    player.setPlaybackRate(newRate)
-  }
-
-  const handlePointerUp = () => {
-    setIsDragging(false)
-  }
+  const { handlers } = useDragValue({
+    ref: trackRef,
+    onChange: (fraction) => player.setPlaybackRate(getPlaybackRateFromFraction(fraction))
+  })
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault()
@@ -116,15 +104,6 @@ export const PlaybackSlider = () => {
 
     player.setPlaybackRate(newRate)
   }
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handlePointerMove)
-    window.addEventListener('mouseup', handlePointerUp)
-    return () => {
-      window.removeEventListener('mousemove', handlePointerMove)
-      window.removeEventListener('mouseup', handlePointerUp)
-    }
-  }, [isDragging])
 
   useEffect(() => {
     const slider = sliderRef.current
@@ -150,12 +129,13 @@ export const PlaybackSlider = () => {
       <div
         className="playback-slider"
         ref={sliderRef}
-        onMouseDown={handlePointerDown}
+        {...handlers}
       >
         <div
+          ref={trackRef}
           style={{
-            background: `linear-gradient(to right, 
-              ${fillColor} 0% ${handlePosition}%, 
+            background: `linear-gradient(to right,
+              ${fillColor} 0% ${handlePosition}%,
               ${emptyColor} ${handlePosition}% 100%
             )`
           }}

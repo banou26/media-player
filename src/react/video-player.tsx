@@ -14,6 +14,7 @@ import { MediaPlayerContext } from './context'
 import { localStorageSettings } from './settings'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { useVolumePersistence } from './hooks/use-volume-persistence'
+import { useRatePersistence } from './hooks/use-rate-persistence'
 import Chrome from './components/chrome'
 
 export type MediaPlayerOptions = {
@@ -184,6 +185,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   })
 
   useVolumePersistence(settings)
+  useRatePersistence(settings, ready)
 
   const context = useMemo<MediaPlayerContextValue>(() => ({
     title: options.title,

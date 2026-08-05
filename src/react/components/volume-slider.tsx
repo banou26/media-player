@@ -1,9 +1,10 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useRef, useState, useEffect, useMemo } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { css } from '@emotion/react'
 
 import { TooltipDisplay } from './tooltip-display'
 import { usePlayer } from '../player'
+import { useDragValue } from '../hooks/use-drag-value'
 import { logToLinearVolume } from '../../utils/volume-utils'
 
 const style = css`
@@ -12,6 +13,10 @@ const style = css`
 
   padding: 16px 4px;
   margin: 0 2px;
+  /* a finger needs a 44px band to press, so the padding grows while the track stays 3px */
+  @media (pointer: coarse) {
+    padding: 22px 4px;
+  }
 
   cursor: pointer;
 
@@ -23,6 +28,14 @@ const style = css`
 
     width: 80px;
     height: 3px;
+    /* the control bar has under 360px to fit every button once the slider is always open, so the
+       track lends some of its length back on a phone and takes it again on anything wider */
+    @media (pointer: coarse) {
+      width: 64px;
+    }
+    @media (pointer: coarse) and (min-width: 768px) {
+      width: 80px;
+    }
   }
 
   .volume-handle {
@@ -49,31 +62,15 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
   const muted = usePlayer((state) => state.muted)
 
   const sliderRef = useRef<HTMLDivElement>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const trackRef = useRef<HTMLDivElement>(null)
 
-  const getNewVolumeFromEvent = (clientX: number): number => {
-    if (!sliderRef.current) return value
-    const rect = sliderRef.current.getBoundingClientRect()
-    const xPos = clientX - rect.left
-    const clamped = Math.max(0, Math.min(xPos, rect.width))
-    return clamped / rect.width
-  }
-
-  const handlePointerDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    setIsDragging(true)
-    const newVolume = getNewVolumeFromEvent(e.clientX)
-    onChange(newVolume)
-  }
-
-  const handlePointerMove = (e: MouseEvent) => {
-    if (!isDragging) return
-    const newVolume = getNewVolumeFromEvent(e.clientX)
-    onChange(newVolume)
-  }
-
-  const handlePointerUp = () => {
-    setIsDragging(false)
-  }
+  // The padded row owns the gesture so the whole press band is grabbable, while the fraction is
+  // measured across the track element, which is the box the fill and the handle are drawn in. The
+  // fraction stays linear: the perceptual curve is applied by the caller, not here.
+  const { handlers } = useDragValue({
+    ref: trackRef,
+    onChange
+  })
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault()
@@ -88,15 +85,6 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
     }
     onChange(newVol)
   }
-
-  useEffect(() => {
-    window.addEventListener('mousemove', handlePointerMove)
-    window.addEventListener('mouseup', handlePointerUp)
-    return () => {
-      window.removeEventListener('mousemove', handlePointerMove)
-      window.removeEventListener('mouseup', handlePointerUp)
-    }
-  }, [isDragging])
 
   useEffect(() => {
     const slider = sliderRef.current
@@ -126,9 +114,10 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
         <div
           ref={sliderRef}
           css={style}
-          onMouseDown={handlePointerDown}
+          {...handlers}
         >
           <div
+            ref={trackRef}
             style={{
               background: `linear-gradient(to right,
                 ${fillColor} 0% ${fillPercent}%,

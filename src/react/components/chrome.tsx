@@ -62,15 +62,44 @@ export const Chrome = ({
   const player = usePlayer()
   const { hideUI, setHideUI } = useMediaPlayer()
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // Which kind of pointer produced the last gesture, so a tap and a click can mean different things
+  const lastPointerType = useRef<string>('mouse')
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
 
-  // Deliberately no paused exception: the chrome hides after the delay whether or not playback is
-  // running, which is what the player has always done.
-  const onMouseMove = () => {
+  const reveal = () => {
     setHideUI(false)
     clearTimeout(autoHide.current)
     autoHide.current = setTimeout(() => setHideUI(true), AUTO_HIDE_DELAY)
+  }
+
+  // Deliberately no paused exception: the chrome hides after the delay whether or not playback is
+  // running, which is what the player has always done.
+  //
+  // A finger never produces a move, so this is the mouse path only. Touch reveals on tap instead.
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    lastPointerType.current = event.pointerType
+    if (event.pointerType !== 'mouse') return
+    reveal()
+  }
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    lastPointerType.current = event.pointerType
+  }
+
+  // A click on the video means play/pause with a mouse, which is what this player has always done.
+  // With a finger it means show or hide the controls: a phone has no other way to bring them back,
+  // and every touch player behaves this way. The play button is still one tap away.
+  const onVideoClick = () => {
+    if (lastPointerType.current === 'mouse') {
+      player.togglePaused()
+      return
+    }
+    if (hideUI) reveal()
+    else {
+      clearTimeout(autoHide.current)
+      setHideUI(true)
+    }
   }
 
   // Hides when the pointer genuinely leaves the player.
@@ -94,13 +123,14 @@ export const Chrome = ({
     <div
       css={style}
       ref={ref}
-      onMouseMove={onMouseMove}
+      onPointerMove={onPointerMove}
+      onPointerDown={onPointerDown}
       onMouseOut={onMouseOut}
       className={hideUI ? 'hide' : ''}
     >
       <Overlay loadingInformation={loadingInformation} onCanvasRef={onCanvasRef} />
       <ControlBar settings={settings} mediaInformation={mediaInformation} />
-      <div className="video" onClick={() => player.togglePaused()}>
+      <div className="video" onClick={onVideoClick}>
         <video ref={onVideoRef} playsInline />
         {children}
       </div>

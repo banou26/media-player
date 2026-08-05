@@ -16,16 +16,32 @@ import PlaybackSlider from './playback-slider'
 const style = css`
 position: relative;
 
+.settings {
+  /* the icon keeps its size, the pressable box grows around it */
+  @media (pointer: coarse) {
+    box-sizing: border-box;
+    justify-content: center;
+
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 .popover {
   position: absolute;
-  right: 50%;
-  transform: translateX(50%);
+  /* the gear sits a couple of buttons in from the right edge, so a centred popover hangs off that
+     edge on a phone. It anchors to the button instead until the viewport has room to centre it. */
+  right: 0;
+  transform: none;
 
   overflow-y: auto;
   width: 180px;
+  max-width: calc(100vw - 24px);
   height: 160px;
   top: -180px;
   @media (min-width: 768px) {
+    right: 50%;
+    transform: translateX(50%);
     width: 250px;
     height: 160px;
   }
@@ -50,6 +66,13 @@ position: relative;
     padding: 8px 6px 8px 12px;
 
     width: 100%;
+    /* rows keep their own height inside the fixed height column, so a long page scrolls rather than
+       squashing every row into it */
+    flex-shrink: 0;
+    @media (pointer: coarse) {
+      box-sizing: border-box;
+      min-height: 44px;
+    }
 
     :first-of-type {
       border-radius: 8px 8px 0 0;
@@ -103,8 +126,16 @@ position: relative;
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1fr;
     align-items: center;
-    
+
     padding: 8px 12px;
+    /* four presets across a 180px popover leave targets 34px wide, so a finger gets two rows of two
+       until the popover is wide enough for the row of four */
+    @media (pointer: coarse) {
+      grid-template-columns: 1fr 1fr;
+    }
+    @media (pointer: coarse) and (min-width: 768px) {
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+    }
 
     > div {
       display: flex;
@@ -113,6 +144,10 @@ position: relative;
 
       padding: 8px 6px;
       height: 100%;
+      @media (pointer: coarse) {
+        box-sizing: border-box;
+        min-height: 44px;
+      }
 
       cursor: pointer;
       :hover {
@@ -162,7 +197,7 @@ export const SettingsAction = ({ settings }: SettingsActionProps) => {
   }
 
   useEffect(() => {
-    const handleClickOutside = (ev: MouseEvent) => {
+    const handleClickOutside = (ev: PointerEvent) => {
       if (
         isOpenPopover &&
         settingsContainerRef.current &&
@@ -171,8 +206,10 @@ export const SettingsAction = ({ settings }: SettingsActionProps) => {
         togglePopover()
       }
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    // pointerdown covers mouse, touch and pen with one listener. A touch device only synthesizes
+    // mousedown after the tap has resolved, which lands too late to close the popover reliably.
+    document.addEventListener('pointerdown', handleClickOutside)
+    return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
 
   const languagesWithStreamIndex = useMemo(

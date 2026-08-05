@@ -1,16 +1,20 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { DOMAttributes, MouseEventHandler, RefObject } from 'react'
+import type { DOMAttributes } from 'react'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
 import { useMediaPlayer } from '../context'
+import { useDragValue } from '../hooks/use-drag-value'
 import { fonts } from '../../utils/fonts'
 
 const style = css`
   position: relative;
   height: .4rem;
+
+  --thumbnail-width: 25rem;
+  --thumbnail-half: 12.5rem;
 
   transition: transform .2s ease-in-out;
 
@@ -26,6 +30,21 @@ const style = css`
   cursor: pointer;
 
   :hover {
+    .background-bar {
+      transform: scaleY(1.5);
+    }
+    .loaded {
+      transform: scaleY(1.5);
+      top: -.1rem;
+    }
+    .play-container {
+      transform: scaleY(1.5);
+    }
+  }
+
+  /* a finger never hovers, and a mouse drag can leave the bar while it holds, so the drag carries the
+     same emphasis as the hover */
+  &.dragging {
     .background-bar {
       transform: scaleY(1.5);
     }
@@ -103,11 +122,11 @@ const style = css`
     justify-content: center;
 
     position: absolute;
-    top: -17.5rem;
-    height: calc(25rem * 9/16);
-    width: 25rem;
+    top: calc(-3.4375rem - var(--thumbnail-width) * 9/16);
+    height: calc(var(--thumbnail-width) * 9/16);
+    width: var(--thumbnail-width);
 
-    margin-left: -12.5rem;
+    margin-left: calc(var(--thumbnail-half) * -1);
     pointer-events: none;
 
     img {
@@ -119,46 +138,42 @@ const style = css`
       object-fit: cover;
     }
   }
+
+  /* a thumb is far wider than a mouse cursor, so the hit strip grows to 44px and the visible track to
+     .6rem. The strip stays centred on the track, so growing it never moves the bar itself. */
+  @media (pointer: coarse) {
+    height: .6rem;
+
+    .loaded {
+      height: .6rem;
+      .loaded-part {
+        height: .6rem;
+      }
+    }
+
+    .play-container {
+      height: .6rem;
+    }
+
+    .play {
+      height: .6rem;
+    }
+
+    .padding {
+      height: 44px;
+      bottom: calc((.6rem - 44px) / 2);
+    }
+  }
+
+  /* the clamp keeps the preview inside the bar only while the bar is wider than the preview itself:
+     below that its minimum wins over its maximum and the preview hangs past the right edge. A 360px
+     viewport leaves the bar 336px, which still fits 25rem, but the player is embeddable at any width
+     so the preview is narrowed where the margin is thinnest. */
+  @media (max-width: 480px) {
+    --thumbnail-width: 18rem;
+    --thumbnail-half: 9rem;
+  }
 `
-
-// The drag reports a clamped 0..1 fraction of the bar's own bounding rect. mousedown arms it, the
-// document listeners keep it live once the pointer leaves the 2rem padding strip, mouseup releases it.
-const useScrub = ({ ref, defaultValue }: { ref: RefObject<HTMLElement | null>, defaultValue?: number }) => {
-  const [value, setValue] = useState(defaultValue)
-  const [scrubbing, setScrubbing] = useState(false)
-
-  const scrub: MouseEventHandler<HTMLDivElement> = (ev) => {
-    setScrubbing(true)
-    if (!ref.current) return
-    const { clientX: x } = ev
-    const { left, right } = ref.current.getBoundingClientRect()
-    setValue(Math.min(Math.max(((x - left) / (right - left)), 0), 1))
-  }
-
-  useEffect(() => {
-    if (!scrubbing) return
-    const mouseUp = () => setScrubbing(false)
-    const mouseMove = (ev: globalThis.MouseEvent) => {
-      if (!ref.current) return
-      const { clientX: x } = ev
-      const { left, right } = ref.current.getBoundingClientRect()
-      setValue(Math.min(Math.max(((x - left) / (right - left)), 0), 1))
-    }
-    document.addEventListener('mousemove', mouseMove)
-    document.addEventListener('mouseup', mouseUp)
-    return () => {
-      document.removeEventListener('mousemove', mouseMove)
-      document.removeEventListener('mouseup', mouseUp)
-    }
-  }, [scrubbing])
-
-  return {
-    value,
-    scrubbing,
-    scrub,
-    setValue
-  }
-}
 
 export const ProgressBar = () => {
   const player = usePlayer()
@@ -167,14 +182,46 @@ export const ProgressBar = () => {
   const { size, downloadedRanges, indexes, thumbnails } = useMediaPlayer()
 
   const progressBarRef = useRef<HTMLDivElement>(null)
-  const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
 
+  const [seekFraction, setSeekFraction] = useState<number | undefined>(undefined)
   const [progressBarHoverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
 
+  // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
+  const dragPointerType = useRef<string | undefined>(undefined)
+
+  // A finger emits no mousemove, so the drag feeds the preview state the hover would have fed. A mouse
+  // keeps driving that state from its own hover, exactly as before.
+  const onSeekDrag = (fraction: number) => {
+    setSeekFraction(fraction)
+    if (dragPointerType.current === 'mouse') return
+    setProgressBarOverTime(fraction * duration)
+  }
+
+  const { dragging, handlers } = useDragValue({ ref: progressBarRef, onChange: onSeekDrag })
+
+  const onDragStart: DOMAttributes<HTMLDivElement>['onPointerDown'] = (ev) => {
+    dragPointerType.current = ev.pointerType
+    handlers.onPointerDown(ev)
+  }
+
+  const onDragEnd: DOMAttributes<HTMLDivElement>['onPointerUp'] = (ev) => {
+    handlers.onPointerUp(ev)
+    // a lifted finger leaves nothing over the bar, so the preview it opened closes with it
+    if (ev.pointerType === 'mouse') return
+    setProgressBarOverTime(undefined)
+  }
+
+  // offsetX is relative to whichever child sits under the pointer, and a captured pointer has none, so
+  // the hover measures clientX against the bar's own box, the box the drag fraction is measured across
+  const timeAtClientX = (clientX: number) => {
+    if (!progressBarRef.current) return undefined
+    const { left, right } = progressBarRef.current.getBoundingClientRect()
+    const fraction = Math.min(Math.max((clientX - left) / (right - left), 0), 1)
+    return fraction * duration
+  }
+
   const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
-    const percentage = ev.nativeEvent.offsetX / ev.currentTarget.offsetWidth
-    const time = percentage * duration
-    setProgressBarOverTime(time)
+    setProgressBarOverTime(timeAtClientX(ev.clientX))
   }
 
   const hideProgressBarTime = () => {
@@ -219,10 +266,10 @@ export const ProgressBar = () => {
   }, [progressBarHoverTime])
 
   useEffect(() => {
-    if (seekScrubValue === undefined || !duration) return
-    const timestamp = seekScrubValue * duration
+    if (seekFraction === undefined || !duration) return
+    const timestamp = seekFraction * duration
     player.seek(timestamp)
-  }, [player, seekScrubValue, duration])
+  }, [player, seekFraction, duration])
 
   const scaleX = useMemo(() => {
     return !duration || typeof currentTime !== 'number'
@@ -245,7 +292,7 @@ export const ProgressBar = () => {
     <div
       css={style}
       ref={progressBarRef}
-      className="progress-bar"
+      className={dragging ? 'progress-bar dragging' : 'progress-bar'}
       onMouseMove={onProgressBarOver}
       onMouseOut={hideProgressBarTime}
     >
@@ -275,10 +322,16 @@ export const ProgressBar = () => {
       </div>
       <div className="chapters"></div>
       <div className="scrubber"></div>
-      <div className="padding" onMouseDown={seekScrub}></div>
+      <div
+        className="padding"
+        {...handlers}
+        onPointerDown={onDragStart}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
+      ></div>
       <div
         className="thumbnail"
-        style={{ left: `clamp(12.5rem, ${timePercentage(progressBarHoverTime ?? 1)}%, calc(100% - 12.5rem))` }}
+        style={{ left: `clamp(var(--thumbnail-half), ${timePercentage(progressBarHoverTime ?? 1)}%, calc(100% - var(--thumbnail-half)))` }}
       >
         {
           thumbnail?.url

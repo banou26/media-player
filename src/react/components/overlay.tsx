@@ -21,12 +21,27 @@ const titleStyle = css`
   top: 0;
   left: 0;
   width: 100%;
-  padding: 2.4rem;
+  padding: 1.2rem 1.6rem;
+  /* clears a notch once the player is fullscreen; resolves to zero everywhere else */
+  padding-top: calc(1.2rem + env(safe-area-inset-top, 0px));
   ${fonts.headings.small}
   color: white;
   text-shadow: 0 0 4px rgba(0, 0, 0, 1);
   z-index: 2;
   pointer-events: none;
+
+  /* A release filename runs to four wrapped lines on a phone and swallows the top of the picture.
+     One line with an ellipsis until there is width for the full padding and a wrap. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @media (min-width: 768px) {
+    padding: 2.4rem;
+    padding-top: calc(2.4rem + env(safe-area-inset-top, 0px));
+    white-space: normal;
+    overflow: visible;
+  }
 
   background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.3) 30%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0.1) 80%, transparent 100%);
   transition: opacity 0.1s cubic-bezier(.4,0,1,1);
