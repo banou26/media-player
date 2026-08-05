@@ -11,7 +11,6 @@ const RETRY_DELAY = 5_000
 const MAX_RETRY_DELAY = 60_000
 
 export type UseSeekThumbnailsOptions = {
-  enabled: boolean
   publicPath: string
   workerUrl: string
   length: number | undefined
@@ -21,7 +20,7 @@ export type UseSeekThumbnailsOptions = {
 }
 
 export const useSeekThumbnails = ({
-  enabled, publicPath, workerUrl, length, read, downloadedRanges,
+  publicPath, workerUrl, length, read, downloadedRanges,
 }: UseSeekThumbnailsOptions): ThumbnailImage[] => {
   const [thumbnails, setThumbnails] = useState<ThumbnailImage[]>([])
   const generatorRef = useRef<ThumbnailGenerator | null>(null)
@@ -37,7 +36,7 @@ export const useSeekThumbnails = ({
   rangesRef.current = ranges
 
   useEffect(() => {
-    if (!enabled || !length || !read) return
+    if (!length || !read) return
     let cancelled = false
     let generator: ThumbnailGenerator | null = null
     let retry: ReturnType<typeof setTimeout> | undefined
@@ -71,7 +70,7 @@ export const useSeekThumbnails = ({
       generator?.destroy()
       setThumbnails([])
     }
-  }, [enabled, length, publicPath, workerUrl])
+  }, [length, publicPath, workerUrl])
 
   useEffect(() => { generatorRef.current?.update(ranges) }, [ranges])
 

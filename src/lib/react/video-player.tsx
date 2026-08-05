@@ -17,11 +17,14 @@ import { useVolumePersistence } from './hooks/use-volume-persistence'
 import { useRatePersistence } from './hooks/use-rate-persistence'
 import Chrome from './components/chrome'
 
-export type MediaPlayerOptions = {
-  /** Answers a byte range of the source. The player never downloads the whole file. */
-  read?: (offset: number, size: number) => Promise<ArrayBuffer>
-  /** Total byte length of the source. */
-  size?: number
+export type MediaPlayerOptions =
+  | ({
+    /** Fetch a byte range of the source. */
+    read: (offset: number, size: number) => Promise<ArrayBuffer>
+    /** Total byte length of the source. */
+    size: number
+  } | {})
+  & {
   publicPath: string
   libavWorkerUrl: string
   jassubWorkerUrl: string
@@ -32,23 +35,8 @@ export type MediaPlayerOptions = {
   autoplay?: boolean
 
   title?: string
-  /** Byte spans already in hand, painted on the seekbar. */
+  /** Byte spans available, painted on the seekbar and informing the thumbnail generator. */
   downloadedRanges?: DownloadedRange[]
-  /** Shown in the control bar, right side. Hidden by the "Hide stats" setting. */
-  mediaInformation?: ReactNode
-  /** Shown centred while the duration is still unknown. */
-  loadingInformation?: ReactNode
-
-  /**
-   * Generate seek thumbnails. This costs a second wasm instance, so it is opt-in.
-   * `read` here should be a non-prioritizing path where the consumer has one, so generation never
-   * steals fetch order from playback.
-   */
-  thumbnails?: boolean
-  thumbnailRead?: (offset: number, size: number) => Promise<ArrayBuffer>
-
-  /** Where volume, mute and preferences live. Defaults to localStorage. */
-  settings?: SettingsAdapter
 
   onSeek?: (fraction: number) => void
   onPlaybackError?: (error: unknown) => void
@@ -176,16 +164,12 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   }, [])
 
   const thumbnails: ThumbnailImage[] = useSeekThumbnails({
-    enabled: !!options.thumbnails && ready,
     publicPath,
     workerUrl: libavWorkerUrl,
     length: size,
-    read: options.thumbnailRead ?? read,
+    read: read,
     downloadedRanges: options.downloadedRanges,
   })
-
-  useVolumePersistence(settings)
-  useRatePersistence(settings, ready)
 
   const context = useMemo<MediaPlayerContextValue>(() => ({
     title: options.title,
@@ -213,9 +197,6 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     <MediaPlayerContext.Provider value={context}>
       <Chrome
         ref={setContainer}
-        settings={settings}
-        mediaInformation={options.mediaInformation}
-        loadingInformation={options.loadingInformation}
         onVideoRef={setVideo}
         onCanvasRef={setCanvas}
       >

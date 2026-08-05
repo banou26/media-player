@@ -1,10 +1,8 @@
-import type { ResolvedSource } from '@banou/media-player/embed'
-
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import MediaPlayer from '@banou/media-player'
-import { resolveSource } from '@banou/media-player/embed'
 
+import MediaPlayer from '../lib'
+import { resolveSource } from '../lib/utils/source'
 import { playerAssets } from '../asset-urls'
 import { createCloudSettings } from '../settings/cloud'
 
@@ -81,8 +79,7 @@ export const Home = () => {
       const file = event.dataTransfer?.files?.[0]
       if (file) void openFile(file)
     }
-    // With no field on screen to paste into, the document takes the paste. A URL is the only thing
-    // worth reading out of it; a pasted file goes through the same path as a dropped one.
+
     const paste = (event: ClipboardEvent) => {
       const file = event.clipboardData?.files?.[0]
       if (file) { void openFile(file); return }
@@ -137,7 +134,7 @@ export const Home = () => {
         style={{ display: 'none' }}
         onChange={(event) => {
           const file = event.target.files?.[0]
-          if (file) void openFile(file)
+          if (file) openFile(file)
         }}
       />
     </div>
