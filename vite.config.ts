@@ -41,6 +41,7 @@ export default defineConfig({
       entry: {
         index: 'src/index.tsx',
         'engine/index': 'src/engine/index.ts',
+        'embed/index': 'src/embed/index.ts',
       },
       fileName: (_format, name) => `${name}.js`,
       formats: ['es'],
