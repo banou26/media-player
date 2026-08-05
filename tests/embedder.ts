@@ -9,7 +9,7 @@ const log = (...parts: unknown[]) => {
 }
 
 // The player runs on localhost, this page on 127.0.0.1, so the two are genuinely different origins.
-const PLAYER_ORIGIN = 'http://localhost:4570'
+const PLAYER_ORIGIN = 'http://localhost:4560'
 
 declare global {
   interface Window {
