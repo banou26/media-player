@@ -17,12 +17,10 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "jsx": "react-jsx",
-    "paths": {
-      "mp4box": ["./src/utils/mp4box.ts"]
-    },
+    "jsxImportSource": "@emotion/react",
     "types": []
   },
   "include": ["src"],
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", "app"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

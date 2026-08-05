@@ -1,20 +1,26 @@
-import { ReactNode, RefObject, useCallback, useContext, useEffect, useState } from 'react'
+/// <reference types="@emotion/react/types/css-prop" />
+import type { ReactNode } from 'react'
+import type { SettingsAdapter } from '../settings'
+
+import { useCallback, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
-import { linearToLogVolume, logToLinearVolume } from '../utils/volume-utils'
-import { MediaMachineContext } from '../state-machines'
+import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
+import { formatMediaTime } from '../../utils/time'
+import { fonts } from '../../utils/fonts'
+import { usePlayer } from '../player'
+import { useMediaPlayer } from '../context'
+import { SETTING_HIDE_STATS, useSetting } from '../settings'
 import { TooltipDisplay } from './tooltip-display'
-import { togglePlay } from '../utils/actor-utils'
-import { MediaPlayerContext } from '../utils/context'
 import { ProgressBar } from './progress-bar'
-import { formatMediaTime } from '../utils/time'
-import { fonts } from '../utils/fonts'
-import pictureInPicture from '../assets/picture-in-picture.svg'
+import pictureInPicture from '../../assets/picture-in-picture.svg'
 import SettingsAction from './settings'
-import colors from '../utils/colors'
+import colors from '../../utils/colors'
 import Sound from './sound'
-import useLocalStorage, { booleanType } from '../utils/use-local-storage'
+
+const VOLUME_STEP = 0.05
+const SEEK_STEP = 5
 
 const style = css`
   position: absolute;
@@ -130,102 +136,86 @@ const style = css`
   }
 `
 
-export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformation?: ReactNode, containerRef: RefObject<HTMLDivElement> }) => {
-  const mediaActor = MediaMachineContext.useActorRef()
-  const chromeContext = useContext(MediaPlayerContext)
-  const isPaused = MediaMachineContext.useSelector((state) => state.context.media.paused)
-  const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
-  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
-  const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
-  const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
-  const [volumeElement, setVolumeElement] = useState<HTMLDivElement | undefined>()
-  const [hideMediaStats, _] = useLocalStorage('hideMediaStats', 'false') as [booleanType, (newValue: booleanType) => void]
-  
-  const [isFullscreen, setIsFullscreen] = useState(false)
+export type ControlBarProps = {
+  settings: SettingsAdapter
+  mediaInformation?: ReactNode
+}
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-    }
-  }, [])
+export const ControlBar = ({ settings, mediaInformation }: ControlBarProps) => {
+  const player = usePlayer()
+  const paused = usePlayer((state) => state.paused)
+  const currentTime = usePlayer((state) => state.currentTime)
+  const duration = usePlayer((state) => state.duration)
+  const fullscreen = usePlayer((state) => state.fullscreen)
+  const { hideUI } = useMediaPlayer()
+  const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
+  const [hideMediaStats] = useSetting(settings, SETTING_HIDE_STATS, 'false')
 
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      if (containerRef.current) {
-        containerRef.current.requestFullscreen()
-      }
-    } else {
-      document.exitFullscreen()
-    }
-  }
+  // duration is 0 rather than undefined until metadata lands, so a bare equality would put the
+  // replay icon on a player that has not started yet
+  const ended = duration > 0 && currentTime === duration
 
+  // The store keeps the actual gain, the slider keeps the linear position, so a step is taken in
+  // linear space and converted back.
+  //
+  // Stepping the volume leaves the mute flag alone, which is what this player has always done: a
+  // muted player stays silent while the stored gain moves under it. The store does not offer that
+  // by itself, because setVolume clears the flag for any value above zero, so it is restored.
   const modifyVolume = useCallback(({ direction, stepSize }: { direction: 'up' | 'down', stepSize: number }) => {
-    if (!mediaActor) return
-    const linearVolume = logToLinearVolume(volume)
+    const linearVolume = logToLinearVolume(player.volume)
     const step = (direction === 'up' ? stepSize : -stepSize)
     const newLinearVolume = Math.max(0, Math.min(1, linearVolume + step))
-    const newLogVolume = linearToLogVolume(newLinearVolume)
-    
-    mediaActor.send({
-      type: 'SET_VOLUME',
-      muted,
-      volume: newLogVolume
-    })
-  }, [mediaActor.id, muted, volume])
+    const wasMuted = player.muted
+    player.setVolume(linearToLogVolume(newLinearVolume))
+    if (wasMuted && !player.muted) player.toggleMuted()
+  }, [player])
 
   useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
+      // The listener is on the window, which is right for a player that owns its page and stays right
+      // inside an embed, since a cross-origin iframe only receives keys while it holds focus. It is
+      // wrong only when a consumer puts the player on a page with its own inputs, so typing into one
+      // is the single case that opts out.
+      const target = ev.target as HTMLElement | null
+      if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? '')) return
+
       let shouldPreventDefault = true
       // avoid triggering the browser's default behavior (e.g space for pause it opens the full screen)
-      if (ev.key === 'f') toggleFullScreen()
-      else if (ev.key === 'k') togglePlay(mediaActor, isPaused, duration, currentTime)
-      else if (ev.key === ' ') togglePlay(mediaActor, isPaused, duration, currentTime)
-      else if (ev.key === 'm') {
-        mediaActor.send({ type: 'SET_VOLUME', muted: !muted, volume })
-      }
+      if (ev.key === 'f') player.toggleFullscreen()
+      else if (ev.key === 'k') player.togglePaused()
+      else if (ev.key === ' ') player.togglePaused()
+      else if (ev.key === 'm') player.toggleMuted()
       else if (ev.key === 'ArrowUp') {
-        modifyVolume({ direction: 'up', stepSize: 0.05 })
+        modifyVolume({ direction: 'up', stepSize: VOLUME_STEP })
       }
       else if (ev.key === 'ArrowDown') {
-        modifyVolume({ direction: 'down', stepSize: 0.05 })
+        modifyVolume({ direction: 'down', stepSize: VOLUME_STEP })
       }
       else if (ev.key === 'ArrowRight') {
-        if (!duration) return
-        if (currentTime + 5 >= duration) {
-          mediaActor.send({ type: 'SET_TIME', value: duration })
-        } else {
-          mediaActor.send({ type: 'SET_TIME', value: currentTime + 5 })
-        }
+        if (!player.duration) return
+        player.seek(Math.min(player.currentTime + SEEK_STEP, player.duration))
       }
       else if (ev.key === 'ArrowLeft') {
-        if (currentTime - 5 < 0) {
-          mediaActor.send({ type: 'SET_TIME', value: 0 })
-        } else {
-          mediaActor.send({ type: 'SET_TIME', value: currentTime - 5 })
-        }
+        player.seek(Math.max(player.currentTime - SEEK_STEP, 0))
       }
       else {
         shouldPreventDefault = false
       }
-      
+
       if (shouldPreventDefault) {
         ev.preventDefault()
       }
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [mediaActor, volume, muted, isPaused, currentTime, duration])
+  }, [player, modifyVolume])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
     if (e.deltaY < 0) { // scroll up
-      modifyVolume({ direction: 'up', stepSize: 0.05 })
+      modifyVolume({ direction: 'up', stepSize: VOLUME_STEP })
     } else { // scroll down
-      modifyVolume({ direction: 'down', stepSize: 0.05 })
+      modifyVolume({ direction: 'down', stepSize: VOLUME_STEP })
     }
   }, [modifyVolume])
 
@@ -233,10 +223,10 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
     if (!volumeElement) return
     volumeElement.addEventListener('wheel', handleWheel, { passive: false })
     return () => volumeElement.removeEventListener('wheel', handleWheel)
-  }, [volumeElement, modifyVolume])
+  }, [volumeElement, handleWheel])
 
   return (
-    <div css={style} style={{ ...chromeContext.hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
+    <div css={style} style={{ ...hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
       <ProgressBar />
       <div className='actions'>
         <div className='left'>
@@ -247,12 +237,12 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
               <button
                 className='play'
                 type='button'
-                onClick={() => togglePlay(mediaActor, isPaused, duration, currentTime)}
+                onClick={() => player.togglePaused()}
               >
                 {
-                  duration === currentTime
+                  ended
                     ? <RotateCcw />
-                    : isPaused
+                    : paused
                       ? <Play />
                       : <Pause />
                 }
@@ -261,15 +251,15 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
             toolTipText={
               <span>
                 {
-                  duration === currentTime
+                  ended
                     ? 'Replay (k)'
-                    : isPaused
+                    : paused
                       ? 'Play (k)'
                       : 'Pause (k)'
                 }
               </span>
             }
-          /> 
+          />
           <Sound ref={setVolumeElement}/>
           <div className='time'>
             {formatMediaTime(currentTime, duration)}
@@ -281,13 +271,14 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
               ? mediaInformation
               : null
           }
-          <SettingsAction />
+          <SettingsAction settings={settings} />
           <TooltipDisplay
             id='picture-in-picture'
             text={
               <button
                 className='picture-in-picture'
                 type='button'
+                onClick={() => player.togglePictureInPicture()}
               >
                 <img src={pictureInPicture}  />
               </button>
@@ -305,10 +296,10 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
               <button
                 className='full-screen'
                 type='button'
-                onClick={toggleFullScreen}
+                onClick={() => player.toggleFullscreen()}
               >
                 {
-                  isFullscreen
+                  fullscreen
                     ? <Minimize />
                     : <Maximize />
                 }
@@ -317,7 +308,7 @@ export const ControlBar = ({ mediaInformation, containerRef }: { mediaInformatio
             toolTipText={
               <span>
                 {
-                  isFullscreen
+                  fullscreen
                     ? 'Exit full screen (f)'
                     : 'Full screen (f)'
                 }

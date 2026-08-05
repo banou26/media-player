@@ -1,10 +1,12 @@
-import { DOMAttributes, useContext, useEffect, useMemo, useRef, useState } from 'react'
+/// <reference types="@emotion/react/types/css-prop" />
+import type { DOMAttributes, MouseEventHandler, RefObject } from 'react'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
-import { MediaMachineContext } from '../state-machines'
-import { MediaPlayerContext } from '../utils/context'
-import useScrub from '../utils/use-scrub'
-import { fonts } from '../utils/fonts'
+import { usePlayer } from '../player'
+import { useMediaPlayer } from '../context'
+import { fonts } from '../../utils/fonts'
 
 const style = css`
   position: relative;
@@ -88,7 +90,7 @@ const style = css`
     height: .4rem;
     width: 100%;
   }
-  
+
   .padding {
     position: absolute;
     bottom: -7.5px;
@@ -119,23 +121,59 @@ const style = css`
   }
 `
 
-export const ProgressBar = () => {
-  const mediaActor = MediaMachineContext.useActorRef()
-  const currentTime = MediaMachineContext.useSelector((state) => state.context.media.currentTime)
-  const duration = MediaMachineContext.useSelector((state) => state.context.media.duration)
-  const indexes = MediaMachineContext.useSelector((state) => state.context.indexes)
-  const thumbnails = MediaMachineContext.useSelector((state) => state.context.thumbnails)
+// The drag reports a clamped 0..1 fraction of the bar's own bounding rect. mousedown arms it, the
+// document listeners keep it live once the pointer leaves the 2rem padding strip, mouseup releases it.
+const useScrub = ({ ref, defaultValue }: { ref: RefObject<HTMLElement | null>, defaultValue?: number }) => {
+  const [value, setValue] = useState(defaultValue)
+  const [scrubbing, setScrubbing] = useState(false)
 
-  const mediaPlayerContext = useContext(MediaPlayerContext)
+  const scrub: MouseEventHandler<HTMLDivElement> = (ev) => {
+    setScrubbing(true)
+    if (!ref.current) return
+    const { clientX: x } = ev
+    const { left, right } = ref.current.getBoundingClientRect()
+    setValue(Math.min(Math.max(((x - left) / (right - left)), 0), 1))
+  }
+
+  useEffect(() => {
+    if (!scrubbing) return
+    const mouseUp = () => setScrubbing(false)
+    const mouseMove = (ev: globalThis.MouseEvent) => {
+      if (!ref.current) return
+      const { clientX: x } = ev
+      const { left, right } = ref.current.getBoundingClientRect()
+      setValue(Math.min(Math.max(((x - left) / (right - left)), 0), 1))
+    }
+    document.addEventListener('mousemove', mouseMove)
+    document.addEventListener('mouseup', mouseUp)
+    return () => {
+      document.removeEventListener('mousemove', mouseMove)
+      document.removeEventListener('mouseup', mouseUp)
+    }
+  }, [scrubbing])
+
+  return {
+    value,
+    scrubbing,
+    scrub,
+    setValue
+  }
+}
+
+export const ProgressBar = () => {
+  const player = usePlayer()
+  const currentTime = usePlayer((state) => state.currentTime)
+  const duration = usePlayer((state) => state.duration)
+  const { size, downloadedRanges, indexes, thumbnails } = useMediaPlayer()
 
   const progressBarRef = useRef<HTMLDivElement>(null)
-  const { scrub: seekScrub, value: seekScrubValue, setValue: setSeekValue } = useScrub({ ref: progressBarRef })
-  
+  const { scrub: seekScrub, value: seekScrubValue } = useScrub({ ref: progressBarRef })
+
   const [progressBarHoverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
 
   const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
     const percentage = ev.nativeEvent.offsetX / ev.currentTarget.offsetWidth
-    const time = percentage * (duration ?? 0)
+    const time = percentage * duration
     setProgressBarOverTime(time)
   }
 
@@ -144,12 +182,14 @@ export const ProgressBar = () => {
     setProgressBarOverTime(undefined)
   }
 
+  // duration is 0 until metadata lands, which is the unknown case and never a divisor
+  const timePercentage = (time: number) => duration ? (time / duration) * 100 : 0
+
   // file download % does not equal video time %, as the video contains sometimes, big headers including fonts, which might be ~50mb
   const loadedParts = useMemo(() =>
-    mediaPlayerContext
-      .downloadedRanges
+    downloadedRanges
       ?.map((range, i) => {
-        if (!mediaPlayerContext.size || !duration) return null
+        if (!size || !duration) return null
         const matchingIndexes = indexes.filter(index => range.startByteOffset <= index.pos && index.pos <= range.endByteOffset)
         const firstIndex = matchingIndexes.at(0)
         const lastIndex = matchingIndexes.at(-1)
@@ -163,7 +203,7 @@ export const ProgressBar = () => {
         )
       })
     ?? [],
-    [duration, indexes.length, mediaPlayerContext.downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
+    [duration, indexes.length, downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
   )
 
   const cusorTimeString = useMemo(() => {
@@ -179,23 +219,24 @@ export const ProgressBar = () => {
   }, [progressBarHoverTime])
 
   useEffect(() => {
-    if (!mediaActor || seekScrubValue === undefined || !duration) return
+    if (seekScrubValue === undefined || !duration) return
     const timestamp = seekScrubValue * duration
-    mediaActor.send({ type: 'SET_TIME', value: timestamp })
-  }, [mediaActor, seekScrubValue, duration])
+    player.seek(timestamp)
+  }, [player, seekScrubValue, duration])
 
   const scaleX = useMemo(() => {
-    return typeof duration !== 'number' || typeof currentTime !== 'number'
+    return !duration || typeof currentTime !== 'number'
       ? 0
-      : 1 / ((duration ?? 0) / (currentTime ?? 0))
+      : currentTime / duration
   }, [duration, currentTime])
 
+  // an entry with an empty url is a gap sentinel in an otherwise gapless storyboard, so it renders nothing
   const thumbnail = useMemo(() => {
     if (!thumbnails.length || !progressBarHoverTime) return undefined
     return (
       thumbnails
-        .find(({ timestamp, duration }) =>
-          timestamp <= progressBarHoverTime && progressBarHoverTime <= timestamp + duration
+        .find(({ startTime, endTime }) =>
+          startTime <= progressBarHoverTime && progressBarHoverTime < endTime
         )
     )
   }, [thumbnails.length, progressBarHoverTime])
@@ -214,7 +255,7 @@ export const ProgressBar = () => {
           ? (
             <div
               className="cursor-time"
-              style={{ left: `clamp(1.8rem, ${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%, calc(100% - 1.8rem))` }}
+              style={{ left: `clamp(1.8rem, ${timePercentage(progressBarHoverTime)}%, calc(100% - 1.8rem))` }}
             >
               {cusorTimeString}
             </div>
@@ -226,7 +267,6 @@ export const ProgressBar = () => {
       <div className="loaded">
         {loadedParts}
       </div>
-      {/* <div className="load" style={{ transform: `scaleX(${1 / ((duration ?? 0) / (loadedTime?.[1] ?? 0))})` }}></div> */}
       {/* bar to show when hovering to potentially seek */}
       <div className="hover"></div>
       {/* bar displaying the current playback progress */}
@@ -238,10 +278,10 @@ export const ProgressBar = () => {
       <div className="padding" onMouseDown={seekScrub}></div>
       <div
         className="thumbnail"
-        style={{ left: `clamp(12.5rem, ${1 / ((duration ?? 0) / (progressBarHoverTime ?? 1)) * 100}%, calc(100% - 12.5rem))` }}
+        style={{ left: `clamp(12.5rem, ${timePercentage(progressBarHoverTime ?? 1)}%, calc(100% - 12.5rem))` }}
       >
         {
-          thumbnail
+          thumbnail?.url
             ? <img src={thumbnail.url}/>
             : undefined
         }
@@ -249,3 +289,5 @@ export const ProgressBar = () => {
     </div>
   )
 }
+
+export default ProgressBar

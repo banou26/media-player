@@ -1,8 +1,15 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
+
 import { css } from '@emotion/react'
 import { PlacesType, Tooltip } from 'react-tooltip'
 
-import { fonts } from '../utils/fonts'
+import { fonts } from '../../utils/fonts'
+
+export enum buttonSize {
+  sm = 'sm',
+  md = 'md',
+  lg = 'lg'
+}
 
 const style = (size: buttonSize) => css`
   display: flex;
@@ -40,12 +47,6 @@ interface TooltipDisplayProps {
   disabled?: boolean
 }
 
-export enum buttonSize {
-  sm = 'sm',
-  md = 'md',
-  lg = 'lg'
-}
-
 export const TooltipDisplay = ({
   id,
   toolTipText,
@@ -81,3 +82,5 @@ export const TooltipDisplay = ({
     }
   </>
 )
+
+export default TooltipDisplay

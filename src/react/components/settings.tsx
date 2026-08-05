@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { css } from "@emotion/react"
-import { ChevronLeft, ChevronRight, Settings } from "react-feather"
+/// <reference types="@emotion/react/types/css-prop" />
+import type { SettingsAdapter } from '../settings'
 
-import { MediaMachineContext } from "../state-machines"
-import { TooltipDisplay } from "./tooltip-display"
-import { fonts } from "../utils/fonts"
-import PlaybackSlider from "./playback-slider"
-import useLocalStorage, { booleanType } from "../utils/use-local-storage"
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { css } from '@emotion/react'
+import { ChevronLeft, ChevronRight, Settings } from 'react-feather'
+
+import { usePlayer } from '../player'
+import { useMediaPlayer } from '../context'
+import { SETTING_HIDE_STATS, useSetting } from '../settings'
+import { TooltipDisplay } from './tooltip-display'
+import { fonts } from '../../utils/fonts'
+import { labelTracks } from '../../utils/track-label'
+import PlaybackSlider from './playback-slider'
 
 const style = css`
 position: relative;
@@ -132,12 +137,15 @@ enum PopoverContent {
   Subtitles
 }
 
-const SettingsAction = () => {
-  const mediaActor = MediaMachineContext.useActorRef()
-  const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
-  const subtitleStreams = MediaMachineContext.useSelector((state) => state.context.subtitleStreams)
-  const selectedSubtitleStreamIndex = MediaMachineContext.useSelector((state) => state.context.selectedSubtitleStreamIndex)
-  const [hideMediaStats, setHideMediaStats] = useLocalStorage('hideMediaStats', 'false') as [booleanType, (newValue: booleanType) => void]
+export type SettingsActionProps = {
+  settings: SettingsAdapter
+}
+
+export const SettingsAction = ({ settings }: SettingsActionProps) => {
+  const player = usePlayer()
+  const playbackRate = usePlayer((state) => state.playbackRate)
+  const { subtitleStreams, selectedSubtitleStream, selectSubtitleStream } = useMediaPlayer()
+  const [hideMediaStats, setHideMediaStats] = useSetting(settings, SETTING_HIDE_STATS, 'false')
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -149,7 +157,7 @@ const SettingsAction = () => {
   }
 
   const setPlaybackRate = (rate: number) => {
-    mediaActor.send({ type: 'SET_PLAYBACK_RATE', playbackRate: rate })
+    player.setPlaybackRate(rate)
     setPopoverContent(PopoverContent.Default)
   }
 
@@ -168,12 +176,12 @@ const SettingsAction = () => {
   }, [isOpenPopover])
 
   const languagesWithStreamIndex = useMemo(
-    () => subtitleStreams.map(({ header }) => ({ streamIndex: header.streamIndex, language: header.parsed.info.Title })),
-    [subtitleStreams.length]
+    () => labelTracks(subtitleStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, language: label })),
+    [subtitleStreams]
   )
 
   const setLanguage = (languageWithStreamIndex: { streamIndex: number | undefined, language?: string }) => () => {
-    mediaActor.send({ type: 'SELECT_SUBTITLE_STREAM', streamIndex: languageWithStreamIndex.streamIndex })
+    selectSubtitleStream(languageWithStreamIndex.streamIndex)
     togglePopover()
   }
 
@@ -243,7 +251,7 @@ const SettingsAction = () => {
           <div className='popover playback-rate'>
             <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
               <ChevronLeft />
-              <span>Plackback speed</span>
+              <span>Playback speed</span>
             </div>
             <div className="slider no-hover">
               <PlaybackSlider />
@@ -298,7 +306,7 @@ const SettingsAction = () => {
             </div>
             <div onClick={setLanguage({ streamIndex: undefined })}>
               <span>Disable</span>
-              <span>{selectedSubtitleStreamIndex === undefined ? '✓' : ''}</span>
+              <span>{selectedSubtitleStream === undefined ? '✓' : ''}</span>
               </div>
             {
               languagesWithStreamIndex.map((languageWithStreamIndex) => (
@@ -308,7 +316,7 @@ const SettingsAction = () => {
                   className="description"
                 >
                   <span>{languageWithStreamIndex.language}</span>
-                  <span>{selectedSubtitleStreamIndex === languageWithStreamIndex.streamIndex ? '✓' : ''}</span>
+                  <span>{selectedSubtitleStream === languageWithStreamIndex.streamIndex ? '✓' : ''}</span>
                 </div>
               ))
             }

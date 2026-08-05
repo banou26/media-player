@@ -3,6 +3,15 @@ import react from '@vitejs/plugin-react'
 
 import { dependencies, devDependencies } from './package.json'
 
+const externals = [
+  ...(dependencies ? Object.keys(dependencies) : []),
+  ...(devDependencies ? Object.keys(devDependencies) : []),
+]
+
+// Subpath imports (libav-wasm/build/worker, react/jsx-runtime) are part of the same package and must
+// stay external too, which an exact-string list would not catch.
+const isExternal = (id: string) => externals.some((name) => id === name || id.startsWith(`${name}/`))
+
 export default defineConfig({
   fmt: { semi: false, singleQuote: true },
   lint: {
@@ -15,7 +24,7 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
     overrides: [
       {
-        files: ['tests/**', '**/*.spec.ts', '**/*.test.ts', 'examples/**'],
+        files: ['tests/**', '**/*.spec.ts', '**/*.test.ts', 'examples/**', 'app/**'],
         rules: {
           'no-floating-promises': 'off',
           'no-unused-vars': 'off',
@@ -29,15 +38,15 @@ export default defineConfig({
     outDir: 'build',
     lib: {
       name: 'fkn-media-player',
-      fileName: 'index',
-      entry: 'src/index.tsx',
+      entry: {
+        index: 'src/index.tsx',
+        'engine/index': 'src/engine/index.ts',
+      },
+      fileName: (_format, name) => `${name}.js`,
       formats: ['es'],
     },
     rollupOptions: {
-      external: [
-        ...(dependencies ? Object.keys(dependencies) : []),
-        ...(devDependencies ? Object.keys(devDependencies) : []),
-      ],
+      external: isExternal,
     },
   },
   plugins: lazyPlugins(() => [

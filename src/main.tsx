@@ -1,10 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
+import type { DownloadedRange } from './react/context'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import MediaPlayer from './index'
-import { DownloadedRange } from './utils/context'
 
 const mountStyle = css`
   display: grid;
@@ -31,72 +32,62 @@ const Mount = () => {
   )
 
   useEffect(() => {
-    fetch(url, { headers: { Range: `bytes=${0}-${1}` } })
-      .then(async ({ headers, body }) => {
-        if (!body) throw new Error('no body')
+    fetch(url, { headers: { Range: 'bytes=0-1' } })
+      .then(({ headers }) => {
         const contentRangeContentLength = headers.get('Content-Range')?.split('/').at(1)
-        const contentLength =
+        setContentLength(
           contentRangeContentLength
             ? Number(contentRangeContentLength)
             : Number(headers.get('Content-Length'))
-        setContentLength(contentLength)
+        )
       })
   }, [])
 
+  const origin = useMemo(() => new URL(window.location.toString()).origin, [])
+  const publicPath = useMemo(() => new URL('/build/', origin).toString(), [origin])
+  const libavWorkerUrl = useMemo(() => new URL('/build/libav-worker.js', origin).toString(), [origin])
+  const jassubWasmUrl = useMemo(() => new URL('/build/jassub-worker-modern.wasm', origin).toString(), [origin])
+
+  // jassub's prebuilt worker is a classic script, so it is wrapped via importScripts. A memo rather
+  // than an effect, because a changing URL identity tears the pipeline down.
   const jassubWorkerUrl = useMemo(() => {
-    const workerUrl = new URL('/build/jassub-worker.js', import.meta.url).toString()
-    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
-    return URL.createObjectURL(blob)
-  }, [])
+    const workerUrl = new URL('/build/jassub-worker.js', origin).toString()
+    return URL.createObjectURL(new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' }))
+  }, [origin])
+  useEffect(() => () => URL.revokeObjectURL(jassubWorkerUrl), [jassubWorkerUrl])
 
-  const libavWorkerUrl = useMemo(() => {
-    const workerUrl = new URL('/build/libav.js', new URL(window.location.toString()).origin).toString()
-    const blob = new Blob([`importScripts(${JSON.stringify(workerUrl)})`], { type: 'application/javascript' })
-    return URL.createObjectURL(blob)
-  }, [])
+  const defaultFontUrl = useMemo(() => new URL('/build/default.woff2', origin).toString(), [origin])
 
-  const jassubWasmUrl = useMemo(() => {
-    return new URL('/build/jassub-worker.wasm', new URL(window.location.toString()).origin).toString()
-  }, [])
-
-  const jassubModernWasmUrl = useMemo(() => {
-    return new URL('/build/jassub-modern-worker.wasm', new URL(window.location.toString()).origin).toString()
-  }, [])
-
+  // a fake download ramp, so the seekbar's loaded layer has something to paint
   const [downloadedRanges, setDownloadedRanges] = useState<DownloadedRange[]>([])
-
   useEffect(() => {
     if (!contentLength) return
-    let i = 0
-    const increaseDownloadedRanges = () => {
-      setDownloadedRanges(() => [
-        {
-          startByteOffset: 0,
-          endByteOffset: contentLength * i
-        }
-      ])
-      i += 0.1
-      if (i < 1) {
-        setTimeout(increaseDownloadedRanges, 1000)
-      }
+    let fraction = 0
+    let timer: ReturnType<typeof setTimeout>
+    const step = () => {
+      setDownloadedRanges([{ startByteOffset: 0, endByteOffset: contentLength * fraction }])
+      fraction += 0.1
+      if (fraction < 1) timer = setTimeout(step, 1000)
     }
-    increaseDownloadedRanges()
+    step()
+    return () => clearTimeout(timer)
   }, [contentLength])
 
   return (
     <div css={mountStyle}>
       <MediaPlayer
-        title={'video.mkv'}
+        title="video.mkv"
         downloadedRanges={contentLength ? downloadedRanges : undefined}
         bufferSize={BASE_BUFFER_SIZE}
         read={read}
         size={contentLength}
         autoplay={true}
-        publicPath={new URL('/build/', new URL(import.meta.url).origin).toString()}
-        jassubModernWasmUrl={jassubModernWasmUrl}
+        thumbnails={true}
+        publicPath={publicPath}
+        libavWorkerUrl={libavWorkerUrl}
         jassubWorkerUrl={jassubWorkerUrl}
         jassubWasmUrl={jassubWasmUrl}
-        libavWorkerUrl={libavWorkerUrl}
+        defaultFontUrl={defaultFontUrl}
       />
     </div>
   )
@@ -122,9 +113,7 @@ const globalStyle = css`
     height: 100%;
     width: 100%;
     font-size: 1.6rem;
-    font-family: Fira Sans;
     color: #fff;
-    
     font-family: Montserrat;
   }
 
@@ -149,10 +138,7 @@ const globalStyle = css`
 `
 
 const mountElement = document.createElement('div')
-
-const root = createRoot(
-  document.body.appendChild(mountElement)
-)
+const root = createRoot(document.body.appendChild(mountElement))
 
 root.render(
   <>

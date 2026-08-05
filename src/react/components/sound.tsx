@@ -1,12 +1,15 @@
-import { Volume1, Volume2, VolumeX } from "react-feather"
-import { css } from "@emotion/react"
+/// <reference types="@emotion/react/types/css-prop" />
+import type { Ref } from 'react'
 
-import { MediaMachineContext } from "../state-machines"
-import { TooltipDisplay } from "./tooltip-display"
-import { fonts } from "../utils/fonts"
-import VolumeSlider from "./volume-slider"
-import { MutableRefObject, useMemo } from 'react'
-import { linearToLogVolume, logToLinearVolume } from "../utils/volume-utils"
+import { useMemo } from 'react'
+import { css } from '@emotion/react'
+import { Volume1, Volume2, VolumeX } from 'react-feather'
+
+import { usePlayer } from '../player'
+import { TooltipDisplay } from './tooltip-display'
+import { fonts } from '../../utils/fonts'
+import VolumeSlider from './volume-slider'
+import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 
 const style = css`
   position: relative;
@@ -49,19 +52,26 @@ const style = css`
   }
 `
 
-// todo: try to find a better type for `ref`
-const Sound = ({ ref }: { ref: any }) => {
-  const mediaActor = MediaMachineContext.useActorRef()
-  const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
-  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+export type SoundProps = {
+  /** Lands on the button, which is what the control bar attaches its wheel listener to. */
+  ref?: Ref<HTMLButtonElement> | ((element: HTMLButtonElement | null) => void)
+}
 
+export const Sound = ({ ref }: SoundProps) => {
+  const player = usePlayer()
+  const volume = usePlayer((state) => state.volume)
+  const muted = usePlayer((state) => state.muted)
+
+  // The store holds the actual gain, the slider holds the linear position. Every read converts one
+  // way and every write the other, so the perceptual curve stays in the store and out of the UI.
   const linearVolume = useMemo(() => logToLinearVolume(volume), [volume])
-  const setVolume = (newLinearVolume: number, muted: boolean) =>
-    mediaActor.send({
-      type: 'SET_VOLUME',
-      muted,
-      volume: linearToLogVolume(newLinearVolume)
-    })
+
+  // Moving the slider always unmutes, which the store does on its own for any value above zero.
+  // linearToLogVolume floors its input, so the slider can never produce a zero and never needs a
+  // separate toggle here. An explicit one would only add a second volumechange per drag step.
+  const setVolume = (newLinearVolume: number) => {
+    player.setVolume(linearToLogVolume(newLinearVolume))
+  }
 
   return (
     <div css={style}>
@@ -71,7 +81,7 @@ const Sound = ({ ref }: { ref: any }) => {
           <button
             className='sound'
             type='button'
-            onClick={() => setVolume(linearVolume, !muted)}
+            onClick={() => player.toggleMuted()}
             ref={ref}
           >
             {muted || volume === 0
@@ -88,9 +98,9 @@ const Sound = ({ ref }: { ref: any }) => {
       />
       <div className='volume-slider-container'>
         <div className='volume-slider-background'>
-          <VolumeSlider 
-            value={muted ? 0 : linearVolume} 
-            onChange={linearValue => setVolume(linearValue, false)} 
+          <VolumeSlider
+            value={muted ? 0 : linearVolume}
+            onChange={setVolume}
           />
         </div>
       </div>

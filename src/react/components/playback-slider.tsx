@@ -1,7 +1,8 @@
-import { useRef, useState, useEffect, useMemo } from 'react'
+/// <reference types="@emotion/react/types/css-prop" />
+import { useRef, useState, useEffect } from 'react'
 import { css } from '@emotion/react'
 
-import { MediaMachineContext } from '../state-machines'
+import { usePlayer } from '../player'
 
 const style = css`
 display: flex;
@@ -53,49 +54,49 @@ width: 100%;
 }
 `
 
-const PlaybackSlider = () => {
-  const playbackRate = MediaMachineContext.useSelector((state) => state.context.media.playbackRate)
-  const mediaActor = MediaMachineContext.useActorRef()
+export const PlaybackSlider = () => {
+  const player = usePlayer()
+  const playbackRate = usePlayer((state) => state.playbackRate)
   const sliderRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   const MIN_RATE = 0.25
   const MAX_RATE = 3.0
   const RANGE = MAX_RATE - MIN_RATE
-  
+
   const roundToStep = (value: number, step: number = 0.05): number => {
     return Math.round(value / step) * step
   }
-  
+
   const roundedRate = roundToStep(playbackRate || 1)
-  
+
   // Calculate position as percentage
   const getHandlePosition = (rate: number): number => {
     return ((rate - MIN_RATE) / RANGE) * 100
   }
 
   const getPlaybackRateFromEvent = (clientX: number): number => {
-    if (!sliderRef.current) return roundedRate;
-    
+    if (!sliderRef.current) return roundedRate
+
     const rect = sliderRef.current.getBoundingClientRect()
     const xPos = clientX - rect.left
     const percent = Math.max(0, Math.min(xPos, rect.width)) / rect.width
-    
+
     const rawRate = MIN_RATE + (percent * RANGE)
-    
+
     return roundToStep(rawRate)
   }
 
   const handlePointerDown = (e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true)
     const newRate = getPlaybackRateFromEvent(e.clientX)
-    mediaActor.send({ type: 'SET_PLAYBACK_RATE', playbackRate: newRate })
+    player.setPlaybackRate(newRate)
   }
 
   const handlePointerMove = (e: MouseEvent) => {
-    if (!isDragging) return;
+    if (!isDragging) return
     const newRate = getPlaybackRateFromEvent(e.clientX)
-    mediaActor.send({ type: 'SET_PLAYBACK_RATE', playbackRate: newRate })
+    player.setPlaybackRate(newRate)
   }
 
   const handlePointerUp = () => {
@@ -106,14 +107,14 @@ const PlaybackSlider = () => {
     e.preventDefault()
     const step = 0.05
     let newRate = roundedRate
-    
+
     if (e.deltaY < 0) {
       newRate = Math.min(MAX_RATE, newRate + step)
     } else {
       newRate = Math.max(MIN_RATE, newRate - step)
     }
-    
-    mediaActor.send({ type: 'SET_PLAYBACK_RATE', playbackRate: newRate })
+
+    player.setPlaybackRate(newRate)
   }
 
   useEffect(() => {

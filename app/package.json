@@ -1,0 +1,28 @@
+{
+  "name": "@banou/video-app",
+  "private": true,
+  "version": "0.0.0",
+  "description": "video.fkn.app, the hosted player and its cross-origin embed API",
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --port 4570",
+    "build": "shx rm -rf build/ && vp build && npm run copy-assets",
+    "copy-assets": "npm run copy-libav && npm run copy-libass",
+    "copy-libav": "shx cp ../node_modules/libav-wasm/build/worker.js build/libav-worker.js && shx cp ../node_modules/libav-wasm/build/libav.wasm build/libav.wasm",
+    "copy-libass": "shx cp ../node_modules/jassub/dist/jassub-worker.js build/jassub-worker.js && shx cp ../node_modules/jassub/dist/jassub-worker.wasm build/jassub-worker.wasm && shx cp ../node_modules/jassub/dist/jassub-worker-modern.wasm build/jassub-worker-modern.wasm && shx cp ../node_modules/jassub/dist/default.woff2 build/default.woff2",
+    "preview": "vp preview"
+  },
+  "dependencies": {
+    "@banou/media-player": "*",
+    "@emotion/react": "^11.14.0",
+    "@fkn/lib": "^0.9.11",
+    "osra": "^0.6.4",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^7.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.3",
+    "shx": "^0.3.4"
+  }
+}

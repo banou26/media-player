@@ -1,9 +1,10 @@
+/// <reference types="@emotion/react/types/css-prop" />
 import { useRef, useState, useEffect, useMemo } from 'react'
 import { css } from '@emotion/react'
 
 import { TooltipDisplay } from './tooltip-display'
-import { MediaMachineContext } from '../state-machines'
-import { logToLinearVolume } from '../utils/volume-utils'
+import { usePlayer } from '../player'
+import { logToLinearVolume } from '../../utils/volume-utils'
 
 const style = css`
   display: flex;
@@ -31,7 +32,7 @@ const style = css`
     background: #ffffff;
     border-radius: 50%;
     transform: translateX(-50%);
-    pointer-events: none; 
+    pointer-events: none;
 
     width: 10px;
     height: 10px;
@@ -43,9 +44,9 @@ type VolumeSliderType = {
   onChange: (v: number) => void
 }
 
-const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
-  const volume = MediaMachineContext.useSelector((state) => state.context.media.volume)
-  const muted = MediaMachineContext.useSelector((state) => state.context.media.muted)
+export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
+  const volume = usePlayer((state) => state.volume)
+  const muted = usePlayer((state) => state.muted)
 
   const sliderRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -115,7 +116,7 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
 
   const displayVolumePercent = useMemo(
     () => Math.round(muted ? 0 : logToLinearVolume(volume) * 100),
-    [volume]
+    [volume, muted]
   )
 
   return (
@@ -129,8 +130,8 @@ const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
         >
           <div
             style={{
-              background: `linear-gradient(to right, 
-                ${fillColor} 0% ${fillPercent}%, 
+              background: `linear-gradient(to right,
+                ${fillColor} 0% ${fillPercent}%,
                 ${emptyColor} ${fillPercent}% 100%
               )`
             }}
