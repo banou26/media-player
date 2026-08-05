@@ -14,6 +14,10 @@
       "types": "./build/engine/index.d.ts",
       "import": "./build/engine/index.js"
     },
+    "./embed": {
+      "types": "./build/embed/index.d.ts",
+      "import": "./build/embed/index.js"
+    },
     "./package.json": "./package.json"
   },
   "workspaces": [

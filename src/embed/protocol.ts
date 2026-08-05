@@ -164,8 +164,13 @@ export type EmbedPlayerApi = {
   subscribe: (listener: (event: EmbedEvent) => void) => Promise<() => void>
 }
 
-/** What the embedder exposes to the player. Everything on it is optional to implement. */
+/** What the embedder exposes to the player. */
 export type EmbedderApi = {
+  /**
+   * Receives the session key. The client helper implements this; a hand-written embedder must too,
+   * because the greeter has no other way to hand the key over.
+   */
+  greet: (greeting: EmbedGreeting) => void
   /**
    * Display hint only. The label a user actually sees is derived from the browser-set origin, never
    * from a string the peer supplied.
