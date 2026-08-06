@@ -156,7 +156,7 @@ export const ControlBar = () => {
   const currentTime = usePlayer((state) => state.currentTime)
   const duration = usePlayer((state) => state.duration)
   const fullscreen = usePlayer((state) => state.fullscreen)
-  const { hideUI } = useMediaPlayer()
+  const { hideUI, togglePictureInPicture } = useMediaPlayer()
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
 
   // duration is 0 rather than undefined until metadata lands, so a bare equality would put the
@@ -281,7 +281,7 @@ export const ControlBar = () => {
               <button
                 className='picture-in-picture'
                 type='button'
-                onClick={() => player.togglePictureInPicture()}
+                onClick={togglePictureInPicture}
               >
                 <img src={pictureInPicture}  />
               </button>

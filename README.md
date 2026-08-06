@@ -63,6 +63,25 @@ mute, playback speed, audio track selection, subtitle track selection, picture i
 and keyboard shortcuts. Nothing is persisted: volume, speed and track choices start at their defaults
 every load.
 
+### Picture in picture keeps the subtitles
+
+Subtitles are painted by jassub onto a canvas over the video, and picture in picture takes a video
+element and nothing else, so the browser has no way to composite the two: a plain
+`requestPictureInPicture()` puts the bare video in the window and leaves the subtitles on the page.
+
+So the player composites them itself. Every presented frame is drawn to an offscreen canvas with the
+subtitle canvas on top, and `captureStream()` turns that into a MediaStream backing a hidden video
+element, which is the one that enters the window. The original element keeps playing and stays the
+only audio source, since a canvas stream carries no audio track.
+
+The mirror element is never paused. A paused video stops rendering its MediaStream, so pausing it to
+reflect the real element froze the window: seeking while paused left the old scene on screen. The
+transport state is carried by the Media Session instead, which is what the window reads for its
+play/pause button.
+
+If anything in that path is unavailable the player falls back to handing the browser the bare video,
+which plays without subtitles rather than not at all.
+
 ## Layout
 
 One package. `src/` is the demo app, `src/lib` is the library it publishes, and the app imports it by

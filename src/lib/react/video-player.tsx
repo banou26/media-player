@@ -11,6 +11,7 @@ import { startPlayback } from '../engine'
 import { Player } from './player'
 import { MediaPlayerContext } from './context'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
+import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import Chrome from './components/chrome'
 
 /**
@@ -174,6 +175,8 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     downloadedRanges: options.downloadedRanges,
   })
 
+  const { pictureInPicture, togglePictureInPicture } = usePictureInPicture(video, canvas)
+
   const context = useMemo<MediaPlayerContextValue>(() => ({
     title: options.title,
     size,
@@ -188,12 +191,14 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     audioStreams,
     selectedAudioStream,
     selectAudioStream,
+    pictureInPicture,
+    togglePictureInPicture,
     playbackError,
     ready,
   }), [
     options.title, size, options.downloadedRanges, hideUI, indexes, thumbnails, subtitleStreams,
     selectedSubtitleStream, selectSubtitleStream, audioStreams, selectedAudioStream, selectAudioStream,
-    playbackError, ready,
+    pictureInPicture, togglePictureInPicture, playbackError, ready,
   ])
 
   return (

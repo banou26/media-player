@@ -10,6 +10,7 @@ export { Player, usePlayer } from './react/player'
 export type { PlayerStore } from './react/player'
 
 export { useSeekThumbnails } from './react/hooks/use-thumbnails'
+export { usePictureInPicture } from './react/hooks/use-picture-in-picture'
 
 export { inputToRemuxerInput } from './utils/source'
 export type { RemuxerInput } from './utils/source'
@@ -18,9 +19,16 @@ export type { RemuxerInput } from './utils/source'
 export type {
   AudioStream,
   MediaIndex,
+  PictureInPictureController,
   PlaybackController,
   PlaybackOptions,
   SubtitleStream,
   ThumbnailImage,
 } from './engine'
-export { startPlayback, createThumbnailGenerator, createSubtitleRenderer, SUBTITLES_OFF } from './engine'
+export {
+  startPlayback,
+  createThumbnailGenerator,
+  createSubtitleRenderer,
+  createPictureInPicture,
+  SUBTITLES_OFF,
+} from './engine'

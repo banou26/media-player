@@ -36,6 +36,13 @@ export type MediaPlayerContextValue = {
   selectedAudioStream: number
   selectAudioStream: (streamIndex: number) => void
 
+  /**
+   * Picture in picture is owned here rather than taken from the store, because the window is fed a
+   * canvas compositing the video and the subtitles, not the bare video element the store knows about.
+   */
+  pictureInPicture: boolean
+  togglePictureInPicture: () => void
+
   /** Set when the pipeline fails. Cleared when it recovers. */
   playbackError: unknown
   /** Whether the engine has produced its first media segment. */
@@ -53,6 +60,8 @@ export const MediaPlayerContext = createContext<MediaPlayerContextValue>({
   audioStreams: [],
   selectedAudioStream: -1,
   selectAudioStream: () => {},
+  pictureInPicture: false,
+  togglePictureInPicture: () => {},
   playbackError: null,
   ready: false,
 })
