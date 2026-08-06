@@ -2,7 +2,6 @@
 import type { ReactNode } from 'react'
 import type { AudioStream, PlaybackController, SubtitleStream, ThumbnailImage } from '../engine'
 import type { DownloadedRange, MediaPlayerContextValue } from './context'
-import type { SettingsAdapter } from './settings'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
@@ -11,41 +10,45 @@ import { useContainerAttach, useMediaAttach } from '@videojs/react'
 import { startPlayback } from '../engine'
 import { Player } from './player'
 import { MediaPlayerContext } from './context'
-import { localStorageSettings } from './settings'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
-import { useVolumePersistence } from './hooks/use-volume-persistence'
-import { useRatePersistence } from './hooks/use-rate-persistence'
 import Chrome from './components/chrome'
 
+/**
+ * The source, read a range at a time: the player never downloads the whole file.
+ *
+ * Both fields travel together, so `read` without `size` (or the reverse) is a type error rather than
+ * a pipeline that starts and then stalls with no length to seek against. The "neither" arm spells
+ * the keys out as optional-undefined rather than using `{}`, so a caller can hold the pair in one
+ * variable and spread it, which `{}` would not allow.
+ */
+export type MediaPlayerSource =
+  | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number }
+  | { read?: undefined, size?: undefined }
+
 export type MediaPlayerOptions =
-  | ({
-    /** Fetch a byte range of the source. */
-    read: (offset: number, size: number) => Promise<ArrayBuffer>
-    /** Total byte length of the source. */
-    size: number
-  } | {})
+  & MediaPlayerSource
   & {
-  publicPath: string
-  libavWorkerUrl: string
-  jassubWorkerUrl: string
-  jassubWasmUrl: string
-  /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
-  defaultFontUrl?: string
-  bufferSize?: number
-  autoplay?: boolean
+    publicPath: string
+    libavWorkerUrl: string
+    jassubWorkerUrl: string
+    jassubWasmUrl: string
+    /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
+    defaultFontUrl?: string
+    bufferSize?: number
+    autoplay?: boolean
 
-  title?: string
-  /** Byte spans available, painted on the seekbar and informing the thumbnail generator. */
-  downloadedRanges?: DownloadedRange[]
+    title?: string
+    /** Byte spans available, painted on the seekbar and informing the thumbnail generator. */
+    downloadedRanges?: DownloadedRange[]
 
-  onSeek?: (fraction: number) => void
-  onPlaybackError?: (error: unknown) => void
-}
+    onSeek?: (fraction: number) => void
+    onPlaybackError?: (error: unknown) => void
+  }
 
 const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, children?: ReactNode }) => {
   const {
     read, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl, defaultFontUrl,
-    bufferSize, autoplay = false, settings = localStorageSettings,
+    bufferSize, autoplay = false,
   } = options
 
   const setMedia = useMediaAttach()

@@ -1,12 +1,11 @@
 import { defineConfig, lazyPlugins } from 'vite-plus'
 import react from '@vitejs/plugin-react'
 
-import { dependencies, devDependencies, peerDependencies } from './package.json'
+import { dependencies, devDependencies } from './package.json'
 
 const externals = [
   ...Object.keys(dependencies ?? {}),
   ...Object.keys(devDependencies ?? {}),
-  ...Object.keys(peerDependencies ?? {}),
 ]
 
 // Subpath imports (libav-wasm/build/worker, @videojs/core/dom, react/jsx-runtime) belong to the same
@@ -27,7 +26,6 @@ export default defineConfig({
       entry: {
         index: 'src/lib/index.tsx',
         'engine/index': 'src/lib/engine/index.ts',
-        'embed/index': 'src/lib/embed/index.ts',
       },
       fileName: (_format, name) => `${name}.js`,
       formats: ['es'],

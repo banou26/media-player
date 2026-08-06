@@ -1,6 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode, Ref } from 'react'
-import type { SettingsAdapter } from '../settings'
 
 import { useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
@@ -48,17 +47,12 @@ const style = css`
 
 export type ChromeProps = {
   ref?: Ref<HTMLDivElement> | ((element: HTMLDivElement | null) => void)
-  settings: SettingsAdapter
-  mediaInformation?: ReactNode
-  loadingInformation?: ReactNode
   onVideoRef: (element: HTMLVideoElement | null) => void
   onCanvasRef: (element: HTMLCanvasElement | null) => void
   children?: ReactNode
 }
 
-export const Chrome = ({
-  ref, settings, mediaInformation, loadingInformation, onVideoRef, onCanvasRef, children,
-}: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) => {
   const player = usePlayer()
   const { hideUI, setHideUI } = useMediaPlayer()
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
@@ -128,8 +122,8 @@ export const Chrome = ({
       onMouseOut={onMouseOut}
       className={hideUI ? 'hide' : ''}
     >
-      <Overlay loadingInformation={loadingInformation} onCanvasRef={onCanvasRef} />
-      <ControlBar settings={settings} mediaInformation={mediaInformation} />
+      <Overlay onCanvasRef={onCanvasRef} />
+      <ControlBar />
       <div className="video" onClick={onVideoClick}>
         <video ref={onVideoRef} playsInline />
         {children}

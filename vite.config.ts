@@ -32,12 +32,9 @@ export default defineConfig({
     // The app imports the library by its published name so it stays an honest consumer, but resolves
     // to the source, so a change to either shows up with no build step in between.
     alias: {
-      '@banou/media-player/embed': new URL('./src/lib/embed/index.ts', import.meta.url).pathname,
       '@banou/media-player': new URL('./src/lib/index.tsx', import.meta.url).pathname,
     },
-    // Two osra instances in one bundle break every worker socket that rides it, and an embedder that
-    // already depends on osra is exactly the case this app has to survive.
-    dedupe: ['osra', 'react', 'react-dom'],
+    dedupe: ['react', 'react-dom'],
   },
   plugins: lazyPlugins(() => [
     react({

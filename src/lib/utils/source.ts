@@ -37,11 +37,13 @@ const fromUrl = async (
 export const inputToRemuxerInput = async (
   params:
     | Parameters<typeof fromBlob | typeof fromUrl>[0]
+    // The general arm: any byte range answered by any means. `length` is required rather than
+    // optional because a caller supplying its own reader is the one party that already knows the
+    // total, and without it nothing downstream can seek or report a duration.
     | {
-      length?: number
+      length: number
       name?: string
       read: (offset: number, size: number) => Promise<ArrayBuffer>
-      seek: (offset: number, size: number) => Promise<ArrayBuffer>
     }
 ) => {
   if ('blob' in params) return fromBlob(params)
@@ -56,4 +58,5 @@ export const inputToRemuxerInput = async (
   throw new Error(`Unknown source type: ${params}`)
 }
 
-export type RemuxerInput = ReturnType<typeof inputToRemuxerInput>
+/** The resolved source, not the promise: `inputToRemuxerInput` is async. */
+export type RemuxerInput = Awaited<ReturnType<typeof inputToRemuxerInput>>

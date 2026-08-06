@@ -2,7 +2,6 @@ import { createRoot } from 'react-dom/client'
 import { css, Global } from '@emotion/react'
 
 import Home from './routes/home'
-import Embed from './routes/embed'
 
 // The player's chrome is sized in rem against a 62.5% root, which is where its 0.4rem seekbar becomes
 // 4px. Any page hosting it has to set the same base or every control renders 1.6x too large.
@@ -40,14 +39,12 @@ const globalStyle = css`
   }
 `
 
-const Route = () => (window.location.pathname.replace(/\/$/, '') === '/embed' ? <Embed /> : <Home />)
-
 const mountElement = document.createElement('div')
 const root = createRoot(document.body.appendChild(mountElement))
 
 root.render(
   <>
     <Global styles={globalStyle} />
-    <Route />
+    <Home />
   </>,
 )

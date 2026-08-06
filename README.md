@@ -24,16 +24,26 @@ import MediaPlayer from '@banou/media-player'
   defaultFontUrl="/default.woff2"
   title="episode.mkv"
   autoplay
-  thumbnails
 />
+```
+
+`read` and `size` travel together: pass both or neither. With neither, the player renders its chrome
+over a black frame and waits, which is the empty state.
+
+`inputToRemuxerInput` builds the pair from a `Blob`/`File`, a URL (probed for its length over a range
+request), or your own reader:
+
+```ts
+import { inputToRemuxerInput } from '@banou/media-player'
+
+const source = await inputToRemuxerInput({ blob: file })
+const source = await inputToRemuxerInput({ url: 'https://example.com/episode.mkv' })
+const source = await inputToRemuxerInput({ length, read })
 ```
 
 `downloadedRanges` paints byte spans you already hold onto the seekbar, mapped through the keyframe
 index rather than by percentage, because a file's download progress is not its playback progress:
 containers carry headers, fonts and attachments that occupy no time at all.
-
-`settings` takes a `SettingsAdapter` (`get` / `set` / `subscribe`). It defaults to localStorage, and
-every call is guarded, so a frame with storage access denied still plays.
 
 The worker assets have to be served by your app. jassub ships a classic worker script, so wrap it:
 
@@ -46,71 +56,34 @@ const jassubWorkerUrl = URL.createObjectURL(
 The chrome is sized in `rem` against a **62.5% root font size**. Set `html { font-size: 62.5% }` or
 every control renders 1.6x too large.
 
+## What it does
+
+Play and pause, seek with a preview thumbnail and a keyframe-accurate scrub, volume on a log curve,
+mute, playback speed, audio track selection, subtitle track selection, picture in picture, fullscreen,
+and keyboard shortcuts. Nothing is persisted: volume, speed and track choices start at their defaults
+every load.
+
 ## Layout
 
-One package. `src/` is video.fkn.app, `src/lib` is the library it publishes, and the app imports it by
+One package. `src/` is the demo app, `src/lib` is the library it publishes, and the app imports it by
 its published name so it stays an honest consumer.
 
-- `src/` the app: `main.tsx`, `routes/home.tsx`, `routes/embed.tsx`, `settings/cloud.ts`.
-  Built by `vite.config.ts` into `build/`, which is what Cloudflare Pages serves.
+- `src/` the app: `main.tsx`, `routes/home.tsx`.
+  Built by `vite.config.ts` into `build/`.
 - `src/lib/engine/` the pipeline, with no React in it: MediaSource feeding, remux, jassub, thumbnails.
   Published as `@banou/media-player/engine`.
 - `src/lib/react/` the player component, its chrome, and the hooks.
-- `src/lib/embed/` the cross-origin embed protocol, its client and its host.
-  Published as `@banou/media-player/embed`.
 
 Built by `vite.lib.config.ts` into `dist/`, which is what npm publishes.
-
-## Embedding it
-
-`video.fkn.app/embed` is the player as an iframe any origin can drive.
-
-```ts
-import { createEmbed } from '@banou/media-player/embed'
-
-const embed = await createEmbed({
-  container: document.getElementById('player'),
-  source: { kind: 'blob', blob: file },
-})
-
-embed.addEventListener('timeupdate', ({ currentTime }) => console.log(currentTime))
-await embed.player.play()
-await embed.player.selectSubtitleTrack(2)
-```
-
-Four ways to hand over the bytes:
-
-| kind | cost | for |
-| --- | --- | --- |
-| `blob` | one message, reads served locally | a File, a fetched Blob, OPFS |
-| `url` | no proxying, but your server needs CORS and `Accept-Ranges` | a plain hosted file |
-| `port` | one message per read over a dedicated MessagePort | a torrent, a custom cache |
-| `reader` | a proxied call per read, the most general and the most expensive | anything else |
-
-Prefer `blob` whenever the bytes are already in hand: a browser clones a Blob by reference, so handing
-over a 4 GB file costs one message and every later read is local. `reader` crosses the frame boundary
-and then the worker boundary for every read, and libav reads strictly one at a time, so that latency
-lands on time-to-first-frame and on every seek.
-
-Pass a **bare origin** if you self-host the player. `new URL(iframe.src).origin`, never `iframe.src`:
-a url is not an origin, and even a trailing slash makes every comparison against a browser-set origin
-false, in both directions, with nothing thrown and the channel simply never forming.
-
-The player accepts every embedder. The origin it observes is used to scope stored settings and to
-attribute UI, and it never gates playback: there is no allowlist and no account on the path to a first
-frame.
 
 ## Development
 
 ```sh
 npm install
-npm run dev        # video.fkn.app on port 4560
+npm run dev        # the demo app on port 4560
 npm run build      # the app, into build/
 npm run build-lib  # the library, into dist/
 ```
 
 The app opens on an empty player: black, with the chrome and nothing else. Drop a file anywhere, click
 to pick one, or paste a URL.
-
-`tests/embedder.html` is a cross-origin embed harness. Serve with `--host` and open it on `127.0.0.1`
-while the player runs on `localhost`, which makes them two real origins.

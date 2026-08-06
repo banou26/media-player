@@ -1,7 +1,4 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { ReactNode } from 'react'
-import type { SettingsAdapter } from '../settings'
-
 import { useCallback, useEffect, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
@@ -11,7 +8,6 @@ import { formatMediaTime } from '../../utils/time'
 import { fonts } from '../../utils/fonts'
 import { usePlayer } from '../player'
 import { useMediaPlayer } from '../context'
-import { SETTING_HIDE_STATS, useSetting } from '../settings'
 import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
@@ -154,12 +150,7 @@ const style = css`
   }
 `
 
-export type ControlBarProps = {
-  settings: SettingsAdapter
-  mediaInformation?: ReactNode
-}
-
-export const ControlBar = ({ settings, mediaInformation }: ControlBarProps) => {
+export const ControlBar = () => {
   const player = usePlayer()
   const paused = usePlayer((state) => state.paused)
   const currentTime = usePlayer((state) => state.currentTime)
@@ -167,7 +158,6 @@ export const ControlBar = ({ settings, mediaInformation }: ControlBarProps) => {
   const fullscreen = usePlayer((state) => state.fullscreen)
   const { hideUI } = useMediaPlayer()
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
-  const [hideMediaStats] = useSetting(settings, SETTING_HIDE_STATS, 'false')
 
   // duration is 0 rather than undefined until metadata lands, so a bare equality would put the
   // replay icon on a player that has not started yet
@@ -284,12 +274,7 @@ export const ControlBar = ({ settings, mediaInformation }: ControlBarProps) => {
           </div>
         </div>
         <div className='right'>
-          {
-            hideMediaStats !== 'true'
-              ? mediaInformation
-              : null
-          }
-          <SettingsAction settings={settings} />
+          <SettingsAction />
           <TooltipDisplay
             id='picture-in-picture'
             text={

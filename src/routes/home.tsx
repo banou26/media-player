@@ -1,14 +1,12 @@
+import type { MediaPlayerSource } from '../lib'
+import type { RemuxerInput } from '../lib/utils/source'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import MediaPlayer from '../lib'
-import { resolveSource } from '../lib/utils/source'
+import { inputToRemuxerInput } from '../lib/utils/source'
 import { playerAssets } from '../asset-urls'
-import { createCloudSettings } from '../settings/cloud'
-
-// One store for the document. Cloud sync is attached only here, never in the embed: the unlock card
-// is modal inside the broker's own full-viewport frame and would be drawn over a third party's page.
-const settings = createCloudSettings()
 
 const style = css`
   position: relative;
@@ -50,25 +48,21 @@ const style = css`
 `
 
 export const Home = () => {
-  const [source, setSource] = useState<ResolvedSource | null>(null)
+  const [source, setSource] = useState<RemuxerInput | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fire and forget. Nothing here is awaited and nothing gates playback on it: with no account, no
-  // broker or no network the player runs exactly as it does for an anonymous visitor.
-  useEffect(() => settings.attach(), [])
-
-  const open = useCallback(async (next: Parameters<typeof resolveSource>[0]) => {
+  const open = useCallback(async (next: Parameters<typeof inputToRemuxerInput>[0]) => {
     setError(null)
     try {
-      setSource(await resolveSource(next))
+      setSource(await inputToRemuxerInput(next))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     }
   }, [])
 
-  const openFile = useCallback((file: File) => open({ kind: 'blob', blob: file, name: file.name }), [open])
+  const openFile = useCallback((file: File) => open({ blob: file, name: file.name }), [open])
 
   useEffect(() => {
     const over = (event: DragEvent) => { event.preventDefault(); setDragging(true) }
@@ -88,7 +82,7 @@ export const Home = () => {
       try {
         const url = new URL(text)
         if (url.protocol !== 'http:' && url.protocol !== 'https:') return
-        void open({ kind: 'url', url: text, name: decodeURIComponent(url.pathname.split('/').pop() || '') })
+        void open({ url: text, name: decodeURIComponent(url.pathname.split('/').pop() || '') })
       } catch {}
     }
     document.addEventListener('dragover', over)
@@ -103,18 +97,17 @@ export const Home = () => {
     }
   }, [open, openFile])
 
+  // Named rather than spread inline: the player's options are "read and size together or neither",
+  // and an inline ternary widens to two optional keys, which matches neither arm.
+  const sourceProps: MediaPlayerSource = source ? { read: source.read, size: source.length } : {}
+
   return (
     <div css={style}>
       <MediaPlayer
         {...playerAssets}
-        read={source?.read}
-        thumbnailRead={source?.readQuiet}
-        size={source?.length}
+        {...sourceProps}
         title={source?.name}
-        settings={settings}
         autoplay
-        thumbnails={!!source}
-        loadingInformation={source ? 'Reading the file...' : undefined}
       >
         {source
           ? null

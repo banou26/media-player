@@ -1,7 +1,0 @@
-export * from './protocol'
-export { createEmbed, transfer } from './client'
-export type { EmbedHandle, CreateEmbedOptions } from './client'
-export { serveEmbed, normalizeOrigin } from './host'
-export type { EmbedHost, EmbedSession } from './host'
-export { resolveSource } from './sources'
-export type { ResolvedSource } from './sources'

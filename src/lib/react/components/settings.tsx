@@ -1,13 +1,10 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { SettingsAdapter } from '../settings'
-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { ChevronLeft, ChevronRight, Settings } from 'react-feather'
 
 import { usePlayer } from '../player'
 import { useMediaPlayer } from '../context'
-import { SETTING_HIDE_STATS, useSetting } from '../settings'
 import { TooltipDisplay } from './tooltip-display'
 import { fonts } from '../../utils/fonts'
 import { labelTracks } from '../../utils/track-label'
@@ -167,20 +164,17 @@ position: relative;
 enum PopoverContent {
   Default,
   PlaybackRate,
-  Advanced,
-  SelectNewSources,
-  Subtitles
+  Subtitles,
+  Audio
 }
 
-export type SettingsActionProps = {
-  settings: SettingsAdapter
-}
-
-export const SettingsAction = ({ settings }: SettingsActionProps) => {
+export const SettingsAction = () => {
   const player = usePlayer()
   const playbackRate = usePlayer((state) => state.playbackRate)
-  const { subtitleStreams, selectedSubtitleStream, selectSubtitleStream } = useMediaPlayer()
-  const [hideMediaStats, setHideMediaStats] = useSetting(settings, SETTING_HIDE_STATS, 'false')
+  const {
+    subtitleStreams, selectedSubtitleStream, selectSubtitleStream,
+    audioStreams, selectedAudioStream, selectAudioStream,
+  } = useMediaPlayer()
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -212,13 +206,23 @@ export const SettingsAction = ({ settings }: SettingsActionProps) => {
     return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
 
-  const languagesWithStreamIndex = useMemo(
-    () => labelTracks(subtitleStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, language: label })),
+  const subtitleTracks = useMemo(
+    () => labelTracks(subtitleStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label })),
     [subtitleStreams]
   )
 
-  const setLanguage = (languageWithStreamIndex: { streamIndex: number | undefined, language?: string }) => () => {
-    selectSubtitleStream(languageWithStreamIndex.streamIndex)
+  const audioTracks = useMemo(
+    () => labelTracks(audioStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label })),
+    [audioStreams]
+  )
+
+  const setSubtitleTrack = (streamIndex: number | undefined) => () => {
+    selectSubtitleStream(streamIndex)
+    togglePopover()
+  }
+
+  const setAudioTrack = (streamIndex: number) => () => {
+    selectAudioStream(streamIndex)
     togglePopover()
   }
 
@@ -249,18 +253,17 @@ export const SettingsAction = ({ settings }: SettingsActionProps) => {
       {
         isOpenPopover && popoverContent === PopoverContent.Default && (
           <div className='popover menu'>
-            <div onClick={changePopoverContent(PopoverContent.Advanced)}>
-              <span>Advanced</span>
-              <div>
-                <ChevronRight />
-              </div>
-            </div>
-            {/* <div onClick={changePopoverContent(PopoverContent.SelectNewSources)}>
-              <div>Select new sources</div>
-              <div>
-                <ChevronRight />
-              </div>
-            </div> */}
+            {/* A single-track file has nothing to choose between, so the row is not offered at all */}
+            {audioTracks.length > 1
+              ? (
+                <div onClick={changePopoverContent(PopoverContent.Audio)}>
+                  <div>Audio</div>
+                  <div>
+                    <ChevronRight />
+                  </div>
+                </div>
+              )
+              : null}
             <div onClick={changePopoverContent(PopoverContent.Subtitles)}>
               <div>Subtitles</div>
               <div>
@@ -311,49 +314,47 @@ export const SettingsAction = ({ settings }: SettingsActionProps) => {
         )
       }
       {
-        isOpenPopover && popoverContent === PopoverContent.Advanced && (
-          <div className='popover advanced'>
-            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
-              <ChevronLeft />
-              <span>Advanced</span>
-            </div>
-            <div onClick={() => setHideMediaStats(hideMediaStats === 'true' ? 'false' : 'true')}>
-              <span>Hide stats</span>
-              <span>{hideMediaStats === 'true' ? '✓' : ''}</span>
-            </div>
-          </div>
-        )
-      }
-      {
-        isOpenPopover && popoverContent === PopoverContent.SelectNewSources && (
-          <div className='popover sources'>
-            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
-              <ChevronLeft />
-              <span>Select new sources</span>
-            </div>
-          </div>
-        )
-      }
-      {
         isOpenPopover && popoverContent === PopoverContent.Subtitles && (
           <div className='popover subtitle'>
             <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
               <ChevronLeft />
               <span>Subtitles</span>
             </div>
-            <div onClick={setLanguage({ streamIndex: undefined })}>
+            <div onClick={setSubtitleTrack(undefined)}>
               <span>Disable</span>
               <span>{selectedSubtitleStream === undefined ? '✓' : ''}</span>
-              </div>
+            </div>
             {
-              languagesWithStreamIndex.map((languageWithStreamIndex) => (
+              subtitleTracks.map(({ streamIndex, label }) => (
                 <div
-                  key={languageWithStreamIndex.streamIndex}
-                  onClick={setLanguage(languageWithStreamIndex)}
+                  key={streamIndex}
+                  onClick={setSubtitleTrack(streamIndex)}
                   className="description"
                 >
-                  <span>{languageWithStreamIndex.language}</span>
-                  <span>{selectedSubtitleStream === languageWithStreamIndex.streamIndex ? '✓' : ''}</span>
+                  <span>{label}</span>
+                  <span>{selectedSubtitleStream === streamIndex ? '✓' : ''}</span>
+                </div>
+              ))
+            }
+          </div>
+        )
+      }
+      {
+        isOpenPopover && popoverContent === PopoverContent.Audio && (
+          <div className='popover subtitle'>
+            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
+              <ChevronLeft />
+              <span>Audio</span>
+            </div>
+            {
+              audioTracks.map(({ streamIndex, label }) => (
+                <div
+                  key={streamIndex}
+                  onClick={setAudioTrack(streamIndex)}
+                  className="description"
+                >
+                  <span>{label}</span>
+                  <span>{selectedAudioStream === streamIndex ? '✓' : ''}</span>
                 </div>
               ))
             }

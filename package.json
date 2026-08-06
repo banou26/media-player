@@ -14,10 +14,6 @@
       "types": "./dist/engine/index.d.ts",
       "import": "./dist/engine/index.js"
     },
-    "./embed": {
-      "types": "./dist/embed/index.d.ts",
-      "import": "./dist/embed/index.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,18 +28,9 @@
     "types": "tsc -p tsconfig.lib.json",
     "copy-assets": "shx mkdir -p public && npm run copy-libav && npm run copy-libass",
     "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm",
-    "copy-libass": "shx cp node_modules/jassub/dist/jassub-worker.js public/jassub-worker.js && shx cp node_modules/jassub/dist/jassub-worker.wasm public/jassub-worker.wasm && shx cp node_modules/jassub/dist/jassub-worker-modern.wasm public/jassub-worker-modern.wasm && shx cp node_modules/jassub/dist/default.woff2 public/default.woff2",
-    "test": "playwright test"
+    "copy-libass": "shx cp node_modules/jassub/dist/jassub-worker.js public/jassub-worker.js && shx cp node_modules/jassub/dist/jassub-worker.wasm public/jassub-worker.wasm && shx cp node_modules/jassub/dist/jassub-worker-modern.wasm public/jassub-worker-modern.wasm && shx cp node_modules/jassub/dist/default.woff2 public/default.woff2"
   },
   "author": "Banou26",
-  "peerDependencies": {
-    "osra": "^0.6.4"
-  },
-  "peerDependenciesMeta": {
-    "osra": {
-      "optional": true
-    }
-  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@videojs/core": "10.0.0-beta.26",
@@ -57,16 +44,10 @@
     "react-tooltip": "^5.28.0"
   },
   "devDependencies": {
-    "@fkn/lib": "^0.9.11",
-    "@playwright/test": "1.58.2",
     "@types/node": "^22.20.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.3",
-    "copyfiles": "^2.4.1",
-    "mime": "^3.0.0",
-    "osra": "^0.6.4",
-    "playwright": "1.58.2",
     "shx": "^0.3.4",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",

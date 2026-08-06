@@ -1,9 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import type { ReactNode } from 'react'
+import { css, keyframes } from '@emotion/react'
 
-import { css } from '@emotion/react'
-
-import { usePlayer } from '../player'
 import { useMediaPlayer } from '../context'
 import { fonts } from '../../utils/fonts'
 
@@ -47,20 +44,28 @@ const titleStyle = css`
   transition: opacity 0.1s cubic-bezier(.4,0,1,1);
 `
 
-const loadingInformationStyle = css`
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`
+
+const loadingStyle = css`
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  font-size: 2rem;
-  color: white;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 1);
+  inset: 0;
   z-index: 2;
   display: flex;
   justify-content: center;
   align-items: center;
   pointer-events: none;
+
+  ::after {
+    content: '';
+    width: 4rem;
+    height: 4rem;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    border-top-color: #fff;
+    animation: ${spin} 0.8s linear infinite;
+  }
 `
 
 // A pipeline failure otherwise shows as a black frame under a spinner that never resolves, with
@@ -82,13 +87,8 @@ const errorMessage = (error: unknown) =>
     ? error.message
     : typeof error === 'string' ? error : 'Playback failed'
 
-export const Overlay = ({
-  loadingInformation, onCanvasRef,
-}: {
-  loadingInformation?: ReactNode
-  onCanvasRef: (element: HTMLCanvasElement | null) => void
-}) => {
-  const { title, hideUI, playbackError, ready } = useMediaPlayer()
+export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElement | null) => void }) => {
+  const { title, hideUI, playbackError, ready, size } = useMediaPlayer()
 
   return (
     <>
@@ -104,9 +104,11 @@ export const Overlay = ({
         : undefined}
       {/* Strictly a pre-metadata state, not a buffering one. Gated on the engine rather than on the
           store's duration, because the store reports 0 both before metadata and for a file whose
-          duration is genuinely unknown, and the remuxer already knows which of the two it is. */}
-      {!ready && loadingInformation
-        ? <div css={loadingInformationStyle}>{loadingInformation}</div>
+          duration is genuinely unknown, and the remuxer already knows which of the two it is.
+          `size` is the tell that a source was handed over at all: with none, the player is meant to
+          sit black and idle rather than spin forever. */}
+      {size && !ready && !playbackError
+        ? <div css={loadingStyle} />
         : undefined}
       {playbackError
         ? <div css={errorStyle}>{errorMessage(playbackError)}</div>
