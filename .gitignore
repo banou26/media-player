@@ -2,7 +2,6 @@ node_modules/
 build
 dist
 public/*
-!public/_redirects
 video.mkv
 video2.mkv
 video3.mkv

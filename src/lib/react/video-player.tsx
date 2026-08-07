@@ -23,6 +23,11 @@ export type MediaPlayerSource =
 export type MediaPlayerOptions =
   & MediaPlayerSource
   & {
+    /**
+     * Where libav's wasm is served from. BOTH `libav.wasm` and `libav-jspi.wasm` have to be there:
+     * libav-wasm picks between them on `WebAssembly.Suspending`, so serving one fails only on the
+     * browsers that pick the other.
+     */
     publicPath: string
     libavWorkerUrl: string
     jassubWorkerUrl: string

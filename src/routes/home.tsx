@@ -1,9 +1,9 @@
-import type { MediaPlayerSource, RemuxerInput } from '../lib'
+import type { MediaPlayerSource, RemuxerInput } from '@banou/media-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
-import MediaPlayer, { inputToRemuxerInput } from '../lib'
+import MediaPlayer, { inputToRemuxerInput } from '@banou/media-player'
 import { playerAssets } from '../asset-urls'
 
 const style = css`

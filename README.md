@@ -41,11 +41,44 @@ const source = await inputToRemuxerInput({ url: 'https://example.com/episode.mkv
 const source = await inputToRemuxerInput({ length, read })
 ```
 
+`usePlayer` reads and drives playback state from anywhere inside a `MediaPlayer`. It is the only hook
+the chrome uses: the built-in video.js state and this player's own source state (tracks, thumbnails,
+indexes, readiness) live on one store, so there is no second context to reach for.
+
+```tsx
+import { usePlayer } from '@banou/media-player'
+
+const paused = usePlayer((state) => state.paused)          // subscribes to that field
+const player = usePlayer()                                  // no selector: the store, no subscription
+player.play()
+```
+
+`useSeekThumbnails` and `usePictureInPicture` are exported for reuse outside the bundled chrome.
+
 `downloadedRanges` paints byte spans you already hold onto the seekbar, mapped through the keyframe
 index rather than by percentage, because a file's download progress is not its playback progress:
 containers carry headers, fonts and attachments that occupy no time at all.
 
-The worker assets have to be served by your app. jassub ships a classic worker script, so wrap it:
+### The assets your app has to serve
+
+Nothing is bundled: the workers and the wasm are fetched at runtime from urls you provide, so they have
+to be copied out of `node_modules` and hosted. `src/asset-urls.ts` is a worked example, and the
+`copy-assets` script is what puts them in `public/`.
+
+`publicPath` is the directory **libav's two wasm files** are served from, and both have to be there:
+
+| file | from | when it is used |
+| --- | --- | --- |
+| `libav.wasm` | `libav-wasm/build/` | browsers without JSPI: Safari, and every browser on iOS |
+| `libav-jspi.wasm` | `libav-wasm/build/` | Chrome and Edge 137+, Firefox 153+ |
+
+libav-wasm picks between them at runtime on `typeof WebAssembly.Suspending === 'function'`, so serving
+only one does not fail everywhere: it fails on exactly the browsers that pick the missing file, which
+reads as a browser bug rather than a missing asset. Serve both.
+
+The rest are named individually: `libavWorkerUrl` (`libav-wasm/build/worker.js`), `jassubWasmUrl`
+(`jassub/dist/jassub-worker-modern.wasm`) and the optional `defaultFontUrl`. jassub ships a classic
+worker script, so wrap it:
 
 ```ts
 const jassubWorkerUrl = URL.createObjectURL(

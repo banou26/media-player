@@ -16,6 +16,7 @@ export type PlaybackOptions = {
   canvasElement: HTMLCanvasElement
   read: (offset: number, size: number) => Promise<ArrayBuffer>
   length: number
+  /** serves BOTH `libav.wasm` and `libav-jspi.wasm`; libav-wasm picks one on `WebAssembly.Suspending` */
   publicPath: string
   libavWorkerUrl: string
   jassubWorkerUrl: string
