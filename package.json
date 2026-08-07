@@ -27,7 +27,7 @@
     "build-lib": "shx rm -rf dist/ && vp build -c vite.lib.config.ts && npm run types",
     "types": "tsc -p tsconfig.lib.json",
     "copy-assets": "shx mkdir -p public && npm run copy-libav && npm run copy-libass",
-    "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm",
+    "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm && shx cp node_modules/libav-wasm/build/libav-jspi.wasm public/libav-jspi.wasm",
     "copy-libass": "shx cp node_modules/jassub/dist/jassub-worker.js public/jassub-worker.js && shx cp node_modules/jassub/dist/jassub-worker.wasm public/jassub-worker.wasm && shx cp node_modules/jassub/dist/jassub-worker-modern.wasm public/jassub-worker-modern.wasm && shx cp node_modules/jassub/dist/default.woff2 public/default.woff2"
   },
   "author": "Banou26",
@@ -37,7 +37,7 @@
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",
     "jassub": "^1.8.6",
-    "libav-wasm": "^0.8.3",
+    "libav-wasm": "^0.8.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-feather": "^2.0.10",
