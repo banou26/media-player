@@ -4,6 +4,9 @@ const origin = new URL(window.location.toString()).origin
 export const publicPath = new URL('/', origin).toString()
 export const libavWorkerUrl = new URL('/libav-worker.js', origin).toString()
 export const jassubWasmUrl = new URL('/jassub-worker-modern.wasm', origin).toString()
+// copy-libass already ships this one; without it jassub resolves the bare name against the blob: worker
+// url and throws, so a browser without SIMD loses subtitles entirely instead of using the slower build
+export const jassubLegacyWasmUrl = new URL('/jassub-worker.wasm', origin).toString()
 export const defaultFontUrl = new URL('/default.woff2', origin).toString()
 
 // jassub ships a classic worker script, so it needs wrapping. Built once at module scope, because a
@@ -20,5 +23,6 @@ export const playerAssets = {
   libavWorkerUrl,
   jassubWorkerUrl,
   jassubWasmUrl,
+  jassubLegacyWasmUrl,
   defaultFontUrl,
 }

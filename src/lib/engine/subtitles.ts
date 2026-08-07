@@ -17,7 +17,16 @@ export type SubtitleRendererOptions = {
   video: HTMLVideoElement
   canvas: HTMLCanvasElement
   workerUrl: string
+  /** The SIMD build, `jassub-worker-modern.wasm`. Used wherever WebAssembly SIMD is available. */
   wasmUrl: string
+  /**
+   * The non-SIMD build, `jassub-worker.wasm`, for Safari before 16.4 and anything else without SIMD.
+   *
+   * Not optional in practice, only in the type. jassub picks `wasmUrl ?? 'jassub-worker.wasm'` when SIMD
+   * is missing, and that bare relative name resolves against the blob: url the worker is built from,
+   * which throws. So leaving this unset does not degrade to the slower build, it fails outright.
+   */
+  legacyWasmUrl?: string
   /** Fallback face for `liberation sans`. Without it jassub falls back to whatever the wasm build embeds. */
   defaultFontUrl?: string
   onStreams?: (streams: SubtitleStream[]) => void
@@ -61,9 +70,20 @@ const renderable = (content: string) => {
   return stringify({ ...parsed, info: { ...parsed.info, ScaledBorderAndShadow: 'no', LayoutResX: '', LayoutResY: '' } })
 }
 
-const toHeaderPart = (fragment: SubtitleFragment & { type: 'header' }): SubtitleHeaderPart => {
-  const eventsContent = fragment.content.match(/\r\n\[Events\]\r\nFormat: (.*)/)?.[0]
-  if (!eventsContent) throw new Error('subtitle header has no Events format')
+/**
+ * `\r?\n`, not `\r\n`: an ASS header muxed straight out of a matroska file uses CRLF, but one libav
+ * CONVERTED from another format (an srt track, most commonly) is LF only, and requiring CRLF rejected it.
+ *
+ * Returns null rather than throwing. A header this cannot read is a reason to have no subtitles, and it
+ * used to be a reason to have no VIDEO: the throw crossed pushFragments into startPlayback's try, so one
+ * unreadable track failed the whole file with "playback failed".
+ */
+const toHeaderPart = (fragment: SubtitleFragment & { type: 'header' }): SubtitleHeaderPart | null => {
+  const eventsContent = fragment.content.match(/\r?\n\[Events\]\r?\nFormat: (.*)/)?.[0]
+  if (!eventsContent) {
+    console.warn(`subtitle stream ${fragment.streamIndex} has no Events format, ignoring the track`)
+    return null
+  }
   return { type: 'header', streamIndex: fragment.streamIndex, content: fragment.content, eventsContent, parsed: parse(fragment.content) }
 }
 
@@ -96,7 +116,7 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
 export type SubtitleRenderer = ReturnType<typeof createSubtitleRenderer>
 
 export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
-  const { video, canvas, workerUrl, wasmUrl, defaultFontUrl } = options
+  const { video, canvas, workerUrl, wasmUrl, legacyWasmUrl, defaultFontUrl } = options
   let jassub: JASSUB | undefined
   let attachments: [string, Uint8Array][] = []
   const headers = new Map<number, SubtitleHeaderPart>()
@@ -119,6 +139,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       subContent: renderable(header.content),
       workerUrl,
       modernWasmUrl: wasmUrl,
+      ...legacyWasmUrl ? { wasmUrl: legacyWasmUrl } : {},
       fonts: attachments.map(([, data]) => data),
       availableFonts: {
         ...Object.fromEntries(attachments),
@@ -140,6 +161,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       if (fragment.type === 'header') {
         if (headers.has(fragment.streamIndex)) continue
         const header = toHeaderPart(fragment)
+        if (!header) continue
         headers.set(fragment.streamIndex, header)
         streams.push({ streamIndex: fragment.streamIndex, title: fragment.title, language: fragment.language })
         onStreams?.([...streams])

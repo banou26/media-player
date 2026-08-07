@@ -17,7 +17,7 @@ export const usePlayback = (
 ) => {
   const player = usePlayer()
   const {
-    read, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl, defaultFontUrl,
+    read, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl,
     bufferSize, autoplay = false,
   } = options
 
@@ -79,6 +79,7 @@ export const usePlayback = (
           libavWorkerUrl,
           jassubWorkerUrl,
           jassubWasmUrl,
+          jassubLegacyWasmUrl,
           defaultFontUrl,
           bufferSize,
           audioStreamIndex,
@@ -128,6 +129,6 @@ export const usePlayback = (
     }
   }, [
     player, video, canvas, size, read, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
-    defaultFontUrl, bufferSize, audioStreamIndex, autoplay,
+    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay,
   ])
 }

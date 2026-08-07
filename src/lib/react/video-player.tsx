@@ -31,7 +31,13 @@ export type MediaPlayerOptions =
     publicPath: string
     libavWorkerUrl: string
     jassubWorkerUrl: string
+    /** jassub's SIMD build, `jassub-worker-modern.wasm`. */
     jassubWasmUrl: string
+    /**
+     * jassub's non-SIMD build, `jassub-worker.wasm`, for Safari before 16.4.
+     * Without it subtitles fail outright on those browsers rather than falling back to the slower build.
+     */
+    jassubLegacyWasmUrl?: string
     /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
     defaultFontUrl?: string
     bufferSize?: number

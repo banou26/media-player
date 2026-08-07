@@ -76,9 +76,19 @@ libav-wasm picks between them at runtime on `typeof WebAssembly.Suspending === '
 only one does not fail everywhere: it fails on exactly the browsers that pick the missing file, which
 reads as a browser bug rather than a missing asset. Serve both.
 
-The rest are named individually: `libavWorkerUrl` (`libav-wasm/build/worker.js`), `jassubWasmUrl`
-(`jassub/dist/jassub-worker-modern.wasm`) and the optional `defaultFontUrl`. jassub ships a classic
-worker script, so wrap it:
+The rest are named individually: `libavWorkerUrl` (`libav-wasm/build/worker.js`) and the optional
+`defaultFontUrl`. jassub also has two builds, and the same warning applies:
+
+| option | file | when it is used |
+| --- | --- | --- |
+| `jassubWasmUrl` | `jassub/dist/jassub-worker-modern.wasm` | wherever WebAssembly SIMD exists |
+| `jassubLegacyWasmUrl` | `jassub/dist/jassub-worker.wasm` | Safari before 16.4, and anything else without SIMD |
+
+`jassubLegacyWasmUrl` is optional in the type and not in practice: jassub falls back to a bare
+`'jassub-worker.wasm'`, which it resolves against the `blob:` url its worker is built from, and that
+throws. Leaving it unset does not fall back to the slower build, it loses subtitles entirely.
+
+jassub ships a classic worker script, so wrap it:
 
 ```ts
 const jassubWorkerUrl = URL.createObjectURL(
