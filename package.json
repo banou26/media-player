@@ -33,7 +33,8 @@
     "copy-assets": "shx mkdir -p public && npm run copy-libav && npm run copy-libass",
     "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm && shx cp node_modules/libav-wasm/build/libav-jspi.wasm public/libav-jspi.wasm",
     "copy-libass": "shx cp node_modules/jassub/dist/jassub-worker.js public/jassub-worker.js && shx cp node_modules/jassub/dist/jassub-worker.wasm public/jassub-worker.wasm && shx cp node_modules/jassub/dist/jassub-worker-modern.wasm public/jassub-worker-modern.wasm && shx cp node_modules/jassub/dist/default.woff2 public/default.woff2",
-    "test": "vp test run"
+    "test": "npm run fixtures && vp test run",
+    "fixtures": "node scripts/fixture.mjs"
   },
   "author": "Banou26",
   "dependencies": {
