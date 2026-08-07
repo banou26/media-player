@@ -3,11 +3,13 @@
 export { MediaPlayer, default } from './react/video-player'
 export type { MediaPlayerOptions, MediaPlayerSource } from './react/video-player'
 
-export { MediaPlayerContext, useMediaPlayer } from './react/context'
-export type { DownloadedRange, MediaPlayerContextValue } from './react/context'
-
 export { Player, usePlayer } from './react/player'
 export type { PlayerStore } from './react/player'
+
+// Source state lives on the player store next to the built-in playback state, so `usePlayer` is the
+// only hook the chrome needs.
+export { sourceFeature } from './react/source-feature'
+export type { DownloadedRange, SourceState } from './react/source-feature'
 
 export { useSeekThumbnails } from './react/hooks/use-thumbnails'
 export { usePictureInPicture } from './react/hooks/use-picture-in-picture'

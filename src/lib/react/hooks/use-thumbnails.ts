@@ -1,5 +1,5 @@
 import type { ThumbnailGenerator, ThumbnailImage } from '../../engine'
-import type { DownloadedRange } from '../context'
+import type { DownloadedRange } from '../source-feature'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 

@@ -4,7 +4,6 @@ import { css } from '@emotion/react'
 import { ChevronLeft, ChevronRight, Settings } from 'react-feather'
 
 import { usePlayer } from '../player'
-import { useMediaPlayer } from '../context'
 import { TooltipDisplay } from './tooltip-display'
 import { fonts } from '../../utils/fonts'
 import { labelTracks, type LabelledTrack } from '../../utils/track-label'
@@ -217,10 +216,12 @@ const TrackMenu = (
 export const SettingsAction = () => {
   const player = usePlayer()
   const playbackRate = usePlayer((state) => state.playbackRate)
-  const {
-    subtitleStreams, selectedSubtitleStream, selectSubtitleStream,
-    audioStreams, selectedAudioStream, selectAudioStream,
-  } = useMediaPlayer()
+  const subtitleStreams = usePlayer((state) => state.subtitleStreams)
+  const selectedSubtitleStream = usePlayer((state) => state.selectedSubtitleStream)
+  const selectSubtitleStream = usePlayer((state) => state.selectSubtitleStream)
+  const audioStreams = usePlayer((state) => state.audioStreams)
+  const selectedAudioStream = usePlayer((state) => state.selectedAudioStream)
+  const selectAudioStream = usePlayer((state) => state.selectAudioStream)
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)

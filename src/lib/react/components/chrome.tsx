@@ -5,7 +5,6 @@ import { useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
-import { useMediaPlayer } from '../context'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 
@@ -54,7 +53,8 @@ export type ChromeProps = {
 
 export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) => {
   const player = usePlayer()
-  const { hideUI, setHideUI } = useMediaPlayer()
+  const hideUI = usePlayer((state) => state.hideUI)
+  const setHideUI = usePlayer((state) => state.setHideUI)
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
   // a tap and a click mean different things, so the last pointer kind is remembered
   const lastPointerType = useRef<string>('mouse')

@@ -1,9 +1,15 @@
 import { videoFeatures } from '@videojs/core/dom'
 import { createPlayer } from '@videojs/react'
 
-// createPlayer is overloaded on the feature tuple, and only the exact preset resolves to the typed
-// VideoPlayerStore, so videoFeatures is passed through unchanged.
-export const Player = createPlayer({ features: videoFeatures, displayName: 'MediaPlayer' })
+import { sourceFeature } from './source-feature'
+
+// The preset plus our own source state, so the chrome reads one store rather than a store and a
+// context. createPlayer's generic overload infers the state from the whole tuple, so the extra
+// feature's fields are as typed as the built-in ones.
+export const Player = createPlayer({
+  features: [...videoFeatures, sourceFeature],
+  displayName: 'MediaPlayer',
+})
 
 /**
  * Typed player state, to be used instead of the `usePlayer` from `@videojs/react`, whose fields come

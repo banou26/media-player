@@ -7,7 +7,6 @@ import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 import { formatMediaTime } from '../../utils/time'
 import { fonts } from '../../utils/fonts'
 import { usePlayer } from '../player'
-import { useMediaPlayer } from '../context'
 import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
@@ -148,7 +147,8 @@ export const ControlBar = () => {
   const currentTime = usePlayer((state) => state.currentTime)
   const duration = usePlayer((state) => state.duration)
   const fullscreen = usePlayer((state) => state.fullscreen)
-  const { hideUI, togglePictureInPicture } = useMediaPlayer()
+  const hideUI = usePlayer((state) => state.hideUI)
+  const togglePictureInPicture = usePlayer((state) => state.togglePictureInPicture)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
 
   // duration is 0 until metadata lands, so a bare equality would show replay before playback starts

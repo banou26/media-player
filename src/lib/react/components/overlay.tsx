@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import { css, keyframes } from '@emotion/react'
 
-import { useMediaPlayer } from '../context'
+import { usePlayer } from '../player'
 import { fonts } from '../../utils/fonts'
 
 const style = css`
@@ -87,7 +87,11 @@ const errorMessage = (error: unknown) =>
     : typeof error === 'string' ? error : 'Playback failed'
 
 export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElement | null) => void }) => {
-  const { title, hideUI, playbackError, ready, size } = useMediaPlayer()
+  const title = usePlayer((state) => state.title)
+  const hideUI = usePlayer((state) => state.hideUI)
+  const playbackError = usePlayer((state) => state.playbackError)
+  const ready = usePlayer((state) => state.ready)
+  const size = usePlayer((state) => state.size)
 
   return (
     <>

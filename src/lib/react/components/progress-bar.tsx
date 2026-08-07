@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
-import { useMediaPlayer } from '../context'
 import { useDragValue } from '../hooks/use-drag-value'
 import { fonts } from '../../utils/fonts'
 
@@ -172,7 +171,10 @@ export const ProgressBar = () => {
   const player = usePlayer()
   const currentTime = usePlayer((state) => state.currentTime)
   const duration = usePlayer((state) => state.duration)
-  const { size, downloadedRanges, indexes, thumbnails } = useMediaPlayer()
+  const size = usePlayer((state) => state.size)
+  const downloadedRanges = usePlayer((state) => state.downloadedRanges)
+  const indexes = usePlayer((state) => state.indexes)
+  const thumbnails = usePlayer((state) => state.thumbnails)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
