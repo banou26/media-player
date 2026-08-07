@@ -63,6 +63,13 @@ describe('the local arm, on a real file', () => {
     // A <video> of its own, unlike the remote arm.
     expect(screen.container.querySelector('video')).not.toBeNull()
 
+    // The counterpart of the remote arm hiding this: here there IS an element and a canvas to
+    // composite, so the control has to be offered. Both halves are asserted because they share one
+    // code path, and making the remote arm hide it could just as easily hide it everywhere.
+    await expect
+      .poll(() => !!screen.container.querySelector('button.picture-in-picture'), { timeout: 30_000 })
+      .toBe(true)
+
     // The subtitle track the fixture carries has to reach the menu, which is the path that changed
     // when the store stopped holding raw libav streams.
     const rows = () => [...screen.container.querySelectorAll('.popover > div')]

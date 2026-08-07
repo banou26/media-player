@@ -28,9 +28,13 @@ export const usePictureInPicture = (
     }
   }, [video, canvas, player])
 
-  return useCallback(() => {
+  const toggle = useCallback(() => {
     void controller.current?.toggle().catch((error) => {
       console.warn('picture in picture was refused', error)
     })
   }, [])
+
+  // null rather than a dead callback: the chrome hides the control instead of offering one that
+  // cannot work, and there is nothing to composite without both an element and a canvas.
+  return video && canvas ? toggle : null
 }

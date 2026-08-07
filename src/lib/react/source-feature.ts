@@ -60,8 +60,16 @@ export type SourceState = {
   hideUI: boolean
   setHideUI: (hide: boolean) => void
 
-  /** Owned here, not by `pip`: that watches the media element, and the window holds a mirror. */
-  togglePictureInPicture: () => void
+  /**
+   * Owned here, not by `pip`: that watches the media element, and the window holds a mirror.
+   *
+   * null means the control is not offered at all. Locally that is "no element yet". For a media the
+   * player does not own it means the source cannot do it, and the difference matters: the compositing
+   * this does needs a local element to draw, and even a source that forwards the request cannot
+   * report the resulting STATE back, since `document.pictureInPictureElement` is never a proxy. A
+   * button that toggles nothing and never lights up is worse than no button.
+   */
+  togglePictureInPicture: (() => void) | null
 
   /** Set when the pipeline fails. Cleared when it recovers. */
   playbackError: unknown
@@ -89,7 +97,7 @@ const initialState: SourceState = {
   selectAudioTrack: () => {},
   hideUI: false,
   setHideUI: () => {},
-  togglePictureInPicture: () => {},
+  togglePictureInPicture: null,
   playbackError: null,
   ready: false,
   setSourceState: () => {},

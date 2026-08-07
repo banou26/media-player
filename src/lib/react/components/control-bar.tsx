@@ -259,23 +259,27 @@ export const ControlBar = () => {
         </div>
         <div className='right'>
           <SettingsAction />
-          <TooltipDisplay
-            id='picture-in-picture'
-            text={
-              <button
-                className='picture-in-picture'
-                type='button'
-                onClick={togglePictureInPicture}
-              >
-                <img src={pictureInPicture}  />
-              </button>
-            }
-            toolTipText={
-              <span>
-                Picture in picture
-              </span>
-            }
-          />
+          {togglePictureInPicture
+            ? (
+              <TooltipDisplay
+                id='picture-in-picture'
+                text={
+                  <button
+                    className='picture-in-picture'
+                    type='button'
+                    onClick={togglePictureInPicture}
+                  >
+                    <img src={pictureInPicture}  />
+                  </button>
+                }
+                toolTipText={
+                  <span>
+                    Picture in picture
+                  </span>
+                }
+              />
+            )
+            : null}
           <TooltipDisplay
             id='full-screen'
             tooltipPlace='top-end'

@@ -56,6 +56,21 @@ describe('a player driving a media it does not own', () => {
     await expect.element(screen.getByText(/1:05/)).toBeInTheDocument()
   })
 
+  it('offers no picture-in-picture button it cannot honour', async () => {
+    // Compositing needs a local element to draw, and a proxy can never report the resulting state
+    // back either, since `document.pictureInPictureElement` is never one. A button that toggles
+    // nothing and never lights up is worse than no button, so the control is not offered at all.
+    const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, sized())
+
+    await expect.element(screen.getByRole('button', { name: /play/i }).or(
+      screen.getByText(/./),
+    )).toBeInTheDocument()
+    expect(screen.container.querySelector('button.picture-in-picture')).toBeNull()
+    // the controls that do work are still there
+    expect(screen.container.querySelector('button.play')).not.toBeNull()
+    expect(screen.container.querySelector('button.full-screen')).not.toBeNull()
+  })
+
   it('shows a track menu the source owns, and reports the pick back to it', async () => {
     const picked: (string | null)[] = []
     const media = createFakeRemoteMedia()
