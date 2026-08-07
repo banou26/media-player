@@ -1,10 +1,14 @@
 import { defineConfig, lazyPlugins } from 'vite-plus'
 import react from '@vitejs/plugin-react'
 
-import { dependencies, devDependencies } from './package.json'
+import { dependencies, peerDependencies, devDependencies } from './package.json'
 
+// peerDependencies is load-bearing here, not decoration: react and @emotion/react are peers precisely so
+// the host supplies them, and a peer that fell out of this list would be BUNDLED, which is the exact
+// duplicate-React failure the peer range exists to prevent.
 const externals = [
   ...Object.keys(dependencies ?? {}),
+  ...Object.keys(peerDependencies ?? {}),
   ...Object.keys(devDependencies ?? {}),
 ]
 

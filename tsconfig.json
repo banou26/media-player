@@ -19,6 +19,6 @@
       "@banou/media-player": ["./src/lib/index.tsx"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "vite.config.ts", "vite.lib.config.ts"],
   "exclude": ["node_modules", "build", "dist"]
 }

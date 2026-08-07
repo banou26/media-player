@@ -32,22 +32,26 @@
   },
   "author": "Banou26",
   "dependencies": {
-    "@emotion/react": "^11.14.0",
     "@videojs/core": "10.0.0-beta.26",
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",
     "jassub": "^1.8.6",
     "libav-wasm": "^0.8.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
     "react-feather": "^2.0.10",
     "react-tooltip": "^5.28.0"
   },
+  "peerDependencies": {
+    "@emotion/react": "^11.14.0",
+    "react": "^19.0.0"
+  },
   "devDependencies": {
+    "@emotion/react": "^11.14.0",
     "@types/node": "^22.20.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "shx": "^0.3.4",
     "typescript": "^7.0.2",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4",
