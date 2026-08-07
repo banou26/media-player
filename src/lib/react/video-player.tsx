@@ -175,7 +175,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     downloadedRanges: options.downloadedRanges,
   })
 
-  const { pictureInPicture, togglePictureInPicture } = usePictureInPicture(video, canvas)
+  const togglePictureInPicture = usePictureInPicture(video, canvas)
 
   const context = useMemo<MediaPlayerContextValue>(() => ({
     title: options.title,
@@ -191,14 +191,13 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     audioStreams,
     selectedAudioStream,
     selectAudioStream,
-    pictureInPicture,
     togglePictureInPicture,
     playbackError,
     ready,
   }), [
     options.title, size, options.downloadedRanges, hideUI, indexes, thumbnails, subtitleStreams,
     selectedSubtitleStream, selectSubtitleStream, audioStreams, selectedAudioStream, selectAudioStream,
-    pictureInPicture, togglePictureInPicture, playbackError, ready,
+    togglePictureInPicture, playbackError, ready,
   ])
 
   return (

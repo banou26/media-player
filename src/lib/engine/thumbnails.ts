@@ -8,7 +8,7 @@ export type ThumbnailGeneratorOptions = {
   publicPath: string
   workerUrl: string
   length: number
-  /** Must be a non-prioritizing read: generation should never steal fetch order from playback. */
+  /** The same reader playback uses, so generation shares its fetch order rather than competing. */
   read: (offset: number, size: number) => Promise<ArrayBuffer>
   onThumbnails: (thumbnails: ThumbnailImage[]) => void
   /** Seconds between thumbnails. Widened automatically on long content to stay under MAX_THUMBNAILS. */

@@ -39,8 +39,9 @@ export type MediaPlayerContextValue = {
   /**
    * Picture in picture is owned here rather than taken from the store, because the window is fed a
    * canvas compositing the video and the subtitles, not the bare video element the store knows about.
+   * For the same reason `state.pip` on the store does not track it: the store watches the media
+   * element, and the element in the window is the mirror.
    */
-  pictureInPicture: boolean
   togglePictureInPicture: () => void
 
   /** Set when the pipeline fails. Cleared when it recovers. */
@@ -60,7 +61,6 @@ export const MediaPlayerContext = createContext<MediaPlayerContextValue>({
   audioStreams: [],
   selectedAudioStream: -1,
   selectAudioStream: () => {},
-  pictureInPicture: false,
   togglePictureInPicture: () => {},
   playbackError: null,
   ready: false,

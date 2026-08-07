@@ -34,6 +34,13 @@ const fromUrl = async (
   return { length, name, read }
 }
 
+/** A source resolved down to what the remuxer needs: a total length and a byte-range reader. */
+export type RemuxerInput = {
+  length: number
+  name?: string
+  read: (offset: number, size: number) => Promise<ArrayBuffer>
+}
+
 export const inputToRemuxerInput = async (
   params:
     | Parameters<typeof fromBlob | typeof fromUrl>[0]
@@ -45,18 +52,11 @@ export const inputToRemuxerInput = async (
       name?: string
       read: (offset: number, size: number) => Promise<ArrayBuffer>
     }
-) => {
+// Declared rather than inferred, so all three arms are checked against one contract instead of
+// widening into a union of three structurally identical shapes.
+): Promise<RemuxerInput> => {
   if ('blob' in params) return fromBlob(params)
   if ('url' in params) return fromUrl(params)
-  if ('read' in params) {
-    return {
-      length: params.length,
-      name: params.name,
-      read: (offset: number, size: number) => params.read(offset, size)
-    }
-  }
+  if ('read' in params) return { length: params.length, name: params.name, read: params.read }
   throw new Error(`Unknown source type: ${params}`)
 }
-
-/** The resolved source, not the promise: `inputToRemuxerInput` is async. */
-export type RemuxerInput = Awaited<ReturnType<typeof inputToRemuxerInput>>

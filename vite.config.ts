@@ -13,16 +13,6 @@ export default defineConfig({
       'prefer-const': 'error',
     },
     options: { typeAware: true, typeCheck: true },
-    overrides: [
-      {
-        files: ['tests/**', '**/*.spec.ts', '**/*.test.ts'],
-        rules: {
-          'no-floating-promises': 'off',
-          'no-unused-vars': 'off',
-          'no-unused-expressions': 'off',
-        },
-      },
-    ],
   },
   build: {
     target: 'esnext',

@@ -7,7 +7,7 @@ import { usePlayer } from '../player'
 import { useMediaPlayer } from '../context'
 import { TooltipDisplay } from './tooltip-display'
 import { fonts } from '../../utils/fonts'
-import { labelTracks } from '../../utils/track-label'
+import { labelTracks, type LabelledTrack } from '../../utils/track-label'
 import PlaybackSlider from './playback-slider'
 
 const style = css`
@@ -154,7 +154,7 @@ position: relative;
   }
 }
 
-.subtitle {
+.track-list {
   .description {
     word-break: break-word;
   }
@@ -167,6 +167,57 @@ enum PopoverContent {
   Subtitles,
   Audio
 }
+
+type TrackRow = { streamIndex: number, label: string }
+
+const toTrackRows = <T extends LabelledTrack>(streams: T[]): TrackRow[] =>
+  labelTracks(streams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label }))
+
+/**
+ * One track picker, shared by the subtitle and audio menus.
+ *
+ * The two differ only in their heading, their rows, and whether turning the track off is a choice, so
+ * the panel chrome lives here once rather than as two copies that have to be edited together.
+ */
+const TrackMenu = (
+  { title, tracks, selected, onSelect, onBack, allowDisable }: {
+    title: string
+    tracks: TrackRow[]
+    selected: number | undefined
+    onSelect: (streamIndex: number | undefined) => void
+    onBack: () => void
+    allowDisable?: boolean
+  }
+) => (
+  <div className='popover track-list'>
+    <div className="back" onClick={onBack}>
+      <ChevronLeft />
+      <span>{title}</span>
+    </div>
+    {
+      allowDisable
+        ? (
+          <div onClick={() => onSelect(undefined)}>
+            <span>Disable</span>
+            <span>{selected === undefined ? '✓' : ''}</span>
+          </div>
+        )
+        : null
+    }
+    {
+      tracks.map(({ streamIndex, label }) => (
+        <div
+          key={streamIndex}
+          onClick={() => onSelect(streamIndex)}
+          className="description"
+        >
+          <span>{label}</span>
+          <span>{selected === streamIndex ? '✓' : ''}</span>
+        </div>
+      ))
+    }
+  </div>
+)
 
 export const SettingsAction = () => {
   const player = usePlayer()
@@ -206,23 +257,17 @@ export const SettingsAction = () => {
     return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
 
-  const subtitleTracks = useMemo(
-    () => labelTracks(subtitleStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label })),
-    [subtitleStreams]
-  )
+  const subtitleTracks = useMemo(() => toTrackRows(subtitleStreams), [subtitleStreams])
+  const audioTracks = useMemo(() => toTrackRows(audioStreams), [audioStreams])
 
-  const audioTracks = useMemo(
-    () => labelTracks(audioStreams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label })),
-    [audioStreams]
-  )
-
-  const setSubtitleTrack = (streamIndex: number | undefined) => () => {
+  const chooseSubtitle = (streamIndex: number | undefined) => {
     selectSubtitleStream(streamIndex)
     togglePopover()
   }
 
-  const setAudioTrack = (streamIndex: number) => () => {
-    selectAudioStream(streamIndex)
+  const chooseAudio = (streamIndex: number | undefined) => {
+    // The audio menu never offers "Disable", so undefined cannot reach here.
+    if (streamIndex !== undefined) selectAudioStream(streamIndex)
     togglePopover()
   }
 
@@ -253,7 +298,11 @@ export const SettingsAction = () => {
       {
         isOpenPopover && popoverContent === PopoverContent.Default && (
           <div className='popover menu'>
-            {/* A single-track file has nothing to choose between, so the row is not offered at all */}
+            {/*
+              A row is offered only where there is more than one thing behind it to choose between.
+              Audio needs two tracks for that; subtitles need one, because "Disable" is always a
+              second option, and a file with no subtitles at all should not offer the menu.
+            */}
             {audioTracks.length > 1
               ? (
                 <div onClick={changePopoverContent(PopoverContent.Audio)}>
@@ -264,12 +313,16 @@ export const SettingsAction = () => {
                 </div>
               )
               : null}
-            <div onClick={changePopoverContent(PopoverContent.Subtitles)}>
-              <div>Subtitles</div>
-              <div>
-                <ChevronRight />
-              </div>
-            </div>
+            {subtitleTracks.length > 0
+              ? (
+                <div onClick={changePopoverContent(PopoverContent.Subtitles)}>
+                  <div>Subtitles</div>
+                  <div>
+                    <ChevronRight />
+                  </div>
+                </div>
+              )
+              : null}
             <div onClick={changePopoverContent(PopoverContent.PlaybackRate)}>
               <div>Playback speed</div>
               <div>
@@ -315,50 +368,25 @@ export const SettingsAction = () => {
       }
       {
         isOpenPopover && popoverContent === PopoverContent.Subtitles && (
-          <div className='popover subtitle'>
-            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
-              <ChevronLeft />
-              <span>Subtitles</span>
-            </div>
-            <div onClick={setSubtitleTrack(undefined)}>
-              <span>Disable</span>
-              <span>{selectedSubtitleStream === undefined ? '✓' : ''}</span>
-            </div>
-            {
-              subtitleTracks.map(({ streamIndex, label }) => (
-                <div
-                  key={streamIndex}
-                  onClick={setSubtitleTrack(streamIndex)}
-                  className="description"
-                >
-                  <span>{label}</span>
-                  <span>{selectedSubtitleStream === streamIndex ? '✓' : ''}</span>
-                </div>
-              ))
-            }
-          </div>
+          <TrackMenu
+            title='Subtitles'
+            tracks={subtitleTracks}
+            selected={selectedSubtitleStream}
+            onSelect={chooseSubtitle}
+            onBack={changePopoverContent(PopoverContent.Default)}
+            allowDisable
+          />
         )
       }
       {
         isOpenPopover && popoverContent === PopoverContent.Audio && (
-          <div className='popover subtitle'>
-            <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
-              <ChevronLeft />
-              <span>Audio</span>
-            </div>
-            {
-              audioTracks.map(({ streamIndex, label }) => (
-                <div
-                  key={streamIndex}
-                  onClick={setAudioTrack(streamIndex)}
-                  className="description"
-                >
-                  <span>{label}</span>
-                  <span>{selectedAudioStream === streamIndex ? '✓' : ''}</span>
-                </div>
-              ))
-            }
-          </div>
+          <TrackMenu
+            title='Audio'
+            tracks={audioTracks}
+            selected={selectedAudioStream}
+            onSelect={chooseAudio}
+            onBack={changePopoverContent(PopoverContent.Default)}
+          />
         )
       }
     </div>

@@ -32,13 +32,34 @@ export type PictureInPictureOptions = {
   /** The subtitle canvas. jassub sizes this to the video's *content* rect, so it maps 1:1. */
   canvas: HTMLCanvasElement
   maxWidth?: number
-  onChange?: (active: boolean) => void
+  /**
+   * Where the hidden mirror element is mounted. It has to be in the document, because a detached
+   * element cannot enter picture in picture. Defaults to the video's own parent, so the mirror stays
+   * inside whatever container the consumer already owns rather than appearing on `document.body`.
+   */
+  container?: HTMLElement
+  /**
+   * Picture in picture without the compositing, for when the composite path is unavailable or fails.
+   * It is a toggle: enter if not in the window, exit if already there.
+   *
+   * The React layer passes the player store's own `togglePictureInPicture`, which handles Safari's
+   * `webkitSetPresentationMode` and exits fullscreen before opening the window. The default here does
+   * neither, so a caller on Safari should supply one.
+   */
+  fallback?: () => Promise<void>
 }
 
 export type PictureInPictureController = {
   toggle: () => Promise<void>
-  isActive: () => boolean
   destroy: () => void
+}
+
+/** The resources of one picture in picture session. All four are created and released together. */
+type Session = {
+  composite: HTMLCanvasElement
+  context: CanvasRenderingContext2D
+  stream: MediaStream
+  mirror: HTMLVideoElement
 }
 
 const supportsCompositing = () =>
@@ -47,30 +68,40 @@ const supportsCompositing = () =>
   typeof document !== 'undefined' &&
   document.pictureInPictureEnabled
 
+/**
+ * Note on ownership: while a session is open this claims the document's Media Session `play` and
+ * `pause` action handlers, and releases them to `null` rather than to whatever was there before,
+ * because the Media Session API offers no way to read a handler back. An app that drives its own
+ * Media Session should expect those two actions to be taken over for the duration.
+ */
 export const createPictureInPicture = (options: PictureInPictureOptions): PictureInPictureController => {
   const { video, canvas, maxWidth = DEFAULT_MAX_WIDTH } = options
 
-  let composite: HTMLCanvasElement | undefined
-  let context: CanvasRenderingContext2D | null = null
-  let stream: MediaStream | undefined
-  let mirror: HTMLVideoElement | undefined
-  let frameHandle: number | undefined
-  let rafHandle: number | undefined
+  let session: Session | undefined
+  let handle: number | undefined
   let pausedRepaint: ReturnType<typeof setInterval> | undefined
   // Mirrored play/pause would otherwise bounce between the two elements forever
   let syncing = false
+  // `enter` awaits, and until it resolves nothing else can tell a session is being built. Without
+  // this a second click starts a whole second pipeline whose timer and mirror are then unreachable.
+  let entering = false
   let destroyed = false
 
-  const active = () => !!mirror && document.pictureInPictureElement === mirror
+  const active = () => !!session && document.pictureInPictureElement === session.mirror
 
-  const paint = () => {
-    if (!composite || !context) return
+  // Takes its target rather than reading `session`, so `enter` can lay down the first frame before
+  // the capture starts, while the session object is still being assembled.
+  const draw = (composite: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
     context.drawImage(video, 0, 0, composite.width, composite.height)
     // Before jassub has booted, or with subtitles off, the canvas can still be 0x0, and drawImage
     // throws on a zero-sized source rather than treating it as a no-op.
     if (canvas.width > 0 && canvas.height > 0) {
       context.drawImage(canvas, 0, 0, composite.width, composite.height)
     }
+  }
+
+  const paint = () => {
+    if (session) draw(session.composite, session.context)
   }
 
   // requestVideoFrameCallback fires once per *presented* frame, so the composite tracks the video
@@ -84,19 +115,17 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   }
 
   const schedule = () => {
-    if (destroyed || !composite) return
-    if (useFrameCallback) frameHandle = video.requestVideoFrameCallback(loop)
-    else rafHandle = requestAnimationFrame(loop)
+    if (destroyed || !session) return
+    handle = useFrameCallback ? video.requestVideoFrameCallback(loop) : requestAnimationFrame(loop)
   }
 
   const stopLoop = () => {
-    if (frameHandle !== undefined && 'cancelVideoFrameCallback' in video) {
-      video.cancelVideoFrameCallback(frameHandle)
+    if (handle !== undefined) {
+      if (useFrameCallback) video.cancelVideoFrameCallback(handle)
+      else cancelAnimationFrame(handle)
     }
-    if (rafHandle !== undefined) cancelAnimationFrame(rafHandle)
     if (pausedRepaint !== undefined) clearInterval(pausedRepaint)
-    frameHandle = undefined
-    rafHandle = undefined
+    handle = undefined
     pausedRepaint = undefined
   }
 
@@ -127,12 +156,12 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     if (syncing) return
     if (!video.paused) video.pause()
     syncing = true
-    void mirror?.play().catch(() => {}).finally(() => { syncing = false })
+    void session?.mirror.play().catch(() => {}).finally(() => { syncing = false })
   }
 
   const onVideoPlay = () => {
     publishState()
-    void mirror?.play().catch(() => {})
+    void session?.mirror.play().catch(() => {})
   }
 
   const onVideoPause = () => {
@@ -161,21 +190,22 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     bindMediaSession(false)
     video.removeEventListener('play', onVideoPlay)
     video.removeEventListener('pause', onVideoPause)
-    mirror?.removeEventListener('play', onMirrorPlay)
-    mirror?.removeEventListener('pause', onMirrorPause)
-    mirror?.removeEventListener('leavepictureinpicture', onLeave)
-    for (const track of stream?.getTracks() ?? []) track.stop()
-    mirror?.remove()
-    mirror = undefined
-    stream = undefined
-    composite = undefined
-    context = null
+    if (!session) return
+    const { stream, mirror } = session
+    mirror.removeEventListener('play', onMirrorPlay)
+    mirror.removeEventListener('pause', onMirrorPause)
+    mirror.removeEventListener('leavepictureinpicture', onLeave)
+    for (const track of stream.getTracks()) track.stop()
+    mirror.remove()
+    session = undefined
   }
 
-  const onLeave = () => {
-    teardown()
-    options.onChange?.(false)
-  }
+  const onLeave = () => teardown()
+
+  const fallback = options.fallback ?? (async () => {
+    if (document.pictureInPictureElement === video) await document.exitPictureInPicture()
+    else await video.requestPictureInPicture()
+  })
 
   const enter = async () => {
     // The composite is sized off the video's intrinsic dimensions, never off the layout, so resizing
@@ -183,24 +213,28 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     const width = Math.min(video.videoWidth || maxWidth, maxWidth)
     const height = Math.round(width * ((video.videoHeight || 9) / (video.videoWidth || 16)))
 
-    composite = document.createElement('canvas')
+    const composite = document.createElement('canvas')
     composite.width = width
     composite.height = height
-    context = composite.getContext('2d')
+    // The alpha channel is unused (every paint covers the whole canvas with the video first) but it
+    // has to stay. With `{ alpha: false }` Chrome's captureStream delivers the first frame and then
+    // nothing: the track stays "live", the canvas keeps repainting, and the mirror sits frozen.
+    // Measured at 36 paints and 1099 changed canvas pixels against 0 changed pixels in the window.
+    const context = composite.getContext('2d')
     if (!context) throw new Error('the picture in picture composite has no 2d context')
 
-    // One frame before the capture starts, so the stream has content from its first moment
-    paint()
-
-    stream = composite.captureStream()
-    mirror = document.createElement('video')
+    const mirror = document.createElement('video')
     mirror.muted = true
     mirror.playsInline = true
-    mirror.srcObject = stream
-    // Kept in the document because a detached element cannot enter picture in picture, and kept out
-    // of view because it is never meant to be seen on the page.
+    // Kept out of view because it is never meant to be seen on the page.
     mirror.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-1px;top:-1px'
-    document.body.appendChild(mirror)
+
+    // One frame before the capture starts, so the stream has content from its first moment
+    draw(composite, context)
+
+    session = { composite, context, stream: composite.captureStream(), mirror }
+    mirror.srcObject = session.stream
+    ;(options.container ?? video.parentElement ?? document.body).appendChild(mirror)
 
     schedule()
     // Only paints while paused, so during playback the frame callback stays the single writer and
@@ -214,7 +248,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
       await new Promise<void>((resolve) => {
         const done = () => { clearTimeout(timer); resolve() }
         const timer = setTimeout(done, 1000)
-        mirror?.addEventListener('loadedmetadata', done, { once: true })
+        mirror.addEventListener('loadedmetadata', done, { once: true })
       })
     }
 
@@ -227,22 +261,22 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     publishState()
 
     await mirror.requestPictureInPicture()
-    options.onChange?.(true)
   }
 
   const toggle = async () => {
-    if (destroyed) return
+    if (destroyed || entering) return
     if (active()) {
       await document.exitPictureInPicture().catch(() => {})
+      return
+    }
+    if (!supportsCompositing()) {
+      await fallback()
       return
     }
     // Another element (including our own last mirror) may still hold the single picture in picture slot
     if (document.pictureInPictureElement) await document.exitPictureInPicture().catch(() => {})
 
-    if (!supportsCompositing()) {
-      await video.requestPictureInPicture()
-      return
-    }
+    entering = true
     try {
       await enter()
     } catch (error) {
@@ -250,13 +284,14 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
       // the browser the bare video, which plays without subtitles rather than not at all.
       console.warn('subtitle compositing for picture in picture failed, falling back', error)
       teardown()
-      await video.requestPictureInPicture().catch(() => {})
+      await fallback().catch(() => {})
+    } finally {
+      entering = false
     }
   }
 
   return {
     toggle,
-    isActive: active,
     destroy: () => {
       destroyed = true
       if (active()) void document.exitPictureInPicture().catch(() => {})

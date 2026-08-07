@@ -1,11 +1,9 @@
-import type { MediaPlayerSource } from '../lib'
-import type { RemuxerInput } from '../lib/utils/source'
+import type { MediaPlayerSource, RemuxerInput } from '../lib'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
-import MediaPlayer from '../lib'
-import { inputToRemuxerInput } from '../lib/utils/source'
+import MediaPlayer, { inputToRemuxerInput } from '../lib'
 import { playerAssets } from '../asset-urls'
 
 const style = css`
