@@ -146,9 +146,33 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({ title, size, downloadedRanges })
   }, [setSourceState, title, size, downloadedRanges])
 
+  const thumbnailAt = remote?.thumbnails?.at
   useEffect(() => {
-    setSourceState({ thumbnails, togglePictureInPicture })
-  }, [setSourceState, thumbnails, togglePictureInPicture])
+    setSourceState({ thumbnails, thumbnailAt, togglePictureInPicture })
+  }, [setSourceState, thumbnails, thumbnailAt, togglePictureInPicture])
+
+  // A delegated track list writes the same store fields the engine writes, so the menus never learn
+  // which arm they are showing. Only the writer differs: here the pick is forwarded to whoever owns
+  // the document, and it renders the result itself.
+  const subtitles = remote?.subtitles?.selection
+  const audio = remote?.audioTracks?.selection
+  useEffect(() => {
+    if (!subtitles) return
+    setSourceState({
+      subtitleTracks: subtitles.options.map(({ id, label }) => ({ id, label })),
+      selectedSubtitleTrack: subtitles.selectedId ?? undefined,
+      selectSubtitleTrack: (id) => subtitles.select(id == null ? null : String(id)),
+    })
+  }, [setSourceState, subtitles])
+
+  useEffect(() => {
+    if (!audio) return
+    setSourceState({
+      audioTracks: audio.options.map(({ id, label }) => ({ id, label })),
+      selectedAudioTrack: audio.selectedId ?? undefined,
+      selectAudioTrack: (id) => audio.select(String(id)),
+    })
+  }, [setSourceState, audio])
 
   return (
     <Chrome
@@ -166,6 +190,17 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
 
 // #111 against the black inside is deliberate: this is the letterbox around the player box.
 const rootStyle = css`
+  /**
+   * The chrome's whole scale, in one place.
+   *
+   * Everything inside is sized against this rather than against \`rem\`, because \`rem\` is root
+   * relative and a library cannot own the host page's root font. The old contract was that the host
+   * set \`html { font-size: 62.5% }\`, which silently rendered every control 1.6x too large in any app
+   * that did not, and could not be met by an app whose own screens are sized against the default.
+   * Override it on the player element to rescale the whole chrome.
+   */
+  --mp-unit: 10px;
+
   display: flex;
   justify-content: center;
   background-color: #111;

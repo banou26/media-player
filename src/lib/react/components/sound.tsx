@@ -43,7 +43,7 @@ const style = css`
   }
 
   &:hover .volume-slider-container {
-    width: 9rem;
+    width: calc(9 * var(--mp-unit));
 
     transition: margin .2s cubic-bezier(0,0,0.2,1), width .2s cubic-bezier(0,0,0.2,1);
     -webkit-transition: margin .2s cubic-bezier(0,0,0.2,1), width .2s cubic-bezier(0,0,0.2,1);

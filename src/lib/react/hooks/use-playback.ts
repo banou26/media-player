@@ -5,6 +5,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { startPlayback } from '../../engine'
 import { usePlayer } from '../player'
+import { labelTracks } from '../../utils/track-label'
+import type { LabelledTrack } from '../../utils/track-label'
+import type { TrackChoice } from '../source-feature'
+
+/** Names the engine's streams once, on the way into the store, so the menu only ever reads rows. */
+const toTrackChoices = <T extends LabelledTrack>(streams: T[]): TrackChoice[] =>
+  labelTracks(streams).map(({ track, label }) => ({ id: track.streamIndex, label }))
 
 /**
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
@@ -41,15 +48,19 @@ export const usePlayback = (
   const onPlaybackErrorRef = useRef(options?.onPlaybackError)
   onPlaybackErrorRef.current = options?.onPlaybackError
 
-  const selectSubtitleStream = useCallback((streamIndex: number | undefined) => {
+  // The store's ids are opaque, but everything this hook writes into it came from libav, so every id
+  // that comes back is one of its own stream indices.
+  const selectSubtitleTrack = useCallback((id: string | number | undefined) => {
+    const streamIndex = typeof id === 'number' ? id : undefined
     subtitleChoiceMade.current = true
-    player.setSourceState({ selectedSubtitleStream: streamIndex })
+    player.setSourceState({ selectedSubtitleTrack: streamIndex })
     controllerRef.current?.selectSubtitleStream(streamIndex)
   }, [player])
 
-  const selectAudioStream = useCallback((streamIndex: number) => {
-    player.setSourceState({ selectedAudioStream: streamIndex })
-    setAudioStreamIndex(streamIndex)
+  const selectAudioTrack = useCallback((id: string | number) => {
+    if (typeof id !== 'number') return
+    player.setSourceState({ selectedAudioTrack: id })
+    setAudioStreamIndex(id)
   }, [player])
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
@@ -58,8 +69,8 @@ export const usePlayback = (
   const setSourceState = usePlayer((state) => state.setSourceState)
 
   useEffect(() => {
-    setSourceState({ selectSubtitleStream, selectAudioStream })
-  }, [setSourceState, selectSubtitleStream, selectAudioStream])
+    setSourceState({ selectSubtitleTrack, selectAudioTrack })
+  }, [setSourceState, selectSubtitleTrack, selectAudioTrack])
 
   useEffect(() => {
     if (!video || !canvas || !size || !read) return
@@ -101,13 +112,13 @@ export const usePlayback = (
           onSubtitleStreams: (streams) => {
             if (cancelled) return
             player.setSourceState({
-              subtitleStreams: streams,
-              ...subtitleChoiceMade.current ? {} : { selectedSubtitleStream: streams[0]?.streamIndex },
+              subtitleTracks: toTrackChoices(streams),
+              ...subtitleChoiceMade.current ? {} : { selectedSubtitleTrack: streams[0]?.streamIndex },
             })
           },
           onAudioStreams: (streams, selected) => {
             if (cancelled) return
-            player.setSourceState({ audioStreams: streams, selectedAudioStream: selected })
+            player.setSourceState({ audioTracks: toTrackChoices(streams), selectedAudioTrack: selected })
           },
         })
         if (cancelled) {
@@ -117,8 +128,8 @@ export const usePlayback = (
         controllerRef.current = controller
         player.setSourceState({ indexes: controller.indexes })
         // a track chosen before this pipeline existed has to be re-applied to the new renderer
-        const chosen = player.selectedSubtitleStream
-        if (chosen !== undefined) controller.selectSubtitleStream(chosen)
+        const chosen = player.selectedSubtitleTrack
+        if (typeof chosen === 'number') controller.selectSubtitleStream(chosen)
       } catch (error) {
         fail(error)
       }

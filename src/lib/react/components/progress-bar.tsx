@@ -10,10 +10,10 @@ import { fonts } from '../../utils/fonts'
 
 const style = css`
   position: relative;
-  height: .4rem;
+  height: calc(.4 * var(--mp-unit));
 
-  --thumbnail-width: 25rem;
-  --thumbnail-half: 12.5rem;
+  --thumbnail-width: calc(25 * var(--mp-unit));
+  --thumbnail-half: calc(12.5 * var(--mp-unit));
 
   transition: transform .2s ease-in-out;
 
@@ -34,7 +34,7 @@ const style = css`
     }
     .loaded {
       transform: scaleY(1.5);
-      top: -.1rem;
+      top: calc(-.1 * var(--mp-unit));
     }
     .play-container {
       transform: scaleY(1.5);
@@ -56,10 +56,10 @@ const style = css`
     ${fonts.bMedium.bold}
 
     position: absolute;
-    top: -2.5rem;
-    width: 5rem;
+    top: calc(-2.5 * var(--mp-unit));
+    width: calc(5 * var(--mp-unit));
 
-    margin-left: -2.5rem;
+    margin-left: calc(-2.5 * var(--mp-unit));
     pointer-events: none;
   }
 
@@ -67,12 +67,12 @@ const style = css`
     transform-origin: 0 0;
     position: absolute;
     bottom: 0;
-    height: .4rem;
+    height: calc(.4 * var(--mp-unit));
     width: 100%;
     .loaded-part {
       transform-origin: 0 0;
       bottom: 0;
-      height: .4rem;
+      height: calc(.4 * var(--mp-unit));
       width: 100%;
       position: absolute;
       background-color: hsla(0, 100%, 100%, .4);
@@ -83,7 +83,7 @@ const style = css`
     position: absolute;
     bottom: 0;
     width: 100%;
-    height: .4rem;
+    height: calc(.4 * var(--mp-unit));
   }
 
   .play {
@@ -91,14 +91,14 @@ const style = css`
     background-color: #f03;
     position: absolute;
     bottom: 0;
-    height: .4rem;
+    height: calc(.4 * var(--mp-unit));
     width: 100%;
   }
 
   .padding {
     position: absolute;
     bottom: -7.5px;
-    height: 2rem;
+    height: calc(2 * var(--mp-unit));
     width: 100%;
   }
 
@@ -107,7 +107,7 @@ const style = css`
     justify-content: center;
 
     position: absolute;
-    top: calc(-3.4375rem - var(--thumbnail-width) * 9/16);
+    top: calc(calc(-3.4375 * var(--mp-unit)) - var(--thumbnail-width) * 9/16);
     height: calc(var(--thumbnail-width) * 9/16);
     width: var(--thumbnail-width);
 
@@ -115,8 +115,8 @@ const style = css`
     pointer-events: none;
 
     img {
-      border-radius: .4rem;
-      box-shadow: 0 0 1rem rgba(0, 0, 0, .5);
+      border-radius: calc(.4 * var(--mp-unit));
+      box-shadow: 0 0 calc(1 * var(--mp-unit)) rgba(0, 0, 0, .5);
 
       width: 100%;
       height: 100%;
@@ -124,9 +124,9 @@ const style = css`
     }
   }
 
-  /* a thumb is far wider than a cursor, so the hit strip grows to 44px and the track to .6rem */
+  /* a thumb is far wider than a cursor, so the hit strip grows to 44px and the track thickens */
   @media (pointer: coarse) {
-    height: .6rem;
+    height: calc(.6 * var(--mp-unit));
 
     /* press feedback, coarse only: a finger has no hover, so without this the bar gives no sign
        it is being dragged */
@@ -137,18 +137,18 @@ const style = css`
     }
 
     .loaded {
-      height: .6rem;
+      height: calc(.6 * var(--mp-unit));
       .loaded-part {
-        height: .6rem;
+        height: calc(.6 * var(--mp-unit));
       }
     }
 
     .play-container {
-      height: .6rem;
+      height: calc(.6 * var(--mp-unit));
     }
 
     .play {
-      height: .6rem;
+      height: calc(.6 * var(--mp-unit));
     }
 
     /* grows upward into the video: centred, it would hang over the control row and win hit
@@ -162,8 +162,8 @@ const style = css`
   /* the clamp only holds the preview inside the bar while the bar is the wider of the two, so
      below that the preview is narrowed instead */
   @media (max-width: 480px) {
-    --thumbnail-width: 18rem;
-    --thumbnail-half: 9rem;
+    --thumbnail-width: calc(18 * var(--mp-unit));
+    --thumbnail-half: calc(9 * var(--mp-unit));
   }
 `
 
@@ -175,6 +175,7 @@ export const ProgressBar = () => {
   const downloadedRanges = usePlayer((state) => state.downloadedRanges)
   const indexes = usePlayer((state) => state.indexes)
   const thumbnails = usePlayer((state) => state.thumbnails)
+  const thumbnailAt = usePlayer((state) => state.thumbnailAt)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
@@ -271,14 +272,16 @@ export const ProgressBar = () => {
 
   // an empty url is a gap sentinel, so it renders nothing
   const thumbnail = useMemo(() => {
-    if (!thumbnails.length || !progressBarHoverTime) return undefined
+    if (!progressBarHoverTime) return undefined
+    if (thumbnailAt) return thumbnailAt(progressBarHoverTime)
+    if (!thumbnails.length) return undefined
     return (
       thumbnails
         .find(({ startTime, endTime }) =>
           startTime <= progressBarHoverTime && progressBarHoverTime < endTime
         )
     )
-  }, [thumbnails.length, progressBarHoverTime])
+  }, [thumbnails, thumbnailAt, progressBarHoverTime])
 
   return (
     <div
@@ -294,7 +297,7 @@ export const ProgressBar = () => {
           ? (
             <div
               className="cursor-time"
-              style={{ left: `clamp(1.8rem, ${timePercentage(progressBarHoverTime)}%, calc(100% - 1.8rem))` }}
+              style={{ left: `clamp(calc(1.8 * var(--mp-unit)), ${timePercentage(progressBarHoverTime)}%, calc(100% - calc(1.8 * var(--mp-unit))))` }}
             >
               {cusorTimeString}
             </div>

@@ -96,8 +96,9 @@ const jassubWorkerUrl = URL.createObjectURL(
 )
 ```
 
-The chrome is sized in `rem` against a **62.5% root font size**. Set `html { font-size: 62.5% }` or
-every control renders 1.6x too large.
+The chrome brings its own scale and needs nothing from the host page's root font. Everything is sized
+against `--mp-unit`, which defaults to `10px` on the player element; set it there to rescale the whole
+chrome at once.
 
 ## What it does
 

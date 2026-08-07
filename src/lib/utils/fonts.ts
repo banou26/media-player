@@ -2,158 +2,158 @@ export const fonts = {
   headings: {
     large: `
       font-weight: 600;
-      font-size: 2.8rem;
-      line-height: 3.4rem;
+      font-size: calc(2.8 * var(--mp-unit));
+      line-height: calc(3.4 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 3.4rem;
-        line-height: 4.1rem;
+        font-size: calc(3.4 * var(--mp-unit));
+        line-height: calc(4.1 * var(--mp-unit));
       }
     `,
     medium: `
       font-weight: 600;
-      font-size: 2.4rem;
-      line-height: 2.9rem;
+      font-size: calc(2.4 * var(--mp-unit));
+      line-height: calc(2.9 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 2.8rem;
-        line-height: 3.4rem;
+        font-size: calc(2.8 * var(--mp-unit));
+        line-height: calc(3.4 * var(--mp-unit));
       }
     `,
     small: `
       font-weight: 500;
-      font-size: 1.8rem;
-      line-height: 1.9rem;
+      font-size: calc(1.8 * var(--mp-unit));
+      line-height: calc(1.9 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.8rem;
-        line-height: 2.2rem;
+        font-size: calc(1.8 * var(--mp-unit));
+        line-height: calc(2.2 * var(--mp-unit));
       }
       @media (min-width: 2560px) {
-        font-size: 2.2rem;
-        line-height: 2.6rem;
+        font-size: calc(2.2 * var(--mp-unit));
+        line-height: calc(2.6 * var(--mp-unit));
       }
     `,
     extraSmall: `
       font-weight: 500;
-      font-size: 1.4rem;
-      line-height: 1.7rem;
+      font-size: calc(1.4 * var(--mp-unit));
+      line-height: calc(1.7 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.6rem;
-        line-height: 1.9rem;
+        font-size: calc(1.6 * var(--mp-unit));
+        line-height: calc(1.9 * var(--mp-unit));
       }
     `
   },
   bLarge: {
     bold: `
       font-weight: 600;
-      font-size: 1.4rem;
-      line-height: 2rem;
+      font-size: calc(1.4 * var(--mp-unit));
+      line-height: calc(2 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.6rem;
-        line-height: 2.2rem;
+        font-size: calc(1.6 * var(--mp-unit));
+        line-height: calc(2.2 * var(--mp-unit));
       }
     `,
     medium: `
       font-weight: 500;
-      font-size: 1.4rem;
-      line-height: 2rem;
+      font-size: calc(1.4 * var(--mp-unit));
+      line-height: calc(2 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.6rem;
-        line-height: 2.2rem;
+        font-size: calc(1.6 * var(--mp-unit));
+        line-height: calc(2.2 * var(--mp-unit));
       }
     `,
     regular: `
       font-weight: 400;
-      font-size: 1.4rem;
-      line-height: 2rem;
+      font-size: calc(1.4 * var(--mp-unit));
+      line-height: calc(2 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.6rem;
-        line-height: 2.2rem;
+        font-size: calc(1.6 * var(--mp-unit));
+        line-height: calc(2.2 * var(--mp-unit));
       }
     `,
   },
   bMedium: {
     bold: `
       font-weight: 600;
-      font-size: 1.2rem;
-      line-height: 1.7rem;
+      font-size: calc(1.2 * var(--mp-unit));
+      line-height: calc(1.7 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.4rem;
-        line-height: 2rem;
+        font-size: calc(1.4 * var(--mp-unit));
+        line-height: calc(2 * var(--mp-unit));
       }
     `,
     medium: `
       font-weight: 500;
-      font-size: 1.2rem;
-      line-height: 1.7rem;
+      font-size: calc(1.2 * var(--mp-unit));
+      line-height: calc(1.7 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.4rem;
-        line-height: 2rem;
+        font-size: calc(1.4 * var(--mp-unit));
+        line-height: calc(2 * var(--mp-unit));
       }
     `,
     regular: `
       font-weight: 400;
-      font-size: 1.2rem;
-      line-height: 1.7rem;
+      font-size: calc(1.2 * var(--mp-unit));
+      line-height: calc(1.7 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.4rem;
-        line-height: 2rem;
+        font-size: calc(1.4 * var(--mp-unit));
+        line-height: calc(2 * var(--mp-unit));
       }
     `,
   },
   bSmall: {
     bold: `
       font-weight: 600;
-      font-size: 1rem;
-      line-height: 1.4rem;
+      font-size: calc(1 * var(--mp-unit));
+      line-height: calc(1.4 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.2rem;
-        line-height: 1.7rem;
+        font-size: calc(1.2 * var(--mp-unit));
+        line-height: calc(1.7 * var(--mp-unit));
       }
     `,
     medium: `
       font-weight: 500;
-      font-size: 1rem;
-      line-height: 1.4rem;
+      font-size: calc(1 * var(--mp-unit));
+      line-height: calc(1.4 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.2rem;
-        line-height: 1.7rem;
+        font-size: calc(1.2 * var(--mp-unit));
+        line-height: calc(1.7 * var(--mp-unit));
       }
     `,
     regular: `
       font-weight: 400;
-      font-size: 1rem;
-      line-height: 1.4rem;
+      font-size: calc(1 * var(--mp-unit));
+      line-height: calc(1.4 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1.2rem;
-        line-height: 1.7rem;
+        font-size: calc(1.2 * var(--mp-unit));
+        line-height: calc(1.7 * var(--mp-unit));
       }
     `,
   },
   bExtraSmall: {
     bold: `
       font-weight: 600;
-      font-size: 0.8rem;
-      line-height: 1.1rem;
+      font-size: calc(0.8 * var(--mp-unit));
+      line-height: calc(1.1 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1rem;
-        line-height: 1.4rem;
+        font-size: calc(1 * var(--mp-unit));
+        line-height: calc(1.4 * var(--mp-unit));
       }
     `,
     medium: `
       font-weight: 500;
-      font-size: 0.8rem;
-      line-height: 1.1rem;
+      font-size: calc(0.8 * var(--mp-unit));
+      line-height: calc(1.1 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1rem;
-        line-height: 1.4rem;
+        font-size: calc(1 * var(--mp-unit));
+        line-height: calc(1.4 * var(--mp-unit));
       }
     `,
     regular: `
       font-weight: 400;
-      font-size: 0.8rem;
-      line-height: 1.1rem;
+      font-size: calc(0.8 * var(--mp-unit));
+      line-height: calc(1.1 * var(--mp-unit));
       @media (min-width: 960px) {
-        font-size: 1rem;
-        line-height: 1.4rem;
+        font-size: calc(1 * var(--mp-unit));
+        line-height: calc(1.4 * var(--mp-unit));
       }
     `,
   },

@@ -18,9 +18,9 @@ const titleStyle = css`
   top: 0;
   left: 0;
   width: 100%;
-  padding: 1.2rem 1.6rem;
+  padding: calc(1.2 * var(--mp-unit)) calc(1.6 * var(--mp-unit));
   /* clears a notch once the player is fullscreen; resolves to zero everywhere else */
-  padding-top: calc(1.2rem + env(safe-area-inset-top, 0px));
+  padding-top: calc(calc(1.2 * var(--mp-unit)) + env(safe-area-inset-top, 0px));
   ${fonts.headings.small}
   color: white;
   text-shadow: 0 0 4px rgba(0, 0, 0, 1);
@@ -34,8 +34,8 @@ const titleStyle = css`
   text-overflow: ellipsis;
 
   @media (min-width: 768px) {
-    padding: 2.4rem;
-    padding-top: calc(2.4rem + env(safe-area-inset-top, 0px));
+    padding: calc(2.4 * var(--mp-unit));
+    padding-top: calc(calc(2.4 * var(--mp-unit)) + env(safe-area-inset-top, 0px));
     white-space: normal;
     overflow: visible;
   }
@@ -59,8 +59,8 @@ const loadingStyle = css`
 
   ::after {
     content: '';
-    width: 4rem;
-    height: 4rem;
+    width: calc(4 * var(--mp-unit));
+    height: calc(4 * var(--mp-unit));
     border-radius: 50%;
     border: 3px solid rgba(255, 255, 255, 0.25);
     border-top-color: #fff;
@@ -73,7 +73,7 @@ const errorStyle = css`
   position: absolute;
   inset: auto 0 20%;
   z-index: 3;
-  padding: 0 2rem;
+  padding: 0 calc(2 * var(--mp-unit));
   text-align: center;
   color: #fff;
   ${fonts.bLarge.regular}
@@ -92,6 +92,8 @@ export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElem
   const playbackError = usePlayer((state) => state.playbackError)
   const ready = usePlayer((state) => state.ready)
   const size = usePlayer((state) => state.size)
+  // video.js's own: readyState below HAVE_FUTURE_DATA while not paused
+  const waiting = usePlayer((state) => state.waiting)
 
   return (
     <>
@@ -105,9 +107,11 @@ export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElem
           </div>
         )
         : undefined}
-      {/* pre-metadata, not buffering: the store reports 0 both before metadata and for a genuinely
-          unknown duration, while `size` tells whether a source was handed over at all */}
-      {size && !ready && !playbackError
+      {/* Two different waits, one spinner. With bytes it is pre-metadata rather than buffering: the
+          store reports 0 both before metadata and for a genuinely unknown duration, so `size` is what
+          tells whether a source was handed over at all. A media this player does not own has neither
+          `size` nor `ready`, and reports the ordinary `waiting` every element does. */}
+      {(size ? !ready : waiting) && !playbackError
         ? <div css={loadingStyle} />
         : undefined}
       {playbackError

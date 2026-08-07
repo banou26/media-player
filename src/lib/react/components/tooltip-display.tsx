@@ -15,7 +15,7 @@ const style = (size: buttonSize) => css`
   display: flex;
   justify-content: flex-end;
 
-  border-radius: 0.4rem;
+  border-radius: calc(0.4 * var(--mp-unit));
   user-select: none;
 
   z-index: 3;
@@ -25,13 +25,13 @@ const style = (size: buttonSize) => css`
   }
 
   ${size === buttonSize.sm && css`
-    padding: 0.4rem!important;
+    padding: calc(0.4 * var(--mp-unit))!important;
   `}
   ${size === buttonSize.md && css`
-    padding: 0.6rem!important;
+    padding: calc(0.6 * var(--mp-unit))!important;
   `}
   ${size === buttonSize.lg && css`
-    padding: 1.2rem!important;
+    padding: calc(1.2 * var(--mp-unit))!important;
   `}
 `
 

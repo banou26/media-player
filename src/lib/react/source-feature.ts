@@ -1,6 +1,19 @@
-import type { AudioStream, MediaIndex, SubtitleStream, ThumbnailImage } from '../engine'
+import type { MediaIndex, ThumbnailImage } from '../engine'
 
 import { definePlayerFeature } from '@videojs/core/dom'
+
+/**
+ * One row of a track menu, already named.
+ *
+ * Labelled by whoever writes it rather than by the menu, because the two writers know different
+ * things: the engine has a language tag and a title to disambiguate between, while a source that
+ * owns its own player hands over a label it has already decided on. The id is opaque here for the
+ * same reason, a libav stream index one way and a site's own track id the other.
+ */
+export type TrackChoice = {
+  id: string | number
+  label: string
+}
 
 /**
  * A byte span of the file the consumer has in hand, mapped onto the timeline through the keyframe
@@ -28,15 +41,20 @@ export type SourceState = {
   /** Keyframe index of the input, which turns a downloaded byte range into a time range. */
   indexes: MediaIndex[]
   thumbnails: ThumbnailImage[]
+  /**
+   * Answers for one time directly, when the source has a storyboard it can index but not enumerate.
+   * Falls back to scanning `thumbnails` when absent, which is what the engine's generator fills.
+   */
+  thumbnailAt?: (time: number) => ThumbnailImage | undefined
 
-  subtitleStreams: SubtitleStream[]
+  subtitleTracks: TrackChoice[]
   /** undefined means subtitles are off. */
-  selectedSubtitleStream: number | undefined
-  selectSubtitleStream: (streamIndex: number | undefined) => void
+  selectedSubtitleTrack: string | number | undefined
+  selectSubtitleTrack: (id: string | number | undefined) => void
 
-  audioStreams: AudioStream[]
-  selectedAudioStream: number
-  selectAudioStream: (streamIndex: number) => void
+  audioTracks: TrackChoice[]
+  selectedAudioTrack: string | number | undefined
+  selectAudioTrack: (id: string | number) => void
 
   /** Chrome auto-hide. True means the controls, title and cursor are hidden. */
   hideUI: boolean
@@ -63,12 +81,12 @@ export type SourceState = {
 const initialState: SourceState = {
   indexes: [],
   thumbnails: [],
-  subtitleStreams: [],
-  selectedSubtitleStream: undefined,
-  selectSubtitleStream: () => {},
-  audioStreams: [],
-  selectedAudioStream: -1,
-  selectAudioStream: () => {},
+  subtitleTracks: [],
+  selectedSubtitleTrack: undefined,
+  selectSubtitleTrack: () => {},
+  audioTracks: [],
+  selectedAudioTrack: undefined,
+  selectAudioTrack: () => {},
   hideUI: false,
   setHideUI: () => {},
   togglePictureInPicture: () => {},

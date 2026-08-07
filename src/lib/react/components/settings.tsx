@@ -1,12 +1,13 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useEffect, useMemo, useRef, useState } from 'react'
+import type { TrackChoice } from '../source-feature'
+
+import { useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { ChevronLeft, ChevronRight, Settings } from 'react-feather'
 
 import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'
 import { fonts } from '../../utils/fonts'
-import { labelTracks, type LabelledTrack } from '../../utils/track-label'
 import PlaybackSlider from './playback-slider'
 
 const style = css`
@@ -167,18 +168,13 @@ enum PopoverContent {
   Audio
 }
 
-type TrackRow = { streamIndex: number, label: string }
-
-const toTrackRows = <T extends LabelledTrack>(streams: T[]): TrackRow[] =>
-  labelTracks(streams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label }))
-
 /** One track picker, shared by the subtitle and audio menus. */
 const TrackMenu = (
   { title, tracks, selected, onSelect, onBack, allowDisable }: {
     title: string
-    tracks: TrackRow[]
-    selected: number | undefined
-    onSelect: (streamIndex: number | undefined) => void
+    tracks: TrackChoice[]
+    selected: string | number | undefined
+    onSelect: (id: string | number | undefined) => void
     onBack: () => void
     allowDisable?: boolean
   }
@@ -199,14 +195,14 @@ const TrackMenu = (
         : null
     }
     {
-      tracks.map(({ streamIndex, label }) => (
+      tracks.map(({ id, label }) => (
         <div
-          key={streamIndex}
-          onClick={() => onSelect(streamIndex)}
+          key={id}
+          onClick={() => onSelect(id)}
           className="description"
         >
           <span>{label}</span>
-          <span>{selected === streamIndex ? '✓' : ''}</span>
+          <span>{selected === id ? '✓' : ''}</span>
         </div>
       ))
     }
@@ -216,12 +212,12 @@ const TrackMenu = (
 export const SettingsAction = () => {
   const player = usePlayer()
   const playbackRate = usePlayer((state) => state.playbackRate)
-  const subtitleStreams = usePlayer((state) => state.subtitleStreams)
-  const selectedSubtitleStream = usePlayer((state) => state.selectedSubtitleStream)
-  const selectSubtitleStream = usePlayer((state) => state.selectSubtitleStream)
-  const audioStreams = usePlayer((state) => state.audioStreams)
-  const selectedAudioStream = usePlayer((state) => state.selectedAudioStream)
-  const selectAudioStream = usePlayer((state) => state.selectAudioStream)
+  const subtitleTracks = usePlayer((state) => state.subtitleTracks)
+  const selectedSubtitleTrack = usePlayer((state) => state.selectedSubtitleTrack)
+  const selectSubtitleTrack = usePlayer((state) => state.selectSubtitleTrack)
+  const audioTracks = usePlayer((state) => state.audioTracks)
+  const selectedAudioTrack = usePlayer((state) => state.selectedAudioTrack)
+  const selectAudioTrack = usePlayer((state) => state.selectAudioTrack)
 
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -252,17 +248,14 @@ export const SettingsAction = () => {
     return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
 
-  const subtitleTracks = useMemo(() => toTrackRows(subtitleStreams), [subtitleStreams])
-  const audioTracks = useMemo(() => toTrackRows(audioStreams), [audioStreams])
-
-  const chooseSubtitle = (streamIndex: number | undefined) => {
-    selectSubtitleStream(streamIndex)
+  const chooseSubtitle = (id: string | number | undefined) => {
+    selectSubtitleTrack(id)
     togglePopover()
   }
 
-  const chooseAudio = (streamIndex: number | undefined) => {
+  const chooseAudio = (id: string | number | undefined) => {
     // the audio menu never offers "Disable"
-    if (streamIndex !== undefined) selectAudioStream(streamIndex)
+    if (id !== undefined) selectAudioTrack(id)
     togglePopover()
   }
 
@@ -366,7 +359,7 @@ export const SettingsAction = () => {
           <TrackMenu
             title='Subtitles'
             tracks={subtitleTracks}
-            selected={selectedSubtitleStream}
+            selected={selectedSubtitleTrack}
             onSelect={chooseSubtitle}
             onBack={changePopoverContent(PopoverContent.Default)}
             allowDisable
@@ -378,7 +371,7 @@ export const SettingsAction = () => {
           <TrackMenu
             title='Audio'
             tracks={audioTracks}
-            selected={selectedAudioStream}
+            selected={selectedAudioTrack}
             onSelect={chooseAudio}
             onBack={changePopoverContent(PopoverContent.Default)}
           />
