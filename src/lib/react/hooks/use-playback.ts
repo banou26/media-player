@@ -5,13 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { startPlayback } from '../../engine'
 import { usePlayer } from '../player'
-import { labelTracks } from '../../utils/track-label'
-import type { LabelledTrack } from '../../utils/track-label'
-import type { TrackChoice } from '../source-feature'
-
-/** Names the engine's streams once, on the way into the store, so the menu only ever reads rows. */
-const toTrackChoices = <T extends LabelledTrack>(streams: T[]): TrackChoice[] =>
-  labelTracks(streams).map(({ track, label }) => ({ id: track.streamIndex, label }))
+import { toNamedTracks } from '../../utils/track-label'
 
 /**
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
@@ -112,13 +106,13 @@ export const usePlayback = (
           onSubtitleStreams: (streams) => {
             if (cancelled) return
             player.setSourceState({
-              subtitleTracks: toTrackChoices(streams),
+              subtitleTracks: toNamedTracks(streams),
               ...subtitleChoiceMade.current ? {} : { selectedSubtitleTrack: streams[0]?.streamIndex },
             })
           },
           onAudioStreams: (streams, selected) => {
             if (cancelled) return
-            player.setSourceState({ audioTracks: toTrackChoices(streams), selectedAudioTrack: selected })
+            player.setSourceState({ audioTracks: toNamedTracks(streams), selectedAudioTrack: selected })
           },
         })
         if (cancelled) {

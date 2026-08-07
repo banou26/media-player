@@ -4,6 +4,12 @@ export type LabelledTrack = {
   language: string
 }
 
+/** One row of a track menu, already named. Mirrors `TrackChoice` without importing the store. */
+export type NamedTrack = {
+  id: string | number
+  label: string
+}
+
 /**
  * Human name for a track's language tag. `fallback: 'none'` is what makes an unknown tag come back
  * undefined instead of echoing itself, so the caller can fall through to the title.
@@ -34,3 +40,12 @@ export const labelTracks = <T extends LabelledTrack>(tracks: T[]): { track: T, l
     return { track, label: ambiguous && detail && detail !== base ? `${base} (${detail})` : base }
   })
 }
+
+/**
+ * Names the engine's streams once, on the way into the store, so the menu only ever reads rows.
+ *
+ * The store's ids are opaque so a source that owns its own player can use its own track ids; the id
+ * here is the libav stream index, which is what this half of the code has to say.
+ */
+export const toNamedTracks = <T extends LabelledTrack>(tracks: T[]): NamedTrack[] =>
+  labelTracks(tracks).map(({ track, label }) => ({ id: track.streamIndex, label }))
