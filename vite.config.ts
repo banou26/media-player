@@ -79,11 +79,19 @@ export default defineConfig({
           include: ['src/**/*.browser.test.{ts,tsx}'],
           browser: {
             enabled: true,
-            headless: true,
+            // MEDIA_PLAYER_HEADFUL=1 to watch it, and to check whether a layout or a codec decision
+            // differs from the headless shell's
+            headless: !process.env.MEDIA_PLAYER_HEADFUL,
             // `launchOptions`, not `launch`: a wrong key here is accepted in silence and playwright
             // falls back to its own download, which on NixOS is a path that does not exist.
             provider: playwright({ launchOptions: { executablePath: findChrome() } }),
-            instances: [{ browser: 'chromium' }],
+            /**
+             * The viewport is set explicitly because the default is 414x896, a phone.
+             * The chrome branches on `min-width: 768px` and on `pointer: coarse`, so an unset
+             * viewport silently tests the mobile layout only, and a container wider than 414 is
+             * clipped out of any failure screenshot.
+             */
+            instances: [{ browser: 'chromium', viewport: { width: 1280, height: 720 } }],
           },
         },
       },
