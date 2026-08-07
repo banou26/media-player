@@ -24,5 +24,8 @@
   // Tests sit next to the code they cover, so they have to be kept out of the published types: they
   // are not part of the surface, and they reach for node builtins this config deliberately has no
   // types for.
-  "exclude": ["node_modules", "build", "dist", "src/lib/**/*.test.ts", "src/lib/**/*.test.tsx"]
+  "exclude": [
+    "node_modules", "build", "dist",
+    "src/lib/**/*.test.ts", "src/lib/**/*.test.tsx", "src/lib/**/*.fixture.ts"
+  ]
 }

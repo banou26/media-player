@@ -8,3 +8,7 @@ video3.mkv
 vid.mkv
 bigbunny.mp4
 .vscode/*
+
+# vitest browser mode writes these on a failed assertion
+__screenshots__/
+.vitest-attachments/

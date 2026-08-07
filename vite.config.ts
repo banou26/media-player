@@ -1,5 +1,23 @@
+import { execFileSync } from 'node:child_process'
+
 import { defineConfig, lazyPlugins } from 'vite-plus'
 import react from '@vitejs/plugin-react'
+import { playwright } from '@vitest/browser-playwright'
+
+/**
+ * Real Chrome from the system, because playwright's own browser download does not work on NixOS.
+ * Falling through to undefined lets CI use playwright's download, where that does work.
+ */
+const findChrome = () => {
+  if (process.env.MEDIA_PLAYER_CHROME) return process.env.MEDIA_PLAYER_CHROME
+  for (const binary of ['google-chrome-stable', 'google-chrome', 'chromium']) {
+    try {
+      const path = execFileSync('sh', ['-c', `command -v ${binary}`], { encoding: 'utf8' }).trim()
+      if (path) return path
+    } catch {}
+  }
+  return undefined
+}
 
 // video.fkn.app. The library it consumes lives at src/lib and is built separately by
 // vite.lib.config.ts, so this config never sees a library concern.
@@ -35,5 +53,40 @@ export default defineConfig({
     fs: {
       allow: ['..'],
     },
+  },
+  /**
+   * Two projects, because they prove different things.
+   *
+   * `unit` covers the pure parts in node. `browser` mounts the chrome in a real engine, which is the
+   * only place the interesting claim can be tested at all: that a plain object drives the whole UI.
+   * A jsdom shim would pass while proving nothing, since what is under test is video.js's own store
+   * reacting to real events.
+   */
+  test: {
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          include: ['src/**/*.test.{ts,tsx}'],
+          exclude: ['src/**/*.browser.test.{ts,tsx}'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'browser',
+          include: ['src/**/*.browser.test.{ts,tsx}'],
+          browser: {
+            enabled: true,
+            headless: true,
+            // `launchOptions`, not `launch`: a wrong key here is accepted in silence and playwright
+            // falls back to its own download, which on NixOS is a path that does not exist.
+            provider: playwright({ launchOptions: { executablePath: findChrome() } }),
+            instances: [{ browser: 'chromium' }],
+          },
+        },
+      },
+    ],
   },
 })

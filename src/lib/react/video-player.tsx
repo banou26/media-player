@@ -106,8 +106,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // unconditionally, which they have to be.
   const remote = 'media' in options ? options : null
   const local = remote ? null : options as MediaPlayerLocalOptions
+  // `title` is common to both arms, so it is read off `options`. Everything else here belongs to the
+  // local arm and is absent when the media is remote.
+  const { title } = options
   const {
-    title, size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled,
+    size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled,
   } = local ?? ({} as Partial<MediaPlayerLocalOptions>)
 
   const setMedia = useMediaAttach()
