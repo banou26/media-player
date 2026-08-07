@@ -1,7 +1,22 @@
 /// <reference types="@emotion/react/types/css-prop" />
 
 export { MediaPlayer, default } from './react/video-player'
-export type { MediaPlayerOptions, MediaPlayerSource } from './react/video-player'
+export type {
+  MediaPlayerOptions,
+  MediaPlayerLocalOptions,
+  MediaPlayerRemoteOptions,
+  MediaPlayerSource,
+} from './react/video-player'
+
+// A media the player drives but does not own, for a source whose video lives somewhere unreachable.
+export { isDelegatedTracks, isExternalThumbnails } from './react/media'
+export type {
+  DelegatedSelection,
+  DelegatedTracks,
+  ExternalThumbnails,
+  PlayerMedia,
+  TimeRangesLike,
+} from './react/media'
 
 export { Player, usePlayer } from './react/player'
 export type { PlayerStore } from './react/player'
