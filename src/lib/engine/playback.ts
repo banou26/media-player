@@ -169,6 +169,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let pendingAttempts = 0
     let lastAppendedEnd = 0
     let outstandingError = false
+    // where the remuxer was last positioned, which is the floor of what it can still read forward from
+    let lastSeekPosition = 0
 
     // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
     const reportError = (error: unknown, aborted: boolean) => {
@@ -221,6 +223,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       seeking = true
       pending = null
       pendingAttempts = 0
+      lastSeekPosition = time
       const generation = ++seekGeneration
       try {
         const { data, pts, subtitles: fragments } = await remuxer.seek(time)
@@ -299,11 +302,25 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       }
     }
 
+    /**
+     * A remuxer seek is expensive out of proportion to what it looks like: libav tears down and rebuilds
+     * BOTH the input and the output context and re-runs write_header, because the fragmented mp4 muxer
+     * cannot rewind. Skipping it when the target is already playable is most of what a seek costs.
+     *
+     * Both conditions are needed. Buffered alone is not enough: landing before the last remuxer position
+     * means the reader is somewhere ahead, so the gap between here and it can never be filled without a
+     * seek, and playback would stall at the end of this range instead. At or after it, the bytes from
+     * here to the read cursor are contiguous and reading simply carries on.
+     */
+    const alreadyPlayable = (time: number) => time >= lastSeekPosition && !!playheadRange()
+
     const onSeeking = () => {
-      finished = false
+      const time = videoElement.currentTime
       const duration = metadata.info.input.duration || videoElement.duration
-      if (duration > 0) onSeek?.(Math.min(Math.max(videoElement.currentTime / duration, 0), 1))
-      void seekTo(videoElement.currentTime)
+      if (duration > 0) onSeek?.(Math.min(Math.max(time / duration, 0), 1))
+      if (alreadyPlayable(time)) return
+      finished = false
+      void seekTo(time)
     }
     videoElement.addEventListener('seeking', onSeeking)
     teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
