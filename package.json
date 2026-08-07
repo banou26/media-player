@@ -18,13 +18,17 @@
   },
   "files": [
     "dist",
-    "src/lib"
+    "src/lib",
+    "!src/lib/**/*.test.ts",
+    "!src/lib/**/*.test.tsx",
+    "!src/lib/**/*.fixture.ts"
   ],
   "scripts": {
     "dev": "npm run copy-assets && vp dev --port 4560",
     "build": "shx rm -rf build/ && npm run copy-assets && vp build",
     "preview": "vp preview",
     "build-lib": "shx rm -rf dist/ && vp build -c vite.lib.config.ts && npm run types",
+    "prepublishOnly": "npm run build-lib",
     "types": "tsc -p tsconfig.lib.json",
     "copy-assets": "shx mkdir -p public && npm run copy-libav && npm run copy-libass",
     "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm && shx cp node_modules/libav-wasm/build/libav-jspi.wasm public/libav-jspi.wasm",
