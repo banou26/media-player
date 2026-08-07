@@ -17,14 +17,13 @@ export type ThumbnailGeneratorOptions = {
 }
 
 const INTERVAL = 5
-// A feature-length file at a fixed 5s interval is thousands of decodes and thousands of blobs, so the
-// interval widens instead. The storyboard stays useful; only its granularity drops on very long content.
+// the interval widens on long content rather than paying thousands of decodes and blobs
 const MAX_THUMBNAILS = 500
 const WIDTH = 320
-// avio reads up to the bufferSize past the slot span; require that margin available
+// avio reads up to bufferSize past the slot span, so require that margin
 const READAHEAD = 1_000_000
 const MAX_ATTEMPTS = 3
-// a keyframe decode can hang without ever settling, with no error path
+// a keyframe decode can hang without ever settling
 const KEYFRAME_TIMEOUT = 10_000
 
 export type ThumbnailGenerator = {
@@ -35,8 +34,7 @@ export type ThumbnailGenerator = {
 
 export const createThumbnailGenerator = async (options: ThumbnailGeneratorOptions): Promise<ThumbnailGenerator> => {
   const { publicPath, workerUrl, length, read, onThumbnails, width = WIDTH } = options
-  // a thumbnailer, not a remuxer: readKeyframe seeks backward on the input, which an output muxer cannot
-  // follow, and this one has no muxer to damage. It also opens files whose audio the mp4 muxer refuses.
+  // a thumbnailer, not a remuxer: readKeyframe seeks backward, which an output muxer cannot follow
   const remuxer = await makeThumbnailer({
     publicPath,
     workerUrl,
@@ -44,8 +42,7 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
     length,
     read,
   })
-  // the wasm worker is up before init() ever runs, and both init and the index walk below throw on a file
-  // that is not readable yet, so the worker has to leave with the failure
+  // init and the index walk both throw on a file that is not readable yet, so the worker must go too
   try {
     const metadata = await remuxer.init()
     const duration = metadata.duration
@@ -66,14 +63,14 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
       })
     }
     for (const [i, slot] of slots.entries()) slot.endTime = slots[i + 1]?.timestamp ?? duration
-    // reading the very last keyframe runs the demuxer into EOF, which crashes the libav build
+    // reading the last keyframe runs the demuxer into EOF, which crashes the libav build
     if (slots.length > 1 && (slots.at(-1)!.timestamp > duration - interval * 2)) slots.pop()
 
     let thumbnails: ThumbnailImage[] = []
     let destroyed = false
     let queue = Promise.resolve()
 
-    // the slider assumes a gapless storyboard, so gaps get empty-url sentinels the UI hides
+    // the slider assumes a gapless storyboard, so gaps get sentinels the UI hides
     const emit = () => {
       const display: ThumbnailImage[] = []
       for (const [i, t] of thumbnails.entries()) {

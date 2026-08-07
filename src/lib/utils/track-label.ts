@@ -5,11 +5,8 @@ export type LabelledTrack = {
 }
 
 /**
- * Human name for a track's language tag.
- *
- * Matroska usually carries ISO 639-2/B (`fre`, `ger`, `chi`), which Intl resolves alongside the
- * 639-2/T and 639-1 forms. `fallback: 'none'` is what makes an unknown or `und` tag come back
- * undefined instead of echoing the tag, so the caller can fall through to the title.
+ * Human name for a track's language tag. `fallback: 'none'` is what makes an unknown tag come back
+ * undefined instead of echoing itself, so the caller can fall through to the title.
  */
 export const displayLanguage = (language: string | undefined): string | undefined => {
   if (!language || language === 'und') return undefined
@@ -23,15 +20,9 @@ export const displayLanguage = (language: string | undefined): string | undefine
 const tidy = (title: string | undefined) => title?.replace(/_/g, ' ').trim() || undefined
 
 /**
- * Names a set of tracks for a menu.
- *
- * The language is the label, because it is what a viewer is choosing by. The track title is only
- * appended where it has to be, which is when two tracks would otherwise read the same. That matters
- * on real releases: a MultiSub episode carries nine tracks whose titles are all the source tag
- * ("CR"), so titling every row gives nine identical entries, while languages alone collide on the
- * two Spanish tracks and nothing else. Only those two get "(Latin America CR)" and "(CR)".
- *
- * Falls back to the title, then to the stream index, so a track always has some label.
+ * Names a set of tracks for a menu, by language, falling back to the title then the stream index.
+ * The title is appended only to break a tie, because on a MultiSub release every title is the same
+ * source tag and titling every row gives nine identical entries.
  */
 export const labelTracks = <T extends LabelledTrack>(tracks: T[]): { track: T, label: string }[] => {
   const bases = tracks.map((track) => displayLanguage(track.language) ?? tidy(track.title) ?? `Track ${track.streamIndex}`)

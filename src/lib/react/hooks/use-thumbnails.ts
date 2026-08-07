@@ -5,8 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { createThumbnailGenerator } from '../../engine'
 
-// grows to MAX_RETRY_DELAY because a source that is not readable yet fails init on every try, and
-// each try costs a wasm worker
+// backs off because each failed init costs a wasm worker
 const RETRY_DELAY = 5_000
 const MAX_RETRY_DELAY = 60_000
 
@@ -29,7 +28,7 @@ export const useSeekThumbnails = ({
 
   const ranges = useMemo(
     () => downloadedRanges?.map(({ startByteOffset, endByteOffset }) => [startByteOffset, endByteOffset] as [number, number]),
-    // identity of the array changes every tick in a streaming consumer, so compare the contents
+    // a streaming consumer changes the array identity every tick, so compare contents
     [downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}-${endByteOffset}`).join(',')],
   )
   const rangesRef = useRef(ranges)

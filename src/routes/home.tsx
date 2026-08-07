@@ -95,8 +95,7 @@ export const Home = () => {
     }
   }, [open, openFile])
 
-  // Named rather than spread inline: the player's options are "read and size together or neither",
-  // and an inline ternary widens to two optional keys, which matches neither arm.
+  // named rather than spread inline, because an inline ternary widens to two optional keys
   const sourceProps: MediaPlayerSource = source ? { read: source.read, size: source.length } : {}
 
   return (

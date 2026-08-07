@@ -15,12 +15,8 @@ import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import Chrome from './components/chrome'
 
 /**
- * The source, read a range at a time: the player never downloads the whole file.
- *
- * Both fields travel together, so `read` without `size` (or the reverse) is a type error rather than
- * a pipeline that starts and then stalls with no length to seek against. The "neither" arm spells
- * the keys out as optional-undefined rather than using `{}`, so a caller can hold the pair in one
- * variable and spread it, which `{}` would not allow.
+ * The source, read a range at a time: the player never downloads the whole file. Both fields travel
+ * together, so passing one without the other is a type error.
  */
 export type MediaPlayerSource =
   | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number }
@@ -53,9 +49,8 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   } = options
 
   const setMedia = useMediaAttach()
-  // Registering our own root as the container is mandatory, not an optimisation: without it
-  // requestFullscreen falls through to the bare <video> and leaves the whole chrome outside the
-  // fullscreen layer, and the controls activity tracker warns once and then pins controlsVisible true.
+  // Mandatory, not an optimisation: without it requestFullscreen falls through to the bare <video>
+  // and leaves the whole chrome outside the fullscreen layer.
   const setContainer = useContainerAttach()
 
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
@@ -74,8 +69,8 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
 
   const controllerRef = useRef<PlaybackController | null>(null)
   const resumeTimeRef = useRef(0)
-  // The renderer turns the first track it sees on by itself. Until the viewer picks one, the menu has
-  // to mirror that, or it shows "Disable" ticked over subtitles that are visibly on screen.
+  // The renderer turns the first track on by itself, so the menu has to mirror that or it shows
+  // "Disable" ticked over subtitles that are visibly on screen.
   const subtitleChoiceMade = useRef(false)
 
   const readRef = useRef(read)
@@ -213,8 +208,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   )
 }
 
-// #111 here against black inside Chrome is deliberate: this is the letterbox around the player box,
-// and the two greys have always been different.
+// #111 against the black inside is deliberate: this is the letterbox around the player box.
 const rootStyle = css`
   display: flex;
   justify-content: center;

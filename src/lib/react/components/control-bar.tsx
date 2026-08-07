@@ -30,12 +30,8 @@ const style = css`
     display: flex;
     justify-content: space-between;
 
-    /* The env() terms are repeated per breakpoint rather than written once as longhands after the
-       media queries. Nested at-rules are hoisted out of the rule and emitted after it, so a later
-       padding shorthand inside a media query overrides any longhand declared above it, and the
-       safe-area insets would be silently dead at every width but the smallest.
-       They keep the controls clear of a notch or a home indicator in fullscreen, and resolve to zero
-       everywhere else. */
+    /* repeated per breakpoint: nested at-rules are hoisted after the rule, so a shorthand inside a
+       media query would override a longhand above it and silently drop the safe-area inset */
     padding: 6px calc(12px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
     @media (min-width: 768px) {
       padding: 8px calc(16px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
@@ -74,7 +70,6 @@ const style = css`
         }
       }
 
-      // Add basic styling for all the actions
       .play, .sound, .time, .settings, .picture-in-picture, .full-screen {
         display: flex;
         align-items: center;
@@ -93,7 +88,6 @@ const style = css`
         }
       }
 
-      // Add styling to the actions that have some interactivity
       .play, .sound, .settings, .picture-in-picture, .full-screen {
         border-radius: 4px;
 
@@ -111,12 +105,10 @@ const style = css`
           background-color: ${colors.hover};
         }
 
-        /* A finger needs a target it can actually hit. The hit area grows, the icon does not, so the
-           control bar looks identical and only the reachable box changes. Keyed on the pointer rather
-           than the width, because a narrow desktop window still has a mouse. */
+        /* the hit area grows, the icon does not, keyed on the pointer because a narrow desktop
+           window still has a mouse */
         @media (pointer: coarse) {
-          /* border-box explicitly: these already carry 8px of padding, and under content-box the
-             floor would stack on top of it and overshoot. The library cannot assume a consumer reset. */
+          /* border-box explicitly, since a consumer reset cannot be assumed */
           box-sizing: border-box;
           min-width: 44px;
           min-height: 44px;
@@ -159,16 +151,11 @@ export const ControlBar = () => {
   const { hideUI, togglePictureInPicture } = useMediaPlayer()
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
 
-  // duration is 0 rather than undefined until metadata lands, so a bare equality would put the
-  // replay icon on a player that has not started yet
+  // duration is 0 until metadata lands, so a bare equality would show replay before playback starts
   const ended = duration > 0 && currentTime === duration
 
-  // The store keeps the actual gain, the slider keeps the linear position, so a step is taken in
-  // linear space and converted back.
-  //
-  // Stepping the volume leaves the mute flag alone, which is what this player has always done: a
-  // muted player stays silent while the stored gain moves under it. The store does not offer that
-  // by itself, because setVolume clears the flag for any value above zero, so it is restored.
+  // Stepped in linear space and converted back, and the mute flag is restored afterwards because
+  // setVolume clears it for any value above zero.
   const modifyVolume = useCallback(({ direction, stepSize }: { direction: 'up' | 'down', stepSize: number }) => {
     const linearVolume = logToLinearVolume(player.volume)
     const step = (direction === 'up' ? stepSize : -stepSize)
@@ -180,15 +167,12 @@ export const ControlBar = () => {
 
   useEffect(() => {
     const eventListener = (ev: KeyboardEvent) => {
-      // The listener is on the window, which is right for a player that owns its page and stays right
-      // inside an embed, since a cross-origin iframe only receives keys while it holds focus. It is
-      // wrong only when a consumer puts the player on a page with its own inputs, so typing into one
-      // is the single case that opts out.
+      // on the window, so typing into a consumer's own input is the one case that opts out
       const target = ev.target as HTMLElement | null
       if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? '')) return
 
       let shouldPreventDefault = true
-      // avoid triggering the browser's default behavior (e.g space for pause it opens the full screen)
+      // space would otherwise reach the browser's own shortcut
       if (ev.key === 'f') player.toggleFullscreen()
       else if (ev.key === 'k') player.togglePaused()
       else if (ev.key === ' ') player.togglePaused()

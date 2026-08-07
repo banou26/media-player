@@ -27,8 +27,8 @@ const titleStyle = css`
   z-index: 2;
   pointer-events: none;
 
-  /* A release filename runs to four wrapped lines on a phone and swallows the top of the picture.
-     One line with an ellipsis until there is width for the full padding and a wrap. */
+  /* one line with an ellipsis until there is width to wrap, since a release filename would
+     otherwise run to four lines on a phone */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -68,8 +68,7 @@ const loadingStyle = css`
   }
 `
 
-// A pipeline failure otherwise shows as a black frame under a spinner that never resolves, with
-// nothing anywhere saying why
+// a failure would otherwise be a black frame under a spinner that never resolves
 const errorStyle = css`
   position: absolute;
   inset: auto 0 20%;
@@ -102,11 +101,8 @@ export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElem
           </div>
         )
         : undefined}
-      {/* Strictly a pre-metadata state, not a buffering one. Gated on the engine rather than on the
-          store's duration, because the store reports 0 both before metadata and for a file whose
-          duration is genuinely unknown, and the remuxer already knows which of the two it is.
-          `size` is the tell that a source was handed over at all: with none, the player is meant to
-          sit black and idle rather than spin forever. */}
+      {/* pre-metadata, not buffering: the store reports 0 both before metadata and for a genuinely
+          unknown duration, while `size` tells whether a source was handed over at all */}
       {size && !ready && !playbackError
         ? <div css={loadingStyle} />
         : undefined}

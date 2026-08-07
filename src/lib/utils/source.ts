@@ -44,16 +44,14 @@ export type RemuxerInput = {
 export const inputToRemuxerInput = async (
   params:
     | Parameters<typeof fromBlob | typeof fromUrl>[0]
-    // The general arm: any byte range answered by any means. `length` is required rather than
-    // optional because a caller supplying its own reader is the one party that already knows the
-    // total, and without it nothing downstream can seek or report a duration.
+    // the general arm. `length` is required: nothing downstream can seek or report a duration
+    // without it, and a caller supplying its own reader already knows the total.
     | {
       length: number
       name?: string
       read: (offset: number, size: number) => Promise<ArrayBuffer>
     }
-// Declared rather than inferred, so all three arms are checked against one contract instead of
-// widening into a union of three structurally identical shapes.
+// declared rather than inferred, so all three arms are checked against one contract
 ): Promise<RemuxerInput> => {
   if ('blob' in params) return fromBlob(params)
   if ('url' in params) return fromUrl(params)

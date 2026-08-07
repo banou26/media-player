@@ -51,16 +51,10 @@ const style = css`
     pointer-events: auto;
   }
 
-  /* A touch screen has no hover, so a slider that only opens on hover is a slider that never opens.
-     On a coarse pointer it stays open instead, which leaves the speaker button doing the one thing
-     it does, mute. The hover rules above are untouched, so a mouse keeps both transitions. The
-     hovered selector is repeated because a touch browser can still synthesize a hover on tap, and a
-     9rem panel does not fit next to the rest of the bar on a phone. */
+  /* a touch screen has no hover, so the slider stays open there and the button only mutes */
   @media (pointer: coarse) {
-    /* width: auto, not a fixed rem. The container keeps overflow: hidden from the base rule, so any
-       fixed width smaller than the slider inside it silently clips the track and makes the clipped
-       part unhittable. Letting the content size it cannot be wrong, and nothing animates here because
-       on a coarse pointer the slider is already open. */
+    /* auto, not a fixed rem: the container keeps overflow: hidden, so a narrower fixed width
+       silently clips the track and makes the clipped part unhittable */
     .volume-slider-container,
     &:hover .volume-slider-container {
       width: auto;
@@ -68,12 +62,10 @@ const style = css`
       pointer-events: auto;
     }
 
-    /* A 44px press target around an 18px icon. The button's padding is set from the control bar at a
-       higher specificity, so the box is floored here instead and the icon keeps its size. */
+    /* a 44px press target around an 18px icon, floored here because the control bar sets the
+       padding at a higher specificity */
     .sound {
-      /* border-box explicitly: the button already carries padding from the control bar, and under
-         content-box the floor would add to it and overshoot 44px. The library cannot assume the
-         consumer ships a reset. */
+      /* border-box explicitly, since a consumer reset cannot be assumed */
       box-sizing: border-box;
       justify-content: center;
 
@@ -94,13 +86,11 @@ export const Sound = ({ ref }: SoundProps) => {
   const volume = usePlayer((state) => state.volume)
   const muted = usePlayer((state) => state.muted)
 
-  // The store holds the actual gain, the slider holds the linear position. Every read converts one
-  // way and every write the other, so the perceptual curve stays in the store and out of the UI.
+  // the store holds gain, the slider holds linear position, so every read and write converts
   const linearVolume = useMemo(() => logToLinearVolume(volume), [volume])
 
-  // Moving the slider always unmutes, which the store does on its own for any value above zero.
-  // linearToLogVolume floors its input, so the slider can never produce a zero and never needs a
-  // separate toggle here. An explicit one would only add a second volumechange per drag step.
+  // linearToLogVolume floors its input, so the slider never produces a zero and the store's own
+  // unmute-above-zero is enough
   const setVolume = (newLinearVolume: number) => {
     player.setVolume(linearToLogVolume(newLinearVolume))
   }

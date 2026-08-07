@@ -55,7 +55,7 @@ const appendParsedStyle = (jassub: JASSUB, style: ParsedASSStyles['style'][numbe
     Encoding: Number(style.Encoding),
   } as Parameters<JASSUB['createStyle']>[0])
 
-// LayoutResX/Y are cleared so jassub scales the script to the canvas rather than to the authored resolution
+// cleared so jassub scales the script to the canvas, not to the authored resolution
 const renderable = (content: string) => {
   const parsed = parse(content)
   return stringify({ ...parsed, info: { ...parsed.info, ScaledBorderAndShadow: 'no', LayoutResX: '', LayoutResY: '' } })
@@ -125,7 +125,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         ...(defaultFontUrl ? { 'liberation sans': defaultFontUrl } : {}),
       },
     })
-    // jassub 1.8.x binds setRate as the ratechange listener, so the Event itself becomes the rate and the postMessage clone rejects it
+    // jassub 1.8.x binds setRate as the ratechange listener, so the Event becomes the rate
     video.removeEventListener('ratechange', (jassub as unknown as { _boundSetRate: EventListener })._boundSetRate)
     video.addEventListener('ratechange', onRateChange)
     for (const style of header.parsed.styles.style) appendParsedStyle(jassub, style)
@@ -158,7 +158,6 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     }
   }
 
-  // undefined is accepted alongside SUBTITLES_OFF so a caller can express "off" either way
   const selectStream = (streamIndex: number | undefined) => {
     const next = streamIndex ?? SUBTITLES_OFF
     if (next === selected || !jassub) return

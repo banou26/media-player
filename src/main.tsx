@@ -3,8 +3,8 @@ import { css, Global } from '@emotion/react'
 
 import Home from './routes/home'
 
-// The player's chrome is sized in rem against a 62.5% root, which is where its 0.4rem seekbar becomes
-// 4px. Any page hosting it has to set the same base or every control renders 1.6x too large.
+// The chrome is sized in rem against a 62.5% root. A host page has to set the same base or every
+// control renders 1.6x too large.
 const globalStyle = css`
   @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
 

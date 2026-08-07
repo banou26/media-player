@@ -125,15 +125,12 @@ const style = css`
     }
   }
 
-  /* a thumb is far wider than a mouse cursor, so the hit strip grows to 44px and the visible track to
-     .6rem. Growing the strip never moves the bar itself. */
+  /* a thumb is far wider than a cursor, so the hit strip grows to 44px and the track to .6rem */
   @media (pointer: coarse) {
     height: .6rem;
 
-    /* Press feedback, coarse only. A mouse never had this: the :hover emphasis below compiles to a
-       descendant selector that cannot match, so it has always been dead, and reviving it here would
-       be a visible change on desktop rather than a port of it. A finger has no hover at all, so
-       without something the bar gives no sign it is being dragged. */
+    /* press feedback, coarse only: a finger has no hover, so without this the bar gives no sign
+       it is being dragged */
     &.dragging {
       .background-bar, .loaded, .play-container {
         transform: scaleY(1.5);
@@ -155,20 +152,16 @@ const style = css`
       height: .6rem;
     }
 
-    /* The strip grows UPWARD, into the video, never downward. Centring a 44px box on a 6px bar hangs
-       19px of it below the track and over the control row, whose top padding is only 6px, and since
-       .progress-bar is positioned and .actions is not, the strip wins hit testing and swallows taps
-       meant for play, mute and fullscreen. Above the bar there is nothing to steal from. */
+    /* grows upward into the video: centred, it would hang over the control row and win hit
+       testing against taps meant for play, mute and fullscreen */
     .padding {
       height: 44px;
       bottom: 0;
     }
   }
 
-  /* the clamp keeps the preview inside the bar only while the bar is wider than the preview itself:
-     below that its minimum wins over its maximum and the preview hangs past the right edge. A 360px
-     viewport leaves the bar 336px, which still fits 25rem, but the player is embeddable at any width
-     so the preview is narrowed where the margin is thinnest. */
+  /* the clamp only holds the preview inside the bar while the bar is the wider of the two, so
+     below that the preview is narrowed instead */
   @media (max-width: 480px) {
     --thumbnail-width: 18rem;
     --thumbnail-half: 9rem;
@@ -189,8 +182,6 @@ export const ProgressBar = () => {
   // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
   const dragPointerType = useRef<string | undefined>(undefined)
 
-  // A finger emits no mousemove, so the drag feeds the preview state the hover would have fed. A mouse
-  // keeps driving that state from its own hover, exactly as before.
   const onSeekDrag = (fraction: number) => {
     setSeekFraction(fraction)
     if (dragPointerType.current === 'mouse') return
@@ -211,8 +202,7 @@ export const ProgressBar = () => {
     setProgressBarOverTime(undefined)
   }
 
-  // offsetX is relative to whichever child sits under the pointer, and a captured pointer has none, so
-  // the hover measures clientX against the bar's own box, the box the drag fraction is measured across
+  // offsetX is relative to whichever child is under the pointer, and a captured pointer has none
   const timeAtClientX = (clientX: number) => {
     if (!progressBarRef.current) return undefined
     const { left, right } = progressBarRef.current.getBoundingClientRect()
@@ -229,10 +219,10 @@ export const ProgressBar = () => {
     setProgressBarOverTime(undefined)
   }
 
-  // duration is 0 until metadata lands, which is the unknown case and never a divisor
+  // duration is 0 until metadata lands, which is never a divisor
   const timePercentage = (time: number) => duration ? (time / duration) * 100 : 0
 
-  // file download % does not equal video time %, as the video contains sometimes, big headers including fonts, which might be ~50mb
+  // download percentage is not time percentage: headers and fonts can run to tens of megabytes
   const loadedParts = useMemo(() =>
     downloadedRanges
       ?.map((range, i) => {
@@ -277,7 +267,7 @@ export const ProgressBar = () => {
       : currentTime / duration
   }, [duration, currentTime])
 
-  // an entry with an empty url is a gap sentinel in an otherwise gapless storyboard, so it renders nothing
+  // an empty url is a gap sentinel, so it renders nothing
   const thumbnail = useMemo(() => {
     if (!thumbnails.length || !progressBarHoverTime) return undefined
     return (

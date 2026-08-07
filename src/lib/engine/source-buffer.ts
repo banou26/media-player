@@ -1,4 +1,5 @@
-// appendBuffer / remove / timestampOffset must never overlap an in-flight update, so every op goes through one chain
+// appendBuffer, remove and timestampOffset must never overlap an in-flight update, so every op
+// goes through one chain
 
 export type TimeRange = { index: number, start: number, end: number }
 
@@ -49,7 +50,7 @@ export const updateSourceBuffer = (sourceBuffer: SourceBuffer, mediaSource: Medi
   const updateTimestampOffset = (timestampOffset: number) =>
     enqueue(async () => { sourceBuffer.timestampOffset = timestampOffset })
 
-  // endOfStream throws while an update is in flight and is undone by the next remove(), so the caller re-arms it every tick
+  // endOfStream throws mid-update and is undone by the next remove(), so the caller re-arms it
   const endOfStream = () =>
     enqueue(async () => {
       if (mediaSource.readyState !== 'open' || sourceBuffer.updating) return

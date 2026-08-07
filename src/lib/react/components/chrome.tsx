@@ -56,7 +56,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) 
   const player = usePlayer()
   const { hideUI, setHideUI } = useMediaPlayer()
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
-  // Which kind of pointer produced the last gesture, so a tap and a click can mean different things
+  // a tap and a click mean different things, so the last pointer kind is remembered
   const lastPointerType = useRef<string>('mouse')
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
@@ -67,10 +67,8 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) 
     autoHide.current = setTimeout(() => setHideUI(true), AUTO_HIDE_DELAY)
   }
 
-  // Deliberately no paused exception: the chrome hides after the delay whether or not playback is
-  // running, which is what the player has always done.
-  //
-  // A finger never produces a move, so this is the mouse path only. Touch reveals on tap instead.
+  // Hides after the delay whether or not playback is running. A finger produces no move, so this is
+  // the mouse path only and touch reveals on tap instead.
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     lastPointerType.current = event.pointerType
     if (event.pointerType !== 'mouse') return
@@ -81,9 +79,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) 
     lastPointerType.current = event.pointerType
   }
 
-  // A click on the video means play/pause with a mouse, which is what this player has always done.
-  // With a finger it means show or hide the controls: a phone has no other way to bring them back,
-  // and every touch player behaves this way. The play button is still one tap away.
+  // play/pause with a mouse, show or hide the controls with a finger, which has no other way back
   const onVideoClick = () => {
     if (lastPointerType.current === 'mouse') {
       player.togglePaused()
@@ -96,13 +92,8 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) 
     }
   }
 
-  // Hides when the pointer genuinely leaves the player.
-  //
-  // Testing relatedTarget alone is not enough. The browser fires mouseout with a null relatedTarget
-  // while the pointer is still sitting over the video, and treating that as a leave hid the chrome
-  // about 1.5s into an idle instead of at the 3s mark, at no predictable moment. So a null
-  // relatedTarget is confirmed against the pointer's own coordinates before it counts, and a move
-  // onto a descendant is not a leave at all.
+  // relatedTarget alone is not enough: the browser fires mouseout with a null one while the pointer
+  // still sits over the video, so a null is confirmed against the pointer's own coordinates.
   const onMouseOut: React.DOMAttributes<HTMLDivElement>['onMouseOut'] = (ev) => {
     const related = ev.relatedTarget as Node | null
     if (related && ev.currentTarget.contains(related)) return

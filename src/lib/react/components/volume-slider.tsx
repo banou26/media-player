@@ -64,9 +64,7 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
   const sliderRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
 
-  // The padded row owns the gesture so the whole press band is grabbable, while the fraction is
-  // measured across the track element, which is the box the fill and the handle are drawn in. The
-  // fraction stays linear: the perceptual curve is applied by the caller, not here.
+  // the padded row owns the gesture, but the fraction is measured across the track the handle draws in
   const { handlers } = useDragValue({
     ref: trackRef,
     onChange
@@ -77,10 +75,8 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
     const step = 0.05
     let newVol = value
     if (e.deltaY < 0) {
-      // scroll up
       newVol = Math.min(1, newVol + step)
     } else {
-      // scroll down
       newVol = Math.max(0, newVol - step)
     }
     onChange(newVol)

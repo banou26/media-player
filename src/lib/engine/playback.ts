@@ -41,20 +41,20 @@ export type PlaybackController = {
   audioMimeType: string
 }
 
-// Keep ~20s behind / ~60s ahead of the playhead buffered; refill when the forward buffer dips under 30s
+// ~20s behind and ~60s ahead of the playhead, refilled when the forward buffer dips under 30s
 const PRE_EVICT = -20
 const POST_EVICT = 60
 const BUFFER_TARGET = 30
-// The window used after the browser refuses an append: keep only what is about to be played, then resume the stream at the far edge of what was kept
+// the tighter window used after the browser refuses an append
 const PRE_EVICT_TIGHT = -5
 const POST_EVICT_TIGHT = 20
 const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
-// How far past the playhead a buffered range may start and still count as the one holding it
+// how far past the playhead a range may start and still count as the one holding it
 const BOUNDARY_SLACK = 1
 export const DEFAULT_BUFFER_SIZE = 2_500_000
 
-// destroy() terminates the worker only after an awaited round trip into the wasm; terminate on our own clock either way
+// destroy() only terminates after a round trip into the wasm, so terminate on our own clock too
 export const terminateRemuxer = (remuxer: { worker: Worker, destroy: () => Promise<void> }) => {
   const { worker } = remuxer
   const bail = setTimeout(() => worker.terminate(), 2_000)
@@ -75,7 +75,6 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     onAudioStreams,
   } = options
 
-  // ES-module worker: the emscripten glue uses import.meta.url, invalid in a classic importScripts worker
   const remuxer = await makeRemuxer({
     publicPath,
     workerUrl: libavWorkerUrl,
@@ -117,9 +116,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     teardown.push(() => subtitles.destroy())
     if (metadata.attachments?.length) subtitles.pushAttachments(metadata.attachments)
 
-    // an unparseable video codec comes back as an empty string, and filtering it away would leave an
-    // audio-only codecs list that isTypeSupported happily accepts, turning this into an opaque
-    // appendBuffer failure much later instead of a named one here
+    // an unparseable codec is an empty string, which isTypeSupported would accept as audio-only
     if (!metadata.info.output.videoMimeType) throw new Error('The video codec in this file could not be identified')
     const codecs = [metadata.info.output.videoMimeType, metadata.info.output.audioMimeType].filter(Boolean).join(',')
     const mime = `video/mp4; codecs="${codecs}"`
@@ -165,7 +162,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let reading = false
     let seeking = false
     let finished = false
-    // libav aborts the running task whenever a new one starts, so both flags are held by a generation token
+    // libav aborts the running task when a new one starts, so both flags need a generation token
     let readGeneration = 0
     let seekGeneration = 0
     let pending: ArrayBuffer | null = null
@@ -173,7 +170,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let lastAppendedEnd = 0
     let outstandingError = false
 
-    // libav rejects with 'Cancelled' both for an aborted task and for a read of the file that gave up, so it only counts as noise while a seek or a teardown is actually in flight
+    // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
     const reportError = (error: unknown, aborted: boolean) => {
       const cancelled = (error as Error)?.message === 'Cancelled'
       if (aborted && cancelled) return
@@ -193,13 +190,13 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       }
     }
 
-    // Only the range holding the playhead counts, and the ceiling on the furthest buffered end is what stops a backward-seek hole becoming a runaway: the stuck playhead's own range never grows, so without the ceiling the pump reads the rest of the file while evict throws it away
-    // The slack matters because the first media segment often starts a fraction of a second after zero (audio priming), and a strictly-contains test would read that as an empty buffer and pump the whole file in
+    // The ceiling on the furthest buffered end stops a backward-seek hole becoming a runaway, and the
+    // slack covers a first segment that starts just after zero from audio priming.
     const needsData = () => {
       const ranges = getTimeRanges(sourceBuffer)
       if (!ranges.length) return true
       const ct = videoElement.currentTime
-      // Never read past what evict() keeps: those bytes are discarded on the next tick.
+      // never read past what evict() keeps
       if (Math.max(...ranges.map((r) => r.end)) >= ct + POST_EVICT) return false
       const range = ranges.find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
       return !range || range.end < ct + BUFFER_TARGET
@@ -210,7 +207,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       return getTimeRanges(sourceBuffer).find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
     }
 
-    // The end of the stream may only be signalled once the playhead's own range covers it
+    // the end may only be signalled once the playhead's own range covers it
     const atEnd = () => {
       const range = playheadRange()
       return !!range && range.end >= lastAppendedEnd - 0.1
@@ -259,9 +256,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           const evicted = await evict(true).then(() => true, () => false)
           if (pending !== segment) return
           if (evicted) {
-            // Reads only move forward, so re-offering the refused segment would land it past a hole nothing can ever fill: restart at the far edge of what was kept
-            // Seeking to the playhead instead re-appends the seconds the evict just paid to keep, and can walk straight back into the same refusal
-            // finished is cleared because the read that produced the refused segment may have been the last one
+            // Reads only move forward, so restart at the far edge of what was kept rather than at
+            // the playhead, which would walk straight back into the same refusal.
             finished = false
             await seekTo(playheadRange()?.end ?? videoElement.currentTime)
             return
@@ -315,7 +311,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const interval = setInterval(() => {
       evict().catch(() => {})
       pump().catch((error) => reportError(error, false))
-      // Every remove() puts the MediaSource back to 'open', so the end of the stream is re-armed rather than signalled once
+      // every remove() puts the MediaSource back to 'open', so the end has to be re-armed
       if (finished && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream().catch(() => {})
     }, 100)
     teardown.push(() => clearInterval(interval))

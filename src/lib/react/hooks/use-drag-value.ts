@@ -11,15 +11,7 @@ export type UseDragValueOptions = {
   disabled?: boolean
 }
 
-/**
- * Press-and-drag over an element, reported as a 0..1 fraction.
- *
- * Pointer events rather than mouse events, so the same code serves a mouse, a finger and a pen. Mouse
- * events are not a superset: a touch drag emits no mousemove at all, it synthesizes a click after the
- * fact, so a mouse-only slider cannot be dragged on a phone. Capture is taken on the element, which
- * keeps the drag alive when the finger or cursor leaves it and removes the need for document-level
- * listeners that outlive the gesture.
- */
+/** Press-and-drag over an element, reported as a 0..1 fraction. */
 export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabled = false }: UseDragValueOptions) => {
   const [dragging, setDragging] = useState(false)
   const onChangeRef = useRef(onChange)
@@ -39,13 +31,9 @@ export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabl
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (disabled || event.button > 0) return
-    // No preventDefault and no stopPropagation here, both of which were actively harmful.
-    // preventDefault sets the browser's prevent-mouse-event flag, which suppresses the whole
-    // compatibility mousedown/mousemove/mouseup stream for the gesture, and the seek preview is driven
-    // by those, so a mouse scrub froze its own label and thumbnail. stopPropagation kept the press from
-    // reaching document, which is where the settings popover listens to close itself and where the
-    // chrome refreshes its auto-hide timer. Text selection is already handled by user-select and
-    // scrolling by touch-action.
+    // Do not add preventDefault or stopPropagation here. The first kills the compatibility mouse
+    // events the seek preview runs on, the second keeps the press from reaching the document
+    // listeners that close the popover and refresh the auto-hide timer.
     activePointer.current = event.pointerId
     event.currentTarget.setPointerCapture?.(event.pointerId)
     setDragging(true)
@@ -78,8 +66,7 @@ export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabl
       onPointerMove,
       onPointerUp: endDrag,
       onPointerCancel: endDrag,
-      // a captured pointer keeps firing on this element, so touch-action has to be off or the browser
-      // scrolls the page instead of moving the slider
+      // without this the browser scrolls the page instead of moving the slider
       style: { touchAction: 'none' as const },
     },
   }

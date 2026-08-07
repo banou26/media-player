@@ -3,9 +3,8 @@ import type { AudioStream, MediaIndex, SubtitleStream, ThumbnailImage } from '..
 import { createContext, useContext } from 'react'
 
 /**
- * A byte span of the file the consumer has in hand. The player maps it onto the timeline through the
- * keyframe index, because a file's download percentage is not its playback percentage: containers carry
- * headers, fonts and attachments that can run to tens of megabytes and occupy no time at all.
+ * A byte span of the file the consumer has in hand, mapped onto the timeline through the keyframe
+ * index, because a file's download percentage is not its playback percentage.
  */
 export type DownloadedRange = {
   startByteOffset: number
@@ -36,12 +35,7 @@ export type MediaPlayerContextValue = {
   selectedAudioStream: number
   selectAudioStream: (streamIndex: number) => void
 
-  /**
-   * Picture in picture is owned here rather than taken from the store, because the window is fed a
-   * canvas compositing the video and the subtitles, not the bare video element the store knows about.
-   * For the same reason `state.pip` on the store does not track it: the store watches the media
-   * element, and the element in the window is the mirror.
-   */
+  /** Owned here, not by the store: the store watches the media element, the window holds a mirror. */
   togglePictureInPicture: () => void
 
   /** Set when the pipeline fails. Cleared when it recovers. */

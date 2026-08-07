@@ -173,12 +173,7 @@ type TrackRow = { streamIndex: number, label: string }
 const toTrackRows = <T extends LabelledTrack>(streams: T[]): TrackRow[] =>
   labelTracks(streams).map(({ track, label }) => ({ streamIndex: track.streamIndex, label }))
 
-/**
- * One track picker, shared by the subtitle and audio menus.
- *
- * The two differ only in their heading, their rows, and whether turning the track off is a choice, so
- * the panel chrome lives here once rather than as two copies that have to be edited together.
- */
+/** One track picker, shared by the subtitle and audio menus. */
 const TrackMenu = (
   { title, tracks, selected, onSelect, onBack, allowDisable }: {
     title: string
@@ -251,8 +246,7 @@ export const SettingsAction = () => {
         togglePopover()
       }
     }
-    // pointerdown covers mouse, touch and pen with one listener. A touch device only synthesizes
-    // mousedown after the tap has resolved, which lands too late to close the popover reliably.
+    // pointerdown, because a touch device synthesizes mousedown too late to close reliably
     document.addEventListener('pointerdown', handleClickOutside)
     return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
@@ -266,7 +260,7 @@ export const SettingsAction = () => {
   }
 
   const chooseAudio = (streamIndex: number | undefined) => {
-    // The audio menu never offers "Disable", so undefined cannot reach here.
+    // the audio menu never offers "Disable"
     if (streamIndex !== undefined) selectAudioStream(streamIndex)
     togglePopover()
   }

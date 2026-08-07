@@ -76,14 +76,11 @@ export const PlaybackSlider = () => {
 
   const roundedRate = roundToStep(playbackRate || 1)
 
-  // Calculate position as percentage
   const getHandlePosition = (rate: number): number => {
     return ((rate - MIN_RATE) / RANGE) * 100
   }
 
-  // The inverse of getHandlePosition. The fraction is measured across the track element rather than
-  // the padded row that owns the gesture, so the rate under the pointer is the rate the handle
-  // renders at, and a press on the padding clamps to an end of the range.
+  // the inverse of getHandlePosition, measured across the track rather than the padded row
   const getPlaybackRateFromFraction = (fraction: number): number => roundToStep(MIN_RATE + (fraction * RANGE))
 
   const { handlers } = useDragValue({
