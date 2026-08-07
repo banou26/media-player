@@ -10,8 +10,9 @@ const RETRY_DELAY = 5_000
 const MAX_RETRY_DELAY = 60_000
 
 export type UseSeekThumbnailsOptions = {
-  publicPath: string
-  workerUrl: string
+  /** Optional alongside `length`/`read`: with no bytes there is nothing to generate from. */
+  publicPath: string | undefined
+  workerUrl: string | undefined
   length: number | undefined
   read: ((offset: number, size: number) => Promise<ArrayBuffer>) | undefined
   /** When omitted the whole file is treated as readable, which is the case for a local file. */
@@ -35,7 +36,7 @@ export const useSeekThumbnails = ({
   rangesRef.current = ranges
 
   useEffect(() => {
-    if (!length || !read) return
+    if (!length || !read || !publicPath || !workerUrl) return
     let cancelled = false
     let generator: ThumbnailGenerator | null = null
     let retry: ReturnType<typeof setTimeout> | undefined

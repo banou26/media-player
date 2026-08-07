@@ -1,6 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
 import type { DownloadedRange } from './source-feature'
+import type { DelegatedTracks, ExternalThumbnails, PlayerMedia } from './media'
 
 import { useEffect, useState } from 'react'
 import { css } from '@emotion/react'
@@ -20,7 +21,26 @@ export type MediaPlayerSource =
   | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number }
   | { read?: undefined, size?: undefined }
 
-export type MediaPlayerOptions =
+/** Shared by both arms: nothing here depends on who owns the media. */
+type CommonOptions = {
+  title?: string
+  autoplay?: boolean
+
+  /**
+   * Drawn above the control bar and outside the click-to-pause region, for whatever the app has to
+   * say over the video. `children` land next to the media instead, below the chrome.
+   */
+  overlay?: ReactNode
+
+  onSeek?: (fraction: number) => void
+  onPlaybackError?: (error: unknown) => void
+}
+
+/**
+ * Bytes in: the player owns the `<video>`, and libav feeds it a fragment at a time.
+ */
+export type MediaPlayerLocalOptions =
+  & CommonOptions
   & MediaPlayerSource
   & {
     /**
@@ -41,18 +61,54 @@ export type MediaPlayerOptions =
     /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
     defaultFontUrl?: string
     bufferSize?: number
-    autoplay?: boolean
 
-    title?: string
     /** Byte spans available, painted on the seekbar and informing the thumbnail generator. */
     downloadedRanges?: DownloadedRange[]
 
-    onSeek?: (fraction: number) => void
-    onPlaybackError?: (error: unknown) => void
+    /**
+     * Reader for the thumbnail engine, when it should differ from playback's.
+     *
+     * They are the same by default so generation shares playback's fetch order. A consumer whose
+     * reads are not free wants them apart: a torrent hands this a non-prioritising, fail-fast reader
+     * so generating previews cannot steal download order from the bytes playback is blocked on.
+     */
+    thumbnailRead?: (offset: number, size: number) => Promise<ArrayBuffer>
+    /** Off entirely. A second wasm worker during pipeline boot is worth avoiding on a slow source. */
+    thumbnailsEnabled?: boolean
   }
 
+/**
+ * A media the caller owns and the player only drives.
+ *
+ * No bytes, so no libav, no MediaSource and no thumbnail generation. For a source whose video lives
+ * in a document this one cannot reach into, which is also the only arrangement under which its DRM
+ * works: the key session belongs to whoever owns the element.
+ */
+export type MediaPlayerRemoteOptions =
+  & CommonOptions
+  & {
+    media: PlayerMedia
+    read?: never
+    size?: never
+
+    /** The source's own storyboard, since there are no bytes to generate previews from. */
+    thumbnails?: ExternalThumbnails
+    /** The source renders these; the player draws the menu and reports the pick. */
+    subtitles?: DelegatedTracks
+    audioTracks?: DelegatedTracks
+  }
+
+export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
+
 const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, children?: ReactNode }) => {
-  const { title, size, downloadedRanges, publicPath, libavWorkerUrl, read } = options
+  // Narrowed on the field that carries the difference: a remote arm brings its own media and, by
+  // construction, no bytes. Both halves stay null-safe so the engine hooks below can be called
+  // unconditionally, which they have to be.
+  const remote = 'media' in options ? options : null
+  const local = remote ? null : options as MediaPlayerLocalOptions
+  const {
+    title, size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled,
+  } = local ?? ({} as Partial<MediaPlayerLocalOptions>)
 
   const setMedia = useMediaAttach()
   // Mandatory, not an optimisation: without it requestFullscreen falls through to the bare <video>
@@ -62,17 +118,24 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null)
 
-  useEffect(() => { setMedia?.(video); return () => setMedia?.(null) }, [video, setMedia])
+  // Attaching is not optional in either arm: the store installs `setSourceState` in `attach`, and
+  // video.js only runs attach once media is non-null, so skipping it would leave every write below a
+  // permanent no-op.
+  const media = remote?.media ?? video
+  useEffect(() => { setMedia?.(media); return () => setMedia?.(null) }, [media, setMedia])
 
-  usePlayback(video, canvas, options)
+  // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
+  // so there is nothing for them to attach to and nothing to guard at the call site.
+  usePlayback(video, canvas, local)
 
-  const thumbnails = useSeekThumbnails({
+  const generatedThumbnails = useSeekThumbnails({
     publicPath,
     workerUrl: libavWorkerUrl,
-    length: size,
-    read,
+    length: thumbnailsEnabled === false ? undefined : size,
+    read: thumbnailRead ?? read,
     downloadedRanges,
   })
+  const thumbnails = remote?.thumbnails?.all ?? generatedThumbnails
   const togglePictureInPicture = usePictureInPicture(video, canvas)
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
@@ -90,8 +153,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   return (
     <Chrome
       ref={setContainer}
-      onVideoRef={setVideo}
+      // No element in the remote arm: the media is somebody else's, and whatever renders it is
+      // passed in as children. Rendering an idle <video> here would sit over it.
+      onVideoRef={remote ? undefined : setVideo}
       onCanvasRef={setCanvas}
+      overlay={options.overlay}
     >
       {children}
     </Chrome>

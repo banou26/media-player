@@ -1,5 +1,5 @@
 import type { PlaybackController } from '../../engine'
-import type { MediaPlayerOptions } from '../video-player'
+import type { MediaPlayerLocalOptions } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -13,13 +13,16 @@ import { usePlayer } from '../player'
 export const usePlayback = (
   video: HTMLVideoElement | null,
   canvas: HTMLCanvasElement | null,
-  options: MediaPlayerOptions,
+  /** null when the media is remote: there are no bytes, so there is no pipeline to run. */
+  options: MediaPlayerLocalOptions | null,
 ) => {
   const player = usePlayer()
+  // The four asset urls are required on the local arm, so a default only ever applies when options is
+  // null, and the effect below returns before touching them in that case.
   const {
-    read, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl,
-    bufferSize, autoplay = false,
-  } = options
+    read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '',
+    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, autoplay = false,
+  } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
 
   // The track the viewer picked, which is what a restart is keyed on. Distinct from the store's
   // `selectedAudioStream`, which is whatever is playing right now.
@@ -33,10 +36,10 @@ export const usePlayback = (
 
   const readRef = useRef(read)
   readRef.current = read
-  const onSeekRef = useRef(options.onSeek)
-  onSeekRef.current = options.onSeek
-  const onPlaybackErrorRef = useRef(options.onPlaybackError)
-  onPlaybackErrorRef.current = options.onPlaybackError
+  const onSeekRef = useRef(options?.onSeek)
+  onSeekRef.current = options?.onSeek
+  const onPlaybackErrorRef = useRef(options?.onPlaybackError)
+  onPlaybackErrorRef.current = options?.onPlaybackError
 
   const selectSubtitleStream = useCallback((streamIndex: number | undefined) => {
     subtitleChoiceMade.current = true
@@ -127,8 +130,12 @@ export const usePlayback = (
       controllerRef.current = null
       player.setSourceState({ ready: false })
     }
+    // `read` is deliberately absent: the effect only ever calls `readRef.current`, so listing it here
+    // would tear the whole pipeline down and rebuild it whenever the caller's reader changed
+    // identity. A streaming consumer passes a fresh closure on every state update, which is several
+    // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
-    player, video, canvas, size, read, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
+    player, video, canvas, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
     jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay,
   ])
 }

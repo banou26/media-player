@@ -46,12 +46,15 @@ const style = css`
 
 export type ChromeProps = {
   ref?: Ref<HTMLDivElement> | ((element: HTMLDivElement | null) => void)
-  onVideoRef: (element: HTMLVideoElement | null) => void
+  /** Absent means render no video element: the media belongs to someone else and arrives as children. */
+  onVideoRef?: (element: HTMLVideoElement | null) => void
   onCanvasRef: (element: HTMLCanvasElement | null) => void
+  /** Above the control bar and outside the click-to-pause region, unlike `children`. */
+  overlay?: ReactNode
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -114,9 +117,10 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, children }: ChromeProps) 
       className={hideUI ? 'hide' : ''}
     >
       <Overlay onCanvasRef={onCanvasRef} />
+      {overlay}
       <ControlBar />
       <div className="video" onClick={onVideoClick}>
-        <video ref={onVideoRef} playsInline />
+        {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}
       </div>
     </div>
