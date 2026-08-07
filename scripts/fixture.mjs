@@ -15,6 +15,16 @@ const run = promisify(execFile)
 export const PUBLIC_DIR = fileURLToPath(new URL('../public/', import.meta.url))
 export const FIXTURE = 'test-video.mkv'
 export const FIXTURE_PATH = PUBLIC_DIR + FIXTURE
+/**
+ * A second file the browser can play by itself.
+ *
+ * matroska is right for the local arm precisely BECAUSE Chrome cannot play it: that is what makes
+ * libav's remux worth doing. The remote arm is the opposite case, where the far document plays the
+ * file with its own element and this player never sees a byte, so that fixture has to be a container
+ * the browser actually supports.
+ */
+export const NATIVE_FIXTURE = 'test-video.mp4'
+export const NATIVE_FIXTURE_PATH = PUBLIC_DIR + NATIVE_FIXTURE
 
 const exists = async (path) => {
   try { return (await stat(path)).size > 0 } catch { return false }
@@ -26,6 +36,21 @@ const exists = async (path) => {
  * The subtitle track is the point of using matroska rather than mp4: it is what exercises the ASS
  * path through jassub, and a file without one leaves the track menu untested.
  */
+export const ensureNativeFixture = async () => {
+  if (await exists(NATIVE_FIXTURE_PATH)) return NATIVE_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=5',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=5',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    '-movflags', '+faststart',
+    NATIVE_FIXTURE_PATH,
+  ])
+  return NATIVE_FIXTURE_PATH
+}
+
 export const ensureFixture = async () => {
   if (await exists(FIXTURE_PATH)) return FIXTURE_PATH
   await mkdir(PUBLIC_DIR, { recursive: true })
@@ -49,7 +74,9 @@ export const ensureFixture = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const path = await ensureFixture()
-  const { size } = await stat(path)
-  console.log(`fixture ready: ${path} (${size} bytes)`)
+  for (const make of [ensureFixture, ensureNativeFixture]) {
+    const path = await make()
+    const { size } = await stat(path)
+    console.log(`fixture ready: ${path} (${size} bytes)`)
+  }
 }
