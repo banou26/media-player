@@ -27,8 +27,13 @@ type CommonOptions = {
   autoplay?: boolean
 
   /**
-   * Drawn above the control bar and outside the click-to-pause region, for whatever the app has to
-   * say over the video. `children` land next to the media instead, below the chrome.
+   * The app's own readout, drawn at the right of the top bar beside `title`, for whatever it has to
+   * say over the video. It shares the title's gradient and fades with the rest of the chrome, so a
+   * running counter does not sit over the picture once the controls have hidden themselves.
+   *
+   * The slot itself takes no pointer events, so a click still reaches the video and toggles
+   * playback; content that needs a pointer (a tooltip anchor, a button) sets `pointer-events: auto`
+   * on itself. `children` land next to the media instead, below the chrome.
    */
   overlay?: ReactNode
 
