@@ -11,7 +11,11 @@ import { fonts } from '../../utils/fonts'
 import PlaybackSlider from './playback-slider'
 
 const style = css`
-position: relative;
+/* Deliberately NOT a containing block. The menu anchors to the control bar instead, which is exactly
+   as wide as the player box and can therefore be clamped to it. The outside-click check uses
+   \`contains\` on the ref, which is DOM containment and needs no position, and the bar's other
+   tooltips already resolve against the control bar with no positioned wrapper of their own. */
+position: static;
 
 .settings {
   /* the icon keeps its size, the pressable box grows around it */
@@ -26,21 +30,33 @@ position: relative;
 
 .popover {
   position: absolute;
-  /* the gear sits a couple of buttons in from the right edge, so a centred popover hangs off that
-     edge on a phone. It anchors to the button instead until the viewport has room to centre it. */
-  right: 0;
-  transform: none;
+  /* Anchored to the PLAYER's right edge, never to the gear. The gear is not the last control in the
+     bar, so a menu centred on it puts its own edges wherever the button happens to sit: with no
+     picture-in-picture button, which is every source whose media the player does not own, an edge
+     landed outside the box, and the root's \`overflow: hidden\` cut it off, taking the rows under it
+     out of reach. The inset matches the bar's own padding so the menu lines up with the last button. */
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  bottom: calc(100% + 8px);
 
   overflow-y: auto;
   width: 180px;
-  max-width: calc(100vw - 24px);
+  /* \`100%\` is the control bar, which is the width of the PLAYER. The old \`100vw\` was the viewport,
+     which equals the player only when the player is the whole document, and it is the wrong kind of
+     guard besides: a max-width shrinks the box, it never moves it back inside. */
+  max-width: calc(100% - 24px);
   height: 160px;
-  top: -180px;
+  /* The room actually above the bar. A short player had the top of the menu clipped by that same
+     \`overflow: hidden\`. With no size container in the ancestry this resolves against the small
+     viewport, so it can only ever shrink the box, never grow it. */
+  max-height: min(160px, calc(100cqh - 100% - 16px));
   @media (min-width: 768px) {
-    right: 50%;
-    transform: translateX(50%);
+    right: calc(16px + env(safe-area-inset-right, 0px));
     width: 250px;
-    height: 160px;
+    max-width: calc(100% - 32px);
+  }
+  @media (min-width: 2560px) {
+    right: calc(24px + env(safe-area-inset-right, 0px));
+    max-width: calc(100% - 48px);
   }
 
   display: flex;

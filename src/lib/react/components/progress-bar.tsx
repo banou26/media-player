@@ -52,14 +52,28 @@ const style = css`
     display: flex;
     justify-content: center;
 
+    /* The seekbar's other hover affordance, the thumbnail below, gets a rounded box and a drop
+       shadow. A source that ships no thumbnails, which is every source whose media the player does
+       not own, leaves this readout as the entire preview, so it carries the same treatment instead
+       of sitting as bare text on the picture. The ink comes from the player root. */
+    background-color: rgba(28, 28, 28, .95);
+    border-radius: calc(.4 * var(--mp-unit));
+    padding: 0 calc(.6 * var(--mp-unit));
+    box-shadow: 0 0 calc(1 * var(--mp-unit)) rgba(0, 0, 0, .5);
+
     text-shadow: 0 0 4px rgba(0, 0, 0, 1);
     ${fonts.bMedium.bold}
 
     position: absolute;
-    top: calc(-2.5 * var(--mp-unit));
-    width: calc(5 * var(--mp-unit));
+    /* Anchored on its bottom edge rather than its top: now that it has a background its height
+       follows the font size, and a top-anchored box would grow downward into the track. */
+    bottom: calc(1.2 * var(--mp-unit));
+    /* Sized to its content, replacing a fixed 5 unit box that \`1:04:09\` overflows. Transparent, that
+       overflow was invisible; filled, it would not be. */
+    width: max-content;
+    white-space: nowrap;
+    transform: translateX(-50%);
 
-    margin-left: calc(-2.5 * var(--mp-unit));
     pointer-events: none;
   }
 
@@ -297,7 +311,9 @@ export const ProgressBar = () => {
           ? (
             <div
               className="cursor-time"
-              style={{ left: `clamp(calc(1.8 * var(--mp-unit)), ${timePercentage(progressBarHoverTime)}%, calc(100% - calc(1.8 * var(--mp-unit))))` }}
+              /* the inset grew with the pill: content sized and centred, its half width is now the
+                 padding plus the text, so the old 18px let a filled box hang past both ends */
+              style={{ left: `clamp(calc(3 * var(--mp-unit)), ${timePercentage(progressBarHoverTime)}%, calc(100% - calc(3 * var(--mp-unit))))` }}
             >
               {cusorTimeString}
             </div>
