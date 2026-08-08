@@ -23,6 +23,15 @@ export type MediaPlayerSource =
 
 /** Shared by both arms: nothing here depends on who owns the media. */
 type CommonOptions = {
+  /**
+   * Drawn across the top of the picture, in a layer of its own.
+   *
+   * That layer cannot see an `overlay` item, so an app that also places something along the top has
+   * two elements competing for one band of screen: on a narrow viewport the title ellipsizes against
+   * the FULL width and then runs underneath whatever is painted over it. An app in that position
+   * should leave this unset and draw the title as part of its own overlay row, where the two can
+   * share a flex line and the filename can be the one that gives way.
+   */
   title?: string
   autoplay?: boolean
 
