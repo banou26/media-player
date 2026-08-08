@@ -27,13 +27,26 @@ type CommonOptions = {
   autoplay?: boolean
 
   /**
-   * The app's own readout, drawn at the right of the top bar beside `title`, for whatever it has to
-   * say over the video. It shares the title's gradient and fades with the rest of the chrome, so a
-   * running counter does not sit over the picture once the controls have hidden themselves.
+   * The app's own content over the video: a download readout, a badge, a logo, anything the player
+   * itself has no opinion about.
    *
-   * The slot itself takes no pointer events, so a click still reaches the video and toggles
-   * playback; content that needs a pointer (a tooltip anchor, a button) sets `pointer-events: auto`
-   * on itself. `children` land next to the media instead, below the chrome.
+   * Pass one node, or several, and EACH TOP-LEVEL ITEM gets its own layer covering the whole player.
+   * That layer is the coordinate space, so an item is placed with ordinary CSS against the picture:
+   *
+   * ```tsx
+   * <MediaPlayer overlay={[
+   *   <div key="stats" css={css`position: absolute; top: 0; right: 0;`}>82 peers</div>,
+   *   <div key="badge" css={css`position: absolute; inset: auto auto 0 0;`}>4K</div>,
+   * ]} />
+   * ```
+   *
+   * A fragment works the same way. Items never share a containing block, so one item's CSS cannot
+   * move another, and each keeps its own DOM as the list changes.
+   *
+   * Items fade with the rest of the chrome, so a running counter does not sit over the picture once
+   * the controls have hidden themselves. A layer takes no pointer events, so a click still reaches
+   * the video and toggles playback; content that needs a pointer (a tooltip anchor, a button) sets
+   * `pointer-events: auto` on itself. `children` land next to the media instead, below the chrome.
    */
   overlay?: ReactNode
 
