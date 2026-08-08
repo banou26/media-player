@@ -258,6 +258,45 @@ const rootStyle = css`
   --mp-unit: 10px;
 
   /**
+   * The chrome's own typeface, for exactly the reason the unit above exists.
+   *
+   * \`font-family\` inherits, and this library declared it nowhere, so every label drew in whatever the
+   * embedding document happened to set, and in the UA's serif where it set nothing. Not hypothetical:
+   * stub mounts the player in a second document, \`embed.html\`, which sets no font and loads no face,
+   * and the entire settings menu came out in Times New Roman.
+   *
+   * Named faces only, no bundled webfont. The chrome is a handful of short labels, so a font request
+   * on the critical path of a document whose job is to paint video buys a round trip and a flash of
+   * unstyled text for nothing.
+   *
+   * Read through \`var()\` so a host with a brand face sets \`--mp-font-family\` on any ancestor and it
+   * inherits in. A bare \`font-family\` on the host can no longer reach the chrome: this declaration is
+   * on the player element itself and beats anything inherited.
+   */
+  font-family: var(
+    --mp-font-family,
+    system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji'
+  );
+
+  /**
+   * The chrome's default ink, same argument again.
+   *
+   * Most text here names its own colour, but the two time readouts do not: the elapsed/duration pair
+   * and the seekbar's hover time carry a font token and a black text-shadow and nothing else.
+   * Inherited from a host that declares none that resolves to \`canvastext\`, which is black text under
+   * a black halo on a dark gradient.
+   */
+  color: #fff;
+
+  /**
+   * The settings menu scrolls, and a UA that has not been told the surface is dark paints that
+   * scrollbar in its light theme: a white track down the side of a #1c1c1c menu. Declared here rather
+   * than asked of the host, so it reaches the menu and nothing outside the player.
+   */
+  color-scheme: dark;
+
+  /**
    * The other half of owning the chrome's own scale.
    *
    * Every control here is authored against a border box, which this library's dev app sets globally
