@@ -95,10 +95,12 @@ export type ChromeProps = {
   onCanvasRef: (element: HTMLCanvasElement | null) => void
   /** The app's own content, over the video and outside the click-to-pause region, unlike `children`. */
   overlay?: ReactNode
+  /** False draws no control bar at all, leaving the picture, the title and the overlay. */
+  controls?: boolean
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -170,7 +172,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, children }: Chro
           {item}
         </div>
       ))}
-      <ControlBar />
+      {controls === false ? null : <ControlBar />}
       <div className="video" onClick={onVideoClick}>
         {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}

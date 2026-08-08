@@ -36,6 +36,18 @@ type CommonOptions = {
   autoplay?: boolean
 
   /**
+   * Draw the control bar. Defaults to true.
+   *
+   * False leaves the picture, the title and the overlay and takes away only the chrome, for a host
+   * that has to put its own interactive UI over the media for a while. A source whose sign-in form
+   * lives inside its own document is the case this exists for: the form is the thing the viewer has
+   * to reach, and a control bar for a media that has not loaded yet sits on top of it and eats the
+   * clicks. Hiding it from the host side is not an option, since `setHideUI` is installed by the
+   * store's `attach` and does nothing at all until a media arrives.
+   */
+  controls?: boolean
+
+  /**
    * The app's own content over the video: a download readout, a badge, a logo, anything the player
    * itself has no opinion about.
    *
@@ -114,7 +126,16 @@ export type MediaPlayerLocalOptions =
 export type MediaPlayerRemoteOptions =
   & CommonOptions
   & {
-    media: PlayerMedia
+    /**
+     * Null means the media has not been found yet: the chrome renders and attaches when it arrives.
+     *
+     * A source usually has to mount its own document before it can hand over an element, and that
+     * document is passed as `children`, so it can only exist once this component has rendered. The
+     * key is still REQUIRED even when the value is null, because its presence is what selects this
+     * arm: omitting it falls through to the local arm, which draws an idle `<video>` over whatever
+     * the children put there.
+     */
+    media: PlayerMedia | null
     read?: never
     size?: never
 
@@ -186,19 +207,23 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // the document, and it renders the result itself.
   const subtitles = remote?.subtitles?.selection
   const audio = remote?.audioTracks?.selection
+  // `select` is published as-is rather than wrapped, so its promise reaches the menu: the menu is the
+  // only place that can hold the popover open, keep the tick off an unfinished switch, and show a
+  // failure, and a promise nothing awaits is an unhandled rejection.
   useEffect(() => {
     if (!subtitles) return
     setSourceState({
-      subtitleTracks: subtitles.options.map(({ id, label }) => ({ id, label })),
+      subtitleTracks: subtitles.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
       selectedSubtitleTrack: subtitles.selectedId ?? undefined,
       selectSubtitleTrack: (id) => subtitles.select(id == null ? null : String(id)),
+      subtitleOffLabel: subtitles.offLabel,
     })
   }, [setSourceState, subtitles])
 
   useEffect(() => {
     if (!audio) return
     setSourceState({
-      audioTracks: audio.options.map(({ id, label }) => ({ id, label })),
+      audioTracks: audio.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
       selectedAudioTrack: audio.selectedId ?? undefined,
       selectAudioTrack: (id) => audio.select(String(id)),
     })
@@ -212,6 +237,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       onVideoRef={remote ? undefined : setVideo}
       onCanvasRef={setCanvas}
       overlay={options.overlay}
+      controls={options.controls}
     >
       {children}
     </Chrome>

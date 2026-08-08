@@ -13,6 +13,13 @@ import { definePlayerFeature } from '@videojs/core/dom'
 export type TrackChoice = {
   id: string | number
   label: string
+  /**
+   * Offered but not selectable, so the menu shows it and refuses the click.
+   *
+   * Hiding it instead would be worse: a source that lists a dub it cannot currently serve is telling
+   * the viewer the dub exists, and a menu that silently omits it looks like the source has nothing.
+   */
+  disabled?: boolean
 }
 
 /**
@@ -47,14 +54,25 @@ export type SourceState = {
    */
   thumbnailAt?: (time: number) => ThumbnailImage | undefined
 
+  /**
+   * Both selectors may answer with a promise, and the menu waits on it.
+   *
+   * The engine switches a track by pointing the pipeline at another stream, which is immediate and
+   * cannot fail, so locally these return nothing. A source that owns its own player is the opposite
+   * case: the switch is a round trip through somebody else's UI and takes seconds, and it can lose.
+   * A menu that closed on the click would report a selection that has not happened, and a rejection
+   * with nothing awaiting it is an unhandled rejection rather than an error the viewer ever sees.
+   */
   subtitleTracks: TrackChoice[]
   /** undefined means subtitles are off. */
   selectedSubtitleTrack: string | number | undefined
-  selectSubtitleTrack: (id: string | number | undefined) => void
+  selectSubtitleTrack: (id: string | number | undefined) => void | Promise<void>
+  /** What the row that turns subtitles off is called, when the source would rather name it itself. */
+  subtitleOffLabel?: string
 
   audioTracks: TrackChoice[]
   selectedAudioTrack: string | number | undefined
-  selectAudioTrack: (id: string | number) => void
+  selectAudioTrack: (id: string | number) => void | Promise<void>
 
   /** Chrome auto-hide. True means the controls, title and cursor are hidden. */
   hideUI: boolean

@@ -158,6 +158,22 @@ position: relative;
   .description {
     word-break: break-word;
   }
+
+  /* Dimmed and inert, but still listed. A source that names a track it cannot serve right now is
+     saying the track exists, and dropping the row would read as the source having nothing. */
+  .unavailable {
+    opacity: 0.5;
+    cursor: default;
+    :hover {
+      background-color: transparent;
+    }
+  }
+
+  .failed {
+    border-bottom: 1px solid #4D4D4E;
+    color: #f66;
+    ${fonts.bSmall.regular}
+  }
 }
 `
 
@@ -168,46 +184,55 @@ enum PopoverContent {
   Audio
 }
 
-/** One track picker, shared by the subtitle and audio menus. */
+/**
+ * One track picker, shared by the subtitle and audio menus.
+ *
+ * `pending` and `failed` describe the switch the viewer just asked for, not the menu: while a source
+ * is working, every row is inert and the one being switched to says so, because the selection has
+ * not moved yet and a tick next to it would be a lie.
+ */
 const TrackMenu = (
-  { title, tracks, selected, onSelect, onBack, allowDisable }: {
+  { title, tracks, selected, onSelect, onBack, offLabel, pending, failed }: {
     title: string
     tracks: TrackChoice[]
     selected: string | number | undefined
     onSelect: (id: string | number | undefined) => void
     onBack: () => void
-    allowDisable?: boolean
+    /** Absent means the menu offers no way off at all, which is what audio wants. */
+    offLabel?: string
+    /** The id currently being switched to, where `null` is the off row and undefined means idle. */
+    pending?: string | number | null
+    failed?: boolean
   }
-) => (
-  <div className='popover track-list'>
-    <div className="back" onClick={onBack}>
-      <ChevronLeft />
-      <span>{title}</span>
+) => {
+  const busy = pending !== undefined
+  const row = (id: string | number | null, label: string, className?: string) => {
+    const isPending = busy && pending === id
+    const disabled = busy || tracks.find((track) => track.id === id)?.disabled
+    return (
+      <div
+        key={id ?? '__off__'}
+        onClick={() => { if (!disabled) onSelect(id ?? undefined) }}
+        className={[className, disabled ? 'unavailable' : null].filter(Boolean).join(' ') || undefined}
+      >
+        <span>{label}</span>
+        <span>{isPending ? '…' : (selected ?? null) === id ? '✓' : ''}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className='popover track-list'>
+      <div className="back" onClick={onBack}>
+        <ChevronLeft />
+        <span>{title}</span>
+      </div>
+      {failed ? <div className="no-hover failed">Could not switch. Try again.</div> : null}
+      {offLabel ? row(null, offLabel) : null}
+      {tracks.map(({ id, label }) => row(id, label, 'description'))}
     </div>
-    {
-      allowDisable
-        ? (
-          <div onClick={() => onSelect(undefined)}>
-            <span>Disable</span>
-            <span>{selected === undefined ? '✓' : ''}</span>
-          </div>
-        )
-        : null
-    }
-    {
-      tracks.map(({ id, label }) => (
-        <div
-          key={id}
-          onClick={() => onSelect(id)}
-          className="description"
-        >
-          <span>{label}</span>
-          <span>{selected === id ? '✓' : ''}</span>
-        </div>
-      ))
-    }
-  </div>
-)
+  )
+}
 
 export const SettingsAction = () => {
   const player = usePlayer()
@@ -219,12 +244,26 @@ export const SettingsAction = () => {
   const selectedAudioTrack = usePlayer((state) => state.selectedAudioTrack)
   const selectAudioTrack = usePlayer((state) => state.selectAudioTrack)
 
+  const subtitleOffLabel = usePlayer((state) => state.subtitleOffLabel)
+
   const [isOpenPopover, setIsOpenPopover] = useState(false)
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
   const settingsContainerRef = useRef<HTMLDivElement>(null)
+  // The id being switched to, or undefined when nothing is in flight. Null is the row that turns
+  // subtitles off, so this cannot be a plain id: undefined has to keep meaning idle.
+  const [pending, setPending] = useState<string | number | null | undefined>(undefined)
+  const [failed, setFailed] = useState(false)
 
   const togglePopover = () => {
     setIsOpenPopover(!isOpenPopover)
+    setPopoverContent(PopoverContent.Default)
+    setFailed(false)
+  }
+
+  // Not `togglePopover`: this runs from a promise, where the captured `isOpenPopover` is whatever it
+  // was at click time, so a toggle could reopen a menu the viewer has already dismissed.
+  const closePopover = () => {
+    setIsOpenPopover(false)
     setPopoverContent(PopoverContent.Default)
   }
 
@@ -248,15 +287,50 @@ export const SettingsAction = () => {
     return () => document.removeEventListener('pointerdown', handleClickOutside)
   }, [isOpenPopover])
 
-  const chooseSubtitle = (id: string | number | undefined) => {
-    selectSubtitleTrack(id)
-    togglePopover()
+  /**
+   * Runs a track switch and decides when the menu may close.
+   *
+   * A selector that returns nothing switched synchronously, so the click closes the menu as it always
+   * has. One that returns a promise owns a player this one cannot reach, and the menu stays open and
+   * inert until it answers: closing first would show a selection that has not happened yet, and
+   * dropping the promise would turn a failed switch into an unhandled rejection nobody ever sees.
+   */
+  const runSelect = (id: string | number | null, select: () => void | Promise<void>) => {
+    if (pending !== undefined) return
+    setFailed(false)
+    let result: void | Promise<void>
+    try {
+      result = select()
+    } catch (err) {
+      console.warn('[media-player] track selection failed:', err)
+      setFailed(true)
+      return
+    }
+    if (!(result instanceof Promise)) {
+      closePopover()
+      return
+    }
+    setPending(id)
+    result.then(
+      () => {
+        setPending(undefined)
+        closePopover()
+      },
+      (err) => {
+        console.warn('[media-player] track selection failed:', err)
+        setPending(undefined)
+        setFailed(true)
+      },
+    )
   }
 
+  const chooseSubtitle = (id: string | number | undefined) =>
+    runSelect(id ?? null, () => selectSubtitleTrack(id))
+
+  // the audio menu offers no way off, so there is no undefined case to answer for
   const chooseAudio = (id: string | number | undefined) => {
-    // the audio menu never offers "Disable"
-    if (id !== undefined) selectAudioTrack(id)
-    togglePopover()
+    if (id === undefined) return
+    runSelect(id, () => selectAudioTrack(id))
   }
 
   const changePopoverContent = (newPopoverContent: PopoverContent) => () => {
@@ -362,7 +436,9 @@ export const SettingsAction = () => {
             selected={selectedSubtitleTrack}
             onSelect={chooseSubtitle}
             onBack={changePopoverContent(PopoverContent.Default)}
-            allowDisable
+            offLabel={subtitleOffLabel ?? 'Disable'}
+            pending={pending}
+            failed={failed}
           />
         )
       }
@@ -374,6 +450,8 @@ export const SettingsAction = () => {
             selected={selectedAudioTrack}
             onSelect={chooseAudio}
             onBack={changePopoverContent(PopoverContent.Default)}
+            pending={pending}
+            failed={failed}
           />
         )
       }
