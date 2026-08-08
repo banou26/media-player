@@ -209,6 +209,19 @@ const rootStyle = css`
    */
   --mp-unit: 10px;
 
+  /**
+   * The other half of owning the chrome's own scale.
+   *
+   * Every control here is authored against a border box, which this library's dev app sets globally
+   * and a host page has no reason to. Shipped without it, anything that is \`width: 100%\` AND carries
+   * padding overflows its own box: the top bar ran 32px past the player and clipped the right end of
+   * whatever the app had put there. Scoped to the player's subtree so it cannot reach the host's
+   * layout, and only \`box-sizing\`, because zeroing margins here would reach the app's own content.
+   */
+  &, & *, & *::before, & *::after {
+    box-sizing: border-box;
+  }
+
   display: flex;
   justify-content: center;
   background-color: #111;

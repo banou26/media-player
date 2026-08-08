@@ -50,8 +50,12 @@ describe('the app slot in the top bar', () => {
     // The whole bug in one number: centred put it at half the height. A quarter is loose enough for
     // any padding the top bar chooses and nowhere near the middle.
     expect(slot.top - player.top).toBeLessThan(player.height / 4)
-    // right-aligned, within the bar's own padding
+    // Right-aligned AND inside. Only the second half catches the bar overflowing its own box, which
+    // a `width: 100%` that also carries padding does whenever the host has no border-box reset: the
+    // readout then hangs off the right edge with its last item cut in half, and a one-sided
+    // "close to the right edge" check reads a negative overhang as a pass.
     expect(player.right - slot.right).toBeLessThan(player.width / 8)
+    expect(slot.right).toBeLessThanOrEqual(player.right)
 
     // and the title took the other end of the same row
     expect(title).toBeDefined()
@@ -72,6 +76,7 @@ describe('the app slot in the top bar', () => {
     await expect.element(screen.getByText('82 peers')).toBeInTheDocument()
     const { slot, player } = boxes(screen.container as HTMLElement)
     expect(player.right - slot.right).toBeLessThan(player.width / 8)
+    expect(slot.right).toBeLessThanOrEqual(player.right)
     expect(slot.top - player.top).toBeLessThan(player.height / 4)
   })
 
