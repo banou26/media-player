@@ -103,8 +103,8 @@ describe('a player driving a media it does not own', () => {
     const textOf = (selector: string) =>
       [...screen.container.querySelectorAll(selector)].map((element) => element.textContent)
 
-    ;(screen.container.querySelector('button.settings') as HTMLElement).click()
-    await clickWith('.popover > div', 'Subtitles')
+    // one click: subtitles has its own button in the bar rather than a row behind the gear
+    ;(screen.container.querySelector('button.subtitles') as HTMLElement).click()
 
     // The source's own options, not anything the engine discovered, and the tick sits on the one the
     // source says is selected: `selectedId` is a string id here, where the engine's is a stream index.

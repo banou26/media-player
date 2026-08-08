@@ -71,12 +71,16 @@ describe('the local arm, on a real file', () => {
       .toBe(true)
 
     // The subtitle track the fixture carries has to reach the menu, which is the path that changed
-    // when the store stopped holding raw libav streams.
-    const rows = () => [...screen.container.querySelectorAll('.popover > div')]
-      .map((row) => row.textContent ?? '')
-    ;(screen.container.querySelector('button.settings') as HTMLElement).click()
+    // when the store stopped holding raw libav streams. The menu now hangs off its own button in the
+    // bar, and that button only exists once a track has arrived, so its presence is the assertion.
     await expect
-      .poll(() => rows().some((row) => row.includes('Subtitles')), { timeout: 30_000 })
+      .poll(() => !!screen.container.querySelector('button.subtitles'), { timeout: 30_000 })
+      .toBe(true)
+    ;(screen.container.querySelector('button.subtitles') as HTMLElement).click()
+    const rows = () => [...screen.container.querySelectorAll('.track-list > div')]
+      .map((row) => row.textContent ?? '')
+    await expect
+      .poll(() => rows().some((row) => row.includes('Subtitles')), { timeout: 10_000 })
       .toBe(true)
   })
 })

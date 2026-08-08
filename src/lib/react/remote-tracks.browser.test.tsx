@@ -30,9 +30,10 @@ const clickWith = async (root: Element, selector: string, text: string) => {
   ;(find(root, selector, text) as HTMLElement).click()
 }
 
+/** One click now: subtitles has its own button in the bar rather than a row behind the gear. */
 const openSubtitles = async (root: Element) => {
-  ;(root.querySelector('button.settings') as HTMLElement).click()
-  await clickWith(root, '.popover > div', 'Subtitles')
+  ;(root.querySelector('button.subtitles') as HTMLElement).click()
+  await expect.poll(() => !!root.querySelector('.track-list'), { timeout: 2000 }).toBe(true)
 }
 
 const tracks = (

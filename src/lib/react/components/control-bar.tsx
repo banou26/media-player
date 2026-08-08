@@ -11,6 +11,7 @@ import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
 import SettingsAction from './settings'
+import SubtitlesAction from './subtitles'
 import colors from '../../utils/colors'
 import Sound from './sound'
 
@@ -69,7 +70,7 @@ const style = css`
         }
       }
 
-      .play, .sound, .time, .settings, .picture-in-picture, .full-screen {
+      .play, .sound, .time, .subtitles, .settings, .picture-in-picture, .full-screen {
         display: flex;
         align-items: center;
 
@@ -87,7 +88,7 @@ const style = css`
         }
       }
 
-      .play, .sound, .settings, .picture-in-picture, .full-screen {
+      .play, .sound, .subtitles, .settings, .picture-in-picture, .full-screen {
         border-radius: 4px;
 
         padding: 8px;
@@ -258,6 +259,7 @@ export const ControlBar = () => {
           </div>
         </div>
         <div className='right'>
+          <SubtitlesAction />
           <SettingsAction />
           {togglePictureInPicture
             ? (
