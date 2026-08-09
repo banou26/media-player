@@ -19,7 +19,7 @@ const findChrome = () => {
   return undefined
 }
 
-// video.fkn.app. The library it consumes lives at src/lib and is built separately by
+// player.fkn.app. The library it consumes lives at src/lib and is built separately by
 // vite.lib.config.ts, so this config never sees a library concern.
 export default defineConfig({
   fmt: { semi: false, singleQuote: true },
