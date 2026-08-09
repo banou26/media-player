@@ -84,7 +84,19 @@ export default defineConfig({
             headless: !process.env.MEDIA_PLAYER_HEADFUL,
             // `launchOptions`, not `launch`: a wrong key here is accepted in silence and playwright
             // falls back to its own download, which on NixOS is a path that does not exist.
-            provider: playwright({ launchOptions: { executablePath: findChrome() } }),
+            //
+            // `chromiumSandbox` is pinned ON because playwright defaults it OFF, and `--no-sandbox`
+            // makes Chrome offer its VA-API hardware H.264 decoder. On this host that decoder's GPU
+            // process crashes after one to four frames, so an MSE stream dies with
+            // `PIPELINE_ERROR_DISCONNECTED` and reads exactly like a player bug. Measured 2026-08-10:
+            // 4/4 played sandboxed against 0/4 unsandboxed, one variable, plus `exit_code=8704` in
+            // Chrome's stderr on every failing run and none of the passing ones. Chromium stops
+            // offering hardware decode after 3 GPU crashes PER PROCESS, which is why a reused browser
+            // appeared to "warm up" and pass from the fourth run on. No user hits this: a real browser
+            // is sandboxed. A test rig that is not will invent bugs that do not exist.
+            provider: playwright({
+              launchOptions: { executablePath: findChrome(), chromiumSandbox: true },
+            }),
             /**
              * The viewport is set explicitly because the default is 414x896, a phone.
              * The chrome branches on `min-width: 768px` and on `pointer: coarse`, so an unset
