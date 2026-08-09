@@ -7,6 +7,7 @@ import { css } from '@emotion/react'
 import { usePlayer } from '../player'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
+import BurnInHint from './burn-in-hint'
 
 const AUTO_HIDE_DELAY = 3_000
 
@@ -173,6 +174,8 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, childr
         </div>
       ))}
       {controls === false ? null : <ControlBar />}
+      {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
+      <BurnInHint />
       <div className="video" onClick={onVideoClick}>
         {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}

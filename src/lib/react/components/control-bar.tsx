@@ -19,6 +19,25 @@ import Sound from './sound'
 const VOLUME_STEP = 0.05
 const SEEK_STEP = 5
 
+/**
+ * Two stacked lines inside a tooltip, with a width to wrap against.
+ *
+ * Applied to the content rather than to the tooltip, because react-tooltip renders into a portal and
+ * an unconstrained tooltip grows to one long line that runs off the side of the player.
+ */
+const tooltipLinesStyle = css`
+  display: flex;
+  flex-direction: column;
+  gap: calc(0.4 * var(--mp-unit));
+  max-width: calc(26 * var(--mp-unit));
+  white-space: normal;
+
+  .hint {
+    opacity: 0.72;
+    font-size: 0.9em;
+  }
+`
+
 const style = css`
   position: absolute;
   bottom: 0;
@@ -291,6 +310,8 @@ export const ControlBar = () => {
             ? (
               <TooltipDisplay
                 id='picture-in-picture'
+                // anchored to its end, or the two-line burn-in copy runs off the right of the player
+                tooltipPlace='top-end'
                 text={
                   <button
                     className='picture-in-picture'
@@ -309,19 +330,24 @@ export const ControlBar = () => {
                   </button>
                 }
                 toolTipText={
-                  <span>
-                    {!burnIn
-                      ? 'Picture in picture'
-                      : !hasSubtitles
-                          ? 'This file has no subtitles'
-                          : burnedInSubtitles
-                            ? 'Subtitles are in the video'
-                            : 'Put the subtitles in the video'}
+                  // The tooltip is portaled out of this subtree, so the control bar's own rules
+                  // never reach it: a bare `small` stays inline and runs straight on from the line
+                  // above it. Both lines carry their layout themselves.
+                  <span css={tooltipLinesStyle}>
+                    <span className='lead'>
+                      {!burnIn
+                        ? 'Picture in picture'
+                        : !hasSubtitles
+                            ? 'This file has no subtitles'
+                            : burnedInSubtitles
+                              ? 'Subtitles are in the picture'
+                              : 'Put the subtitles in the picture'}
+                    </span>
                     {burnIn && hasSubtitles
                       ? (
-                        <small className='hint'>
-                          Then hover the video and use your browser&apos;s own pop out button
-                        </small>
+                        <span className='hint'>
+                          Then hover the video and click your browser&apos;s own pop out button
+                        </span>
                       )
                       : null}
                   </span>
