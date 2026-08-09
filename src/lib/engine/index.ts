@@ -10,5 +10,5 @@ export type { ThumbnailGenerator, ThumbnailGeneratorOptions, ThumbnailImage } fr
 export { getTimeRanges, updateSourceBuffer } from './source-buffer'
 export type { TimeRange } from './source-buffer'
 
-export { createPictureInPicture } from './picture-in-picture'
-export type { PictureInPictureController, PictureInPictureOptions } from './picture-in-picture'
+export { createPictureInPicture, pictureInPictureMode } from './picture-in-picture'
+export type { PictureInPictureController, PictureInPictureOptions, PictureInPictureMode } from './picture-in-picture'

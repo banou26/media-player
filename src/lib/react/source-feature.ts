@@ -1,4 +1,4 @@
-import type { MediaIndex, ThumbnailImage } from '../engine'
+import type { MediaIndex, PictureInPictureMode, ThumbnailImage } from '../engine'
 
 import { definePlayerFeature } from '@videojs/core/dom'
 
@@ -89,6 +89,15 @@ export type SourceState = {
    */
   togglePictureInPicture: (() => void) | null
 
+  /**
+   * Which shape the control takes. `window` opens one. `burn-in` cannot, and instead paints the
+   * subtitles into the picture so the BROWSER'S own control carries them; the viewer presses that
+   * one afterwards, so the button has to say something different. null means no control.
+   */
+  pictureInPictureMode: PictureInPictureMode | null
+  /** Burn-in only. True while the composite is the picture on screen. */
+  burnedInSubtitles: boolean
+
   /** Set when the pipeline fails. Cleared when it recovers. */
   playbackError: unknown
   /** Whether the engine has produced its first media segment. */
@@ -116,6 +125,8 @@ const initialState: SourceState = {
   hideUI: false,
   setHideUI: () => {},
   togglePictureInPicture: null,
+  pictureInPictureMode: null,
+  burnedInSubtitles: false,
   playbackError: null,
   ready: false,
   setSourceState: () => {},

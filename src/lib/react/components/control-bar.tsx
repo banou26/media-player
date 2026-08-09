@@ -10,6 +10,7 @@ import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
+import { SubtitlesInPicture } from './icons'
 import SettingsAction from './settings'
 import SubtitlesAction from './subtitles'
 import colors from '../../utils/colors'
@@ -68,6 +69,22 @@ const style = css`
         svg {
           stroke: #fff;
         }
+
+        /* Reads as unavailable rather than absent, so the bar does not reflow when tracks land. */
+        &:disabled {
+          cursor: default;
+          opacity: .4;
+        }
+      }
+
+      /**
+       * The burn-in control's own on state.
+       *
+       * Not \`colors.hover\`: the pointer is on the button at the moment of the click, so an on state
+       * drawn in the hover colour is invisible exactly when it is being looked for.
+       */
+      button[aria-pressed='true'] svg {
+        stroke: ${colors.accent};
       }
 
       .play, .sound, .time, .subtitles, .settings, .picture-in-picture, .full-screen {
@@ -150,7 +167,16 @@ export const ControlBar = () => {
   const fullscreen = usePlayer((state) => state.fullscreen)
   const hideUI = usePlayer((state) => state.hideUI)
   const togglePictureInPicture = usePlayer((state) => state.togglePictureInPicture)
+  const pictureInPictureMode = usePlayer((state) => state.pictureInPictureMode)
+  const burnedInSubtitles = usePlayer((state) => state.burnedInSubtitles)
+  const subtitleTracks = usePlayer((state) => state.subtitleTracks)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
+
+  const burnIn = pictureInPictureMode === 'burn-in'
+  // Burning nothing in is a mode with no effect, so the control stays visible and goes dead rather
+  // than vanishing: the track list arrives from libav a moment after playback starts, and a button
+  // that pops in late shifts every control beside it a second time.
+  const hasSubtitles = subtitleTracks.length > 0
 
   // duration is 0 until metadata lands, so a bare equality would show replay before playback starts
   const ended = duration > 0 && currentTime === duration
@@ -270,13 +296,34 @@ export const ControlBar = () => {
                     className='picture-in-picture'
                     type='button'
                     onClick={togglePictureInPicture}
+                    disabled={burnIn && !hasSubtitles}
+                    // Static name with the state on `aria-pressed`, rather than a name that changes
+                    // on activation: one announces the state once, the other announces it twice and
+                    // renames the control while the pointer is on it.
+                    aria-label={burnIn ? 'Put the subtitles in the video' : 'Picture in picture'}
+                    aria-pressed={burnIn ? burnedInSubtitles : undefined}
                   >
-                    <img src={pictureInPicture}  />
+                    {burnIn
+                      ? <SubtitlesInPicture />
+                      : <img src={pictureInPicture} alt='' />}
                   </button>
                 }
                 toolTipText={
                   <span>
-                    Picture in picture
+                    {!burnIn
+                      ? 'Picture in picture'
+                      : !hasSubtitles
+                          ? 'This file has no subtitles'
+                          : burnedInSubtitles
+                            ? 'Subtitles are in the video'
+                            : 'Put the subtitles in the video'}
+                    {burnIn && hasSubtitles
+                      ? (
+                        <small className='hint'>
+                          Then hover the video and use your browser&apos;s own pop out button
+                        </small>
+                      )
+                      : null}
                   </span>
                 }
               />

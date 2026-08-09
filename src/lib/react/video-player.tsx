@@ -187,7 +187,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     downloadedRanges,
   })
   const thumbnails = remote?.thumbnails?.all ?? generatedThumbnails
-  const togglePictureInPicture = usePictureInPicture(video, canvas)
+  const {
+    toggle: togglePictureInPicture,
+    mode: pictureInPictureMode,
+    burnedIn: burnedInSubtitles,
+  } = usePictureInPicture(video, canvas)
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
   // attaches: when attach swaps in the real setter the identity changes and these publish again.
@@ -199,8 +203,16 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
 
   const thumbnailAt = remote?.thumbnails?.at
   useEffect(() => {
-    setSourceState({ thumbnails, thumbnailAt, togglePictureInPicture })
-  }, [setSourceState, thumbnails, thumbnailAt, togglePictureInPicture])
+    setSourceState({
+      thumbnails,
+      thumbnailAt,
+      togglePictureInPicture,
+      pictureInPictureMode,
+      burnedInSubtitles,
+    })
+  }, [
+    setSourceState, thumbnails, thumbnailAt, togglePictureInPicture, pictureInPictureMode, burnedInSubtitles,
+  ])
 
   // A delegated track list writes the same store fields the engine writes, so the menus never learn
   // which arm they are showing. Only the writer differs: here the pick is forwarded to whoever owns
