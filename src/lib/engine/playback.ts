@@ -329,7 +329,35 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     videoElement.addEventListener('seeking', onSeeking)
     teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
 
+    /**
+     * A terminal failure of the media element, which NOTHING here used to observe.
+     *
+     * `MediaError` is set once and the element never plays again, but the pump below kept running,
+     * and every `appendBuffer` after it throws `InvalidStateError: The HTMLMediaElement.error
+     * attribute is not null`. `updateSourceBuffer`'s chain deliberately survives a rejection, so that
+     * repeated forever, and `flushPending` swallows four attempts and rethrows the fifth. What
+     * reached the viewer was therefore the FIFTH `InvalidStateError` rather than the real cause, and
+     * the real cause never appeared anywhere at all.
+     *
+     * That cost a session: a decode failure presented as an append bug, which is a completely
+     * different place to look. Report what actually happened, then stop.
+     */
+    let elementFailed = false
+    const onElementError = () => {
+      if (elementFailed) return
+      elementFailed = true
+      const error = videoElement.error
+      reportError(
+        new Error(`the media element failed: ${error?.message ?? 'unknown'}`, { cause: error }),
+        false,
+      )
+    }
+    videoElement.addEventListener('error', onElementError)
+    teardown.push(() => videoElement.removeEventListener('error', onElementError))
+
     const interval = setInterval(() => {
+      // Nothing below can succeed against a failed element, and retrying only buries the real error.
+      if (elementFailed || videoElement.error) return
       evict().catch(() => {})
       pump().catch((error) => reportError(error, false))
       // every remove() puts the MediaSource back to 'open', so the end has to be re-armed
