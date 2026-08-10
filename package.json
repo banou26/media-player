@@ -1,6 +1,6 @@
 {
   "name": "@banou/media-player",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "description": "A video player for containers and codecs the browser cannot play natively, remuxed on the fly",
   "type": "module",
   "main": "dist/index.js",
