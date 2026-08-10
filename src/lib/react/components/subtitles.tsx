@@ -54,7 +54,14 @@ export const SubtitlesAction = () => {
         id='subtitles'
         disabled={open}
         text={
-          <button className='subtitles' type='button' onClick={toggle}>
+          <button
+            className='subtitles'
+            type='button'
+            onClick={toggle}
+            aria-label='Subtitles'
+            aria-expanded={open}
+            aria-pressed={on}
+          >
             {on ? <Captions className='captions' /> : <CaptionsOff className='captions-off' />}
           </button>
         }

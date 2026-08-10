@@ -112,6 +112,8 @@ export const SettingsAction = () => {
             className='settings'
             type='button'
             onClick={toggle}
+            aria-label='Settings'
+            aria-expanded={open}
           >
             <Settings />
           </button>

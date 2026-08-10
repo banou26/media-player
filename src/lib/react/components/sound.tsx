@@ -105,6 +105,10 @@ export const Sound = ({ ref }: SoundProps) => {
             type='button'
             onClick={() => player.toggleMuted()}
             ref={ref}
+            // A static name with the state on `aria-pressed`. Renaming a control when it is activated
+            // announces the state twice and breaks the expectation that a control keeps its name.
+            aria-label='Mute'
+            aria-pressed={muted || volume === 0}
           >
             {muted || volume === 0
               ? <VolumeX size={18} color='#fff' />

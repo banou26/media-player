@@ -62,9 +62,10 @@ describe('a player driving a media it does not own', () => {
     // nothing and never lights up is worse than no button, so the control is not offered at all.
     const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, sized())
 
-    await expect.element(screen.getByRole('button', { name: /play/i }).or(
-      screen.getByText(/./),
-    )).toBeInTheDocument()
+    // Was `getByRole(...).or(getByText(/./))`, because at the time NO button carried an accessible
+    // name and the role query could never match on its own. The controls are named now, so the
+    // fallback is not only unnecessary, it makes the locator ambiguous and the query fails.
+    await expect.element(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
     expect(screen.container.querySelector('button.picture-in-picture')).toBeNull()
     // the controls that do work are still there
     expect(screen.container.querySelector('button.play')).not.toBeNull()

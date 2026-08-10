@@ -276,6 +276,9 @@ export const ControlBar = () => {
                 className='play'
                 type='button'
                 onClick={() => player.togglePaused()}
+                // This one genuinely changes what it does, so the name changes with it rather than
+                // carrying a pressed state. Replay is a third action, not an on or off.
+                aria-label={ended ? 'Replay' : paused ? 'Play' : 'Pause'}
               >
                 {
                   ended
@@ -363,6 +366,8 @@ export const ControlBar = () => {
                 className='full-screen'
                 type='button'
                 onClick={() => player.toggleFullscreen()}
+                aria-label='Full screen'
+                aria-pressed={fullscreen}
               >
                 {
                   fullscreen
