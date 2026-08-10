@@ -30,7 +30,18 @@ export const usePlayback = (
   const [audioStreamIndex, setAudioStreamIndex] = useState<number | undefined>(undefined)
 
   const controllerRef = useRef<PlaybackController | null>(null)
-  const resumeTimeRef = useRef(0)
+  /**
+   * Where to pick playback back up, and WHICH media that position belongs to.
+   *
+   * The position exists so a rebuild of the pipeline is invisible: switching audio track tears the
+   * whole thing down and starts again, and dropping the viewer back at zero for that would be absurd.
+   * But the same rebuild happens when the media itself changes, and then the position is meaningless:
+   * dropping a second file in while the first was playing used to open it 40 minutes in.
+   *
+   * `size` is the identity, because it is the one piece of the source in the effect's deps. `read` is
+   * deliberately not, since a streaming consumer passes a fresh closure several times a second.
+   */
+  const resumeRef = useRef<{ time: number, size: number } | null>(null)
   // The renderer turns the first track on by itself, so the menu has to mirror that or it shows
   // "Disable" ticked over subtitles that are visibly on screen.
   const subtitleChoiceMade = useRef(false)
@@ -94,9 +105,11 @@ export const usePlayback = (
           onReady: () => {
             if (cancelled) return
             player.setSourceState({ ready: true })
-            if (resumeTimeRef.current > 0) {
-              video.currentTime = resumeTimeRef.current
-              resumeTimeRef.current = 0
+            const resume = resumeRef.current
+            resumeRef.current = null
+            // only a position belonging to THIS media, or a new file opens where the last one stopped
+            if (resume && resume.size === size && resume.time > 0) {
+              video.currentTime = resume.time
             }
             if (autoplay) video.play().catch(() => {})
           },
@@ -130,7 +143,7 @@ export const usePlayback = (
     })()
     return () => {
       cancelled = true
-      resumeTimeRef.current = video.currentTime
+      resumeRef.current = { time: video.currentTime, size }
       controllerRef.current?.destroy()
       controllerRef.current = null
       player.setSourceState({ ready: false })
