@@ -130,6 +130,28 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const mediaSourceUrl = URL.createObjectURL(mediaSource)
     teardown.push(() => URL.revokeObjectURL(mediaSourceUrl))
     videoElement.src = mediaSourceUrl
+    /**
+     * Give the element back, before the url it is holding is revoked.
+     *
+     * Revoking alone detaches nothing: `src` still names the dead MediaSource, the old SourceBuffer
+     * is still attached to it, and the decoder keeps whatever state it was in. That matters because
+     * this pipeline is REBUILT in place, on the same element, whenever the audio track changes, and
+     * the rebuild awaits a wasm load plus a header read before it assigns a new `src`. On a torrent
+     * that is seconds of the element sitting on a corpse.
+     *
+     * `load()` is the only thing that actually resets it: the media element load algorithm aborts
+     * the current resource and clears the decoder. Without it the element goes from an ended source
+     * straight into fresh appends with no seek in between, which is exactly the sequence that makes
+     * firefox hand a real packet to a drained decoder (`avcodec_send_packet error: End of file`).
+     * Pushed AFTER the revoke so the reversed teardown runs it FIRST.
+     */
+    teardown.push(() => {
+      try { videoElement.pause() } catch {}
+      videoElement.removeAttribute('src')
+      // no src and no <source> children means the load algorithm goes straight to NETWORK_EMPTY
+      // without firing `error`, so this cannot manufacture the failure it exists to prevent
+      videoElement.load()
+    })
 
     const sourceBuffer = await new Promise<SourceBuffer>((resolve, reject) => {
       const timeout = setTimeout(() => { cleanup(); reject(new Error('The MediaSource never opened')) }, SOURCE_OPEN_TIMEOUT)
