@@ -230,8 +230,13 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       lastSeekPosition = time
       const generation = ++seekGeneration
       try {
-        const { data, pts, subtitles: fragments } = await remuxer.seek(time)
+        // `seek` ends by reading, and that read can hit the end of the file, which finalizes the
+        // muxer: libav writes the mp4 trailer and cannot be read from again. Dropping the flag left
+        // this side believing the stream was still open, so the next pump read straight back into a
+        // context that had already been torn down.
+        const { data, pts, subtitles: fragments, finished: done } = await remuxer.seek(time)
         if (destroyed || generation !== seekGeneration) return
+        if (done) finished = true
         if (fragments?.length) subtitles.pushFragments(fragments)
         await updateTimestampOffset(pts)
         if (destroyed || generation !== seekGeneration) return
