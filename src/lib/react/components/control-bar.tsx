@@ -11,6 +11,7 @@ import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
 import { SubtitlesInPicture } from './icons'
+import ErrorsAction from './errors'
 import SettingsAction from './settings'
 import SubtitlesAction from './subtitles'
 import colors from '../../utils/colors'
@@ -106,7 +107,7 @@ const style = css`
         stroke: ${colors.accent};
       }
 
-      .play, .sound, .time, .subtitles, .settings, .picture-in-picture, .full-screen {
+      .play, .sound, .time, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
         display: flex;
         align-items: center;
 
@@ -124,7 +125,7 @@ const style = css`
         }
       }
 
-      .play, .sound, .subtitles, .settings, .picture-in-picture, .full-screen {
+      .play, .sound, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
         border-radius: 4px;
 
         padding: 8px;
@@ -307,6 +308,7 @@ export const ControlBar = () => {
           </div>
         </div>
         <div className='right'>
+          <ErrorsAction />
           <SubtitlesAction />
           <SettingsAction />
           {togglePictureInPicture

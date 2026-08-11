@@ -23,6 +23,25 @@ export type TrackChoice = {
 }
 
 /**
+ * One failure, kept so it can be read back and copied out long after playback recovered from it.
+ *
+ * Flattened to strings at the moment it happens rather than held as the `Error`: this is a report,
+ * the cause chain is most of what makes it useful, and an `Error` in a store is a live object whose
+ * `cause` may be a `MediaError` that reads differently once the element has moved on.
+ */
+export type PlaybackErrorEntry = {
+  /** Wall clock, so the report can be read next to a console log or a torrent's timeline. */
+  at: number
+  /** Seconds into the media, which is usually the first question asked of a playback failure. */
+  atMediaTime?: number
+  message: string
+  /** The `cause` chain, already unwound, one line per level. */
+  detail?: string
+  /** Whether the pipeline came back from it by itself. */
+  recovered: boolean
+}
+
+/**
  * A byte span of the file the consumer has in hand, mapped onto the timeline through the keyframe
  * index, because a file's download percentage is not its playback percentage.
  */
@@ -100,6 +119,15 @@ export type SourceState = {
 
   /** Set when the pipeline fails. Cleared when it recovers. */
   playbackError: unknown
+  /**
+   * Every failure this source has had, oldest first, whether or not the viewer ever saw one.
+   *
+   * `playbackError` is the CURRENT state and is cleared on recovery, so on its own it hides exactly
+   * the failures worth knowing about: a media element that firefox wedged is rebuilt and playback
+   * carries on, leaving no trace anywhere. This is the record, and the control bar offers it only
+   * once there is something in it.
+   */
+  playbackErrors: PlaybackErrorEntry[]
   /** Whether the engine has produced its first media segment. */
   ready: boolean
 
@@ -128,6 +156,7 @@ const initialState: SourceState = {
   pictureInPictureMode: null,
   burnedInSubtitles: false,
   playbackError: null,
+  playbackErrors: [],
   ready: false,
   setSourceState: () => {},
 }

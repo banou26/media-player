@@ -83,10 +83,10 @@ export const popoverStyle = css`
     :last-of-type {
       border-radius: 0 0 8px 8px;
     }
-    :not(&.no-hover) {
+    &:not(.no-hover) {
       cursor: pointer;
     }
-    :not(&.no-hover):hover {
+    &:not(.no-hover):hover {
       background-color: rgba(255,255,255,.1);
     }
 

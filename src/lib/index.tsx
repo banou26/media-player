@@ -24,7 +24,7 @@ export type { PlayerStore } from './react/player'
 // Source state lives on the player store next to the built-in playback state, so `usePlayer` is the
 // only hook the chrome needs.
 export { sourceFeature } from './react/source-feature'
-export type { DownloadedRange, SourceState } from './react/source-feature'
+export type { DownloadedRange, PlaybackErrorEntry, SourceState } from './react/source-feature'
 
 export { useSeekThumbnails } from './react/hooks/use-thumbnails'
 export { usePictureInPicture } from './react/hooks/use-picture-in-picture'

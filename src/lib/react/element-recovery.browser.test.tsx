@@ -16,8 +16,12 @@ import { playerAssets } from '../../asset-urls'
  * 2026-08-11, at which point playback was over for good.
  *
  * The failure is injected here rather than provoked, because provoking it needs a slow source and a
- * particular engine, and what has to be pinned is the RESPONSE: a new MediaSource, nothing shown to
- * the viewer, and a budget that stops it looping on a file that fails deterministically.
+ * particular engine, and what has to be pinned is the RESPONSE: a new MediaSource every time,
+ * nothing shown to the viewer, and a count kept so the session is still reportable afterwards.
+ *
+ * There is deliberately NO ceiling on the rebuilds. A viewer forty minutes into an episode is not
+ * helped by a budget running out on a fault that is not the file's, so the guard against a source
+ * that fails deterministically is the backoff plus the visible record, not a refusal to try.
  */
 const FIXTURE = '/test-video.mkv'
 
@@ -45,7 +49,7 @@ const httpSource = async () => {
 }
 
 describe('a media element that has failed', () => {
-  it('is rebuilt without troubling the viewer, until the budget runs out', async () => {
+  it('is rebuilt every time, without troubling the viewer, and counted', async () => {
     const source = await httpSource()
     if (!source) {
       // eslint-disable-next-line no-console
@@ -96,26 +100,25 @@ describe('a media element that has failed', () => {
       return video()!.src
     }
 
-    // MAX_RESTARTS is 3 inside a rolling window, so the first three failures are absorbed
+    // Four in a row, which is past where the old three-per-minute budget would have given up
     let src = video()!.src
     expect(src.startsWith('blob:')).toBe(true)
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
       src = await failAndWaitForRebuild(src)
-      // nothing reaches the viewer while there is still budget: a rebuild is not their problem
+      // nothing reaches the viewer, ever: a rebuild that worked is not their problem
       expect(reported, `failure ${attempt} should have been absorbed`).toEqual([])
     }
 
-    // the fourth inside the same window is a file that genuinely does not play, and has to say so
-    await expect
-      .poll(() => {
-        if (reported.length) return reported.length
-        video()?.dispatchEvent(new Event('error'))
-        return reported.length
-      }, { timeout: 60_000, interval: 500 })
-      .toBe(1)
-    expect(String((reported[0] as Error)?.message)).toContain('the media element failed')
-    // Four rebuilds means four libav loads. Generous timeouts rather than a smaller assertion,
-    // because the budget is the guarantee that a file which fails deterministically stops looping,
-    // and that is exactly the behaviour a future refactor could drop in silence.
+    /**
+     * Absorbed is not the same as forgotten.
+     *
+     * The control bar offers the record only once there is something in it, and its accessible name
+     * carries the count, so this asserts the log through the same surface a viewer would read it
+     * through rather than through the store.
+     */
+    const errorsButton = () => screen.container.querySelector('button.errors')
+    await expect.poll(() => !!errorsButton(), { timeout: 30_000 }).toBe(true)
+    expect(errorsButton()!.getAttribute('aria-label')).toBe('Playback errors (4)')
+    // Four rebuilds means four libav loads, hence the generous budget on the whole test.
   }, 420_000)
 })

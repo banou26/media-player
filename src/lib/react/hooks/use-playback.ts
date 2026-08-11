@@ -1,4 +1,5 @@
 import type { PlaybackController } from '../../engine'
+import type { PlaybackErrorEntry } from '../source-feature'
 import type { MediaPlayerLocalOptions } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -7,10 +8,47 @@ import { isMediaElementError, startPlayback } from '../../engine'
 import { usePlayer } from '../player'
 import { toNamedTracks } from '../../utils/track-label'
 
-// A wedged element is rebuilt rather than reported, but a file that wedges over and over is a real
-// failure and has to reach the viewer instead of looping forever.
-const MAX_RESTARTS = 3
-const RESTART_WINDOW_MS = 60_000
+/**
+ * A wedged element is rebuilt, however many times it takes.
+ *
+ * There is deliberately no ceiling. The failure this exists for is a firefox decoder that will not
+ * take another packet, it is not the file's fault, and a viewer forty minutes into an episode is
+ * not helped by a budget running out. Every rebuild is recorded instead, and the control bar offers
+ * the record, so a file that genuinely cannot play is visible as a wall of identical entries rather
+ * than hidden behind a counter.
+ *
+ * The backoff is the whole guard: rebuilds that keep failing immediately slow down, so a source that
+ * fails deterministically settles into a slow retry instead of a hot loop that pins a core and
+ * reloads libav as fast as it can.
+ */
+const RESTART_BACKOFF_MS = [0, 250, 1_000, 3_000, 10_000]
+// far enough back that an unrelated hiccup later in an episode starts from no delay again
+const RESTART_SETTLED_MS = 60_000
+
+const messageOf = (error: unknown) =>
+  error instanceof Error ? error.message : String(error)
+
+/**
+ * The `cause` chain, unwound to text at the moment it happened.
+ *
+ * The reason a decode failure is worth copying out at all is almost always one level down: the top
+ * line says the media element failed, and the cause carries what the decoder actually said. A
+ * `MediaError` is not an `Error`, so it is read for its own two fields rather than skipped.
+ */
+const causeChain = (error: unknown) => {
+  const lines: string[] = []
+  let cause: unknown = (error as { cause?: unknown })?.cause
+  // bounded, because a cause chain can be circular and this runs inside an error path
+  for (let depth = 0; cause != null && depth < 8; depth++) {
+    if (typeof MediaError !== 'undefined' && cause instanceof MediaError) {
+      lines.push(`MediaError code ${cause.code}${cause.message ? `: ${cause.message}` : ''}`)
+      break
+    }
+    lines.push(messageOf(cause))
+    cause = (cause as { cause?: unknown })?.cause
+  }
+  return lines.length ? lines.join('\n') : undefined
+}
 
 /**
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
@@ -39,18 +77,26 @@ export const usePlayback = (
    *
    * Firefox can wedge its own decoder: when the source buffer runs dry it drains the decoder so the
    * frames still inside it get shown, and clearing that drain needs a decoded sample to resume
-   * from. A seek into an empty buffer over a slow source has none, so the drain is never cleared
-   * and every packet after it comes back `avcodec_send_packet error: End of file`. The element is
-   * finished at that point and no append can revive it.
+   * from. A seek into an empty buffer has none, so the drain is never cleared and every packet
+   * after it comes back `avcodec_send_packet error: End of file`. The element is finished at that
+   * point and no append can revive it. It is not ours: it reproduces on this player as it stood in
+   * October 2025, on a local file, and on every version since.
    *
    * Rebuilding is the cure, and this hook already does exactly that for an audio track change,
    * position and all, so the recovery is a dep rather than a second teardown path.
    */
   const [restartToken, setRestartToken] = useState(0)
   const restarts = useRef({ count: 0, at: 0 })
-  // The budget belongs to one media, not to the player: a file that used it up must not leave the
-  // next one with no recovery at all.
-  useEffect(() => { restarts.current = { count: 0, at: 0 } }, [size])
+  const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  // The streak belongs to one media, not to the player, and a pending rebuild of the old one must
+  // not land on the new one.
+  useEffect(() => {
+    restarts.current = { count: 0, at: 0 }
+    player.setSourceState({ playbackErrors: [] })
+    return () => { if (restartTimer.current) clearTimeout(restartTimer.current) }
+    // `player` is stable; listing it would not re-run this, and the reset belongs to the media
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [size])
 
   const controllerRef = useRef<PlaybackController | null>(null)
   /**
@@ -104,20 +150,41 @@ export const usePlayback = (
     if (!video || !canvas || !size || !read) return
     let cancelled = false
     player.setSourceState({ playbackError: null, ready: false })
+
+    /**
+     * Keep the failure, whether or not the viewer is about to be told about it.
+     *
+     * Appended rather than replaced, and never cleared by a recovery: a rebuild that works leaves
+     * `playbackError` null and would otherwise erase the only evidence that anything went wrong.
+     */
+    const record = (error: unknown, recovered: boolean) => {
+      const entry: PlaybackErrorEntry = {
+        at: Date.now(),
+        atMediaTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
+        message: messageOf(error),
+        detail: causeChain(error),
+        recovered,
+      }
+      player.setSourceState({ playbackErrors: [...player.playbackErrors, entry] })
+    }
     const fail = (error: unknown) => {
       if (cancelled) return
+      const recoverable = isMediaElementError(error)
+      record(error, recoverable)
       // Not something the viewer can act on and not something an append can survive: rebuild the
-      // element instead of putting a dead player behind an error message. Counted in a window, so
-      // a file that wedges again and again still reaches the viewer rather than looping.
-      if (isMediaElementError(error)) {
+      // element instead of putting a dead player behind an error message.
+      if (recoverable) {
         const now = performance.now()
-        if (now - restarts.current.at > RESTART_WINDOW_MS) restarts.current = { count: 0, at: now }
-        if (restarts.current.count < MAX_RESTARTS) {
-          restarts.current = { count: restarts.current.count + 1, at: now }
-          console.warn('the media element failed; rebuilding the pipeline', error)
-          setRestartToken((token) => token + 1)
-          return
-        }
+        // a failure long after the last one is not part of a streak, so it pays no delay
+        if (now - restarts.current.at > RESTART_SETTLED_MS) restarts.current = { count: 0, at: now }
+        const delay = RESTART_BACKOFF_MS[Math.min(restarts.current.count, RESTART_BACKOFF_MS.length - 1)]!
+        restarts.current = { count: restarts.current.count + 1, at: now }
+        console.warn(`the media element failed; rebuilding the pipeline${delay ? ` in ${delay}ms` : ''}`, error)
+        if (restartTimer.current) clearTimeout(restartTimer.current)
+        // still queued through a timer at zero delay, so the rebuild never runs inside the callback
+        // that reported the failure
+        restartTimer.current = setTimeout(() => setRestartToken((token) => token + 1), delay)
+        return
       }
       console.error('playback failed', error)
       player.setSourceState({ playbackError: error })
