@@ -74,6 +74,10 @@ const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
 // how far past the playhead a range may start and still count as the one holding it
 const BOUNDARY_SLACK = 1
+// the fastest a drag may move the consumer's download window
+const SEEK_REPORT_MS = 200
+// quiet time that ends a drag: pointermoves arrive every few ms, so this cannot cut one in half
+const DRAG_SETTLE_MS = 250
 export const DEFAULT_BUFFER_SIZE = 2_500_000
 
 // destroy() only terminates after a round trip into the wasm, so terminate on our own clock too
@@ -223,8 +227,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       if (aborted && cancelled) return
       console.error(error)
       // A terminal failure of the element outranks whatever was already outstanding. It is the one
-      // error whose HANDLING differs, and swallowing it behind an earlier read failure would leave
-      // the caller holding a dead element, able to fix it and never told to.
+      // error whose HANDLING differs, and the sequence that produces it starts with a starved
+      // buffer, which is also when a read is most likely to have reported first. Swallowing it
+      // behind that earlier report would leave the caller holding a dead element, able to fix it
+      // and never told to.
       if (outstandingError && !terminal) return
       outstandingError = true
       onError?.(cancelled ? new Error('Reading the video file failed', { cause: error }) : error)
@@ -327,7 +333,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     }
 
     const pump = async () => {
-      if (reading || seeking || destroyed) return
+      // a settling drag is about to reposition the remuxer, so reading forward from where it
+      // happens to sit is throwing a read away
+      if (reading || seeking || dragTimer !== undefined || destroyed) return
       if (!pending && (finished || !needsData())) return
       const generation = ++readGeneration
       const seekAtStart = seekGeneration
@@ -367,13 +375,84 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      */
     const alreadyPlayable = (time: number) => time >= lastSeekPosition && !!playheadRange()
 
+    /**
+     * Where a drag reaches the consumer, at a rate a consumer can act on.
+     *
+     * `onSeek` moves the reader's download window, and the chrome moves the element on every
+     * pointermove, so one drag across the bar used to reprioritise the source dozens of times a
+     * second. Nothing a torrent starts survives being re-anchored at that rate, which is most of
+     * why a scrub could leave the buffer empty for half a minute. Leading edge so a single seek
+     * still moves the window at once, trailing edge so the position the drag ENDED on is the one
+     * that sticks.
+     */
+    let lastSeekReport = 0
+    let trailingFraction: number | null = null
+    let trailingTimer: ReturnType<typeof setTimeout> | undefined
+    const reportSeek = (fraction: number) => {
+      const now = performance.now()
+      const since = now - lastSeekReport
+      if (since >= SEEK_REPORT_MS) {
+        lastSeekReport = now
+        trailingFraction = null
+        onSeek?.(fraction)
+        return
+      }
+      trailingFraction = fraction
+      if (trailingTimer) return
+      trailingTimer = setTimeout(() => {
+        trailingTimer = undefined
+        const pendingFraction = trailingFraction
+        trailingFraction = null
+        if (pendingFraction === null || destroyed) return
+        lastSeekReport = performance.now()
+        onSeek?.(pendingFraction)
+      }, SEEK_REPORT_MS - since)
+    }
+    teardown.push(() => { if (trailingTimer) clearTimeout(trailingTimer) })
+
+    /**
+     * A drag is not a seek per pointermove, however many the element reports.
+     *
+     * The chrome moves the element on every pointermove, and every one of those used to start a
+     * remuxer seek, which ABORTS the one already running. So during a drag none of them ever
+     * finished: a measured drag over a torrent produced 315 seeks, zero `seeked`, and thirty
+     * seconds in which not one byte reached the source buffer. An empty buffer for that long is
+     * also what wedges firefox's decoder, so this is not only wasted work.
+     *
+     * A move that arrives on its own still seeks AT ONCE, so a click on the bar costs nothing and
+     * nothing waits out a read that can run for tens of seconds over a torrent. Only a run of
+     * moves is a drag, and a drag gets one seek when it settles, to wherever it actually stopped.
+     */
+    let lastSeekingAt = 0
+    let dragTimer: ReturnType<typeof setTimeout> | undefined
+    teardown.push(() => { if (dragTimer) clearTimeout(dragTimer) })
+
     const onSeeking = () => {
       const time = videoElement.currentTime
       const duration = metadata.info.input.duration || videoElement.duration
-      if (duration > 0) onSeek?.(Math.min(Math.max(time / duration, 0), 1))
+      if (duration > 0) reportSeek(Math.min(Math.max(time / duration, 0), 1))
+      // stamped before the playable check, so a drag that crosses buffered ground and comes out
+      // the far side is still recognised as one drag rather than as a fresh click
+      const now = performance.now()
+      const dragging = now - lastSeekingAt < DRAG_SETTLE_MS
+      lastSeekingAt = now
       if (alreadyPlayable(time)) return
       finished = false
-      void seekTo(time)
+      if (dragTimer) clearTimeout(dragTimer)
+      if (!dragging) {
+        dragTimer = undefined
+        void seekTo(time)
+        return
+      }
+      dragTimer = setTimeout(() => {
+        dragTimer = undefined
+        if (destroyed) return
+        // where the drag ENDED, which is the only position anyone is waiting on
+        const settled = videoElement.currentTime
+        if (alreadyPlayable(settled)) return
+        finished = false
+        void seekTo(settled)
+      }, DRAG_SETTLE_MS)
     }
     videoElement.addEventListener('seeking', onSeeking)
     teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
@@ -390,6 +469,11 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      *
      * That cost a session: a decode failure presented as an append bug, which is a completely
      * different place to look. Report what actually happened, then stop.
+     *
+     * It is reported as a MediaElementError because the caller can do something about this one that
+     * it cannot do about any other: nothing appended here will ever decode again, but a rebuilt
+     * element gets a fresh decoder, and the pipeline already knows how to come back at the same
+     * position. See `isMediaElementError`.
      */
     let elementFailed = false
     const onElementError = () => {

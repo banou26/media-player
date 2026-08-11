@@ -71,6 +71,15 @@ type CommonOptions = {
    */
   overlay?: ReactNode
 
+  /**
+   * Where the viewer is heading, as a 0..1 fraction, for a source that fetches on demand.
+   *
+   * Throttled, and deliberately: the chrome moves the element on every pointermove, so a drag
+   * across the bar is dozens of positions a second, and a consumer that reprioritises its download
+   * window on each one never finishes anything it starts. This fires on the leading edge, so a
+   * single seek moves the window at once, and again on the trailing edge, so the position the drag
+   * ended on is the one that sticks. It is a heading, not an event log.
+   */
   onSeek?: (fraction: number) => void
   onPlaybackError?: (error: unknown) => void
 }
