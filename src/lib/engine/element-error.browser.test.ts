@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { MediaElementError, isMediaElementError } from './playback'
+
 /**
  * The element's own error is the only place the real reason lives.
  *
@@ -35,5 +37,27 @@ describe('a failed media element', () => {
     expect(typeof seen[0]?.code).toBe('number')
 
     video.remove()
+  })
+
+  /**
+   * The recovery hangs off this one predicate, so it is worth pinning on its own.
+   *
+   * `usePlayback` rebuilds the pipeline instead of showing an error only for THIS error class, and
+   * the discriminator is a property rather than an `instanceof` so it survives crossing a bundle
+   * boundary. A property is also exactly what a minifier is entitled to rename, so a build that
+   * mangled it would silently turn the recovery back into a dead player with no test failing.
+   */
+  it('is the one error class the pipeline reports as recoverable', () => {
+    const failure = new MediaElementError('the media element failed: whatever the decoder said', {
+      cause: { code: 3 },
+    })
+    expect(isMediaElementError(failure)).toBe(true)
+    expect(failure.cause).toEqual({ code: 3 })
+
+    // nothing else may claim it: a read that gave up has to reach the viewer, not loop the rebuild
+    expect(isMediaElementError(new Error('Reading the video file failed'))).toBe(false)
+    expect(isMediaElementError('the media element failed')).toBe(false)
+    expect(isMediaElementError(null)).toBe(false)
+    expect(isMediaElementError(undefined)).toBe(false)
   })
 })

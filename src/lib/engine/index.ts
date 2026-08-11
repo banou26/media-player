@@ -1,4 +1,4 @@
-export { startPlayback, terminateRemuxer, DEFAULT_BUFFER_SIZE } from './playback'
+export { startPlayback, terminateRemuxer, MediaElementError, isMediaElementError, DEFAULT_BUFFER_SIZE } from './playback'
 export type { PlaybackOptions, PlaybackController, MediaIndex, AudioStream } from './playback'
 
 export { createSubtitleRenderer, SUBTITLES_OFF } from './subtitles'

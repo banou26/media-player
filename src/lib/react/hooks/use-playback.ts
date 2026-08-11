@@ -3,9 +3,14 @@ import type { MediaPlayerLocalOptions } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { startPlayback } from '../../engine'
+import { isMediaElementError, startPlayback } from '../../engine'
 import { usePlayer } from '../player'
 import { toNamedTracks } from '../../utils/track-label'
+
+// A wedged element is rebuilt rather than reported, but a file that wedges over and over is a real
+// failure and has to reach the viewer instead of looping forever.
+const MAX_RESTARTS = 3
+const RESTART_WINDOW_MS = 60_000
 
 /**
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
@@ -28,6 +33,24 @@ export const usePlayback = (
   // The track the viewer picked, which is what a restart is keyed on. Distinct from the store's
   // `selectedAudioStream`, which is whatever is playing right now.
   const [audioStreamIndex, setAudioStreamIndex] = useState<number | undefined>(undefined)
+
+  /**
+   * Bumped to rebuild the pipeline after the media element itself has failed.
+   *
+   * Firefox can wedge its own decoder: when the source buffer runs dry it drains the decoder so the
+   * frames still inside it get shown, and clearing that drain needs a decoded sample to resume
+   * from. A seek into an empty buffer over a slow source has none, so the drain is never cleared
+   * and every packet after it comes back `avcodec_send_packet error: End of file`. The element is
+   * finished at that point and no append can revive it.
+   *
+   * Rebuilding is the cure, and this hook already does exactly that for an audio track change,
+   * position and all, so the recovery is a dep rather than a second teardown path.
+   */
+  const [restartToken, setRestartToken] = useState(0)
+  const restarts = useRef({ count: 0, at: 0 })
+  // The budget belongs to one media, not to the player: a file that used it up must not leave the
+  // next one with no recovery at all.
+  useEffect(() => { restarts.current = { count: 0, at: 0 } }, [size])
 
   const controllerRef = useRef<PlaybackController | null>(null)
   /**
@@ -83,6 +106,19 @@ export const usePlayback = (
     player.setSourceState({ playbackError: null, ready: false })
     const fail = (error: unknown) => {
       if (cancelled) return
+      // Not something the viewer can act on and not something an append can survive: rebuild the
+      // element instead of putting a dead player behind an error message. Counted in a window, so
+      // a file that wedges again and again still reaches the viewer rather than looping.
+      if (isMediaElementError(error)) {
+        const now = performance.now()
+        if (now - restarts.current.at > RESTART_WINDOW_MS) restarts.current = { count: 0, at: now }
+        if (restarts.current.count < MAX_RESTARTS) {
+          restarts.current = { count: restarts.current.count + 1, at: now }
+          console.warn('the media element failed; rebuilding the pipeline', error)
+          setRestartToken((token) => token + 1)
+          return
+        }
+      }
       console.error('playback failed', error)
       player.setSourceState({ playbackError: error })
       onPlaybackErrorRef.current?.(error)
@@ -154,6 +190,6 @@ export const usePlayback = (
     // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
     player, video, canvas, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
-    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay,
+    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
   ])
 }

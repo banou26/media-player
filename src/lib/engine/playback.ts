@@ -44,6 +44,25 @@ export type PlaybackController = {
   audioMimeType: string
 }
 
+/**
+ * A terminal failure of the media element itself, as opposed to anything this pipeline did.
+ *
+ * It is worth its own type because it is the one error class that says something about the CURE:
+ * the element is finished and no append will ever succeed against it again, so reporting it to the
+ * viewer is pointless and only a rebuilt element clears it. The flag rather than an `instanceof`
+ * is what survives the error crossing a module boundary.
+ */
+export class MediaElementError extends Error {
+  readonly mediaElement = true
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'MediaElementError'
+  }
+}
+
+export const isMediaElementError = (error: unknown): boolean =>
+  !!error && typeof error === 'object' && (error as { mediaElement?: boolean }).mediaElement === true
+
 // ~20s behind and ~60s ahead of the playhead, refilled when the forward buffer dips under 30s
 const PRE_EVICT = -20
 const POST_EVICT = 60
@@ -199,11 +218,14 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let lastSeekPosition = 0
 
     // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
-    const reportError = (error: unknown, aborted: boolean) => {
+    const reportError = (error: unknown, aborted: boolean, terminal = false) => {
       const cancelled = (error as Error)?.message === 'Cancelled'
       if (aborted && cancelled) return
       console.error(error)
-      if (outstandingError) return
+      // A terminal failure of the element outranks whatever was already outstanding. It is the one
+      // error whose HANDLING differs, and swallowing it behind an earlier read failure would leave
+      // the caller holding a dead element, able to fix it and never told to.
+      if (outstandingError && !terminal) return
       outstandingError = true
       onError?.(cancelled ? new Error('Reading the video file failed', { cause: error }) : error)
     }
@@ -375,8 +397,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       elementFailed = true
       const error = videoElement.error
       reportError(
-        new Error(`the media element failed: ${error?.message ?? 'unknown'}`, { cause: error }),
+        new MediaElementError(`the media element failed: ${error?.message ?? 'unknown'}`, { cause: error }),
         false,
+        true,
       )
     }
     videoElement.addEventListener('error', onElementError)
