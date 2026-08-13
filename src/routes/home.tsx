@@ -51,6 +51,24 @@ const seekBudgetParam = () => {
   return raw === null ? undefined : Number(raw)
 }
 
+/*
+ * Dev only: make reads late, which a local file never is.
+ *
+ * The firefox decoder wedge needs the buffer to actually run dry, and a file read from disk answers
+ * instantly, so the fault cannot happen at all here. Measured on a standalone rig: 4 wedges in 4
+ * with a throttle, 0 in 6 without one. Over a torrent this lateness comes free; on this route it has
+ * to be manufactured or the whole rig quietly tests nothing.
+ */
+const readDelayParam = () => Number(new URLSearchParams(window.location.search).get('readDelay') ?? 0)
+
+const slowRead = (read: RemuxerInput['read'], delay: number): RemuxerInput['read'] =>
+  delay > 0
+    ? async (offset, size) => {
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        return read(offset, size)
+      }
+    : read
+
 export const Home = () => {
   const [source, setSource] = useState<RemuxerInput | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -102,7 +120,9 @@ export const Home = () => {
   }, [open, openFile])
 
   // named rather than spread inline, because an inline ternary widens to two optional keys
-  const sourceProps: MediaPlayerSource = source ? { read: source.read, size: source.length } : {}
+  const sourceProps: MediaPlayerSource = source
+    ? { read: slowRead(source.read, readDelayParam()), size: source.length }
+    : {}
 
   return (
     <div css={style}>
