@@ -181,6 +181,9 @@ const style = css`
   }
 `
 
+/** Movement from the press, in px, past which a gesture is a scrub rather than a click. */
+const SCRUB_THRESHOLD_PX = 4
+
 export const ProgressBar = () => {
   const player = usePlayer()
   const currentTime = usePlayer((state) => state.currentTime)
@@ -200,7 +203,36 @@ export const ProgressBar = () => {
   // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
   const dragPointerType = useRef<string | undefined>(undefined)
 
+  /*
+   * How many changes this gesture has produced, which is what tells a click from a scrub.
+   *
+   * `useDragValue` reports onChange on the PRESS and again on every move, so a click that drifts one
+   * pixel produces two. Counting them is exact where a timer is not: the first is the press, and
+   * anything after it is the pointer actually moving.
+   */
+  const changesThisPress = useRef(0)
+  const latestFraction = useRef<number | undefined>(undefined)
+  const pressFraction = useRef<number | undefined>(undefined)
+  /*
+   * Whether this gesture has become a scrub, latched once it has.
+   *
+   * A pixel of drift is a click, not a drag: every real mouse produces some. Counting changes was
+   * not enough, because that pixel arrives as a pointermove and so looked like scrubbing, which put
+   * the playhead onto unbuffered ground before its data existed and wedged firefox exactly as
+   * before. Distance from the press is the honest test, and it latches so that dragging back toward
+   * the origin does not flip the gesture back into a click.
+   */
+  const isScrub = useRef(false)
+
   const onSeekDrag = (fraction: number) => {
+    changesThisPress.current += 1
+    latestFraction.current = fraction
+    if (pressFraction.current === undefined) {
+      pressFraction.current = fraction
+    } else if (!isScrub.current) {
+      const width = progressBarRef.current?.getBoundingClientRect().width ?? 0
+      if (Math.abs(fraction - pressFraction.current) * width > SCRUB_THRESHOLD_PX) isScrub.current = true
+    }
     setSeekFraction(fraction)
     if (dragPointerType.current === 'mouse') return
     setProgressBarOverTime(fraction * duration)
@@ -210,11 +242,31 @@ export const ProgressBar = () => {
 
   const onDragStart: DOMAttributes<HTMLDivElement>['onPointerDown'] = (ev) => {
     dragPointerType.current = ev.pointerType
+    changesThisPress.current = 0
+    pressFraction.current = undefined
+    isScrub.current = false
     handlers.onPointerDown(ev)
   }
 
   const onDragEnd: DOMAttributes<HTMLDivElement>['onPointerUp'] = (ev) => {
     handlers.onPointerUp(ev)
+    /*
+     * The seek that counts, and the only one allowed to move the playhead onto new ground.
+     *
+     * Where the gesture ENDED is the position anyone is waiting for, and it is issued through
+     * `requestSeek` so the data is in place before the element demuxes there. A seek into a hole is
+     * what wedges firefox's decoder, and the whole gesture exists to arrive at this one moment.
+     */
+    // a pointerup with no press behind it is not this gesture, and must not seek anywhere
+    const fraction = changesThisPress.current > 0 ? latestFraction.current : undefined
+    if (fraction !== undefined && duration) {
+      const timestamp = fraction * duration
+      if (requestSeek) requestSeek(timestamp)
+      else player.seek(timestamp)
+    }
+    changesThisPress.current = 0
+    isScrub.current = false
+    pressFraction.current = undefined
     // a lifted finger leaves nothing over the bar, so the preview it opened closes with it
     if (ev.pointerType === 'mouse') return
     setProgressBarOverTime(undefined)
@@ -273,15 +325,20 @@ export const ProgressBar = () => {
     return `${hoursString}${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
   }, [progressBarHoverTime])
 
+  /*
+   * Follow the pointer while it is actually moving, and NOT on the press itself.
+   *
+   * Seeking on the press is what defeated the first version of this: a click that drifts a pixel
+   * looked like a drag, so the playhead jumped onto unbuffered ground before its data existed, which
+   * is exactly the wedge. A scrub still follows the pointer, because a drag has never reproduced the
+   * fault (its seeks land ~28ms apart, far too fast for a drain to complete) and a frozen picture
+   * during a scrub would be a real regression. The settled position is handled on release.
+   */
   useEffect(() => {
     if (seekFraction === undefined || !duration) return
-    const timestamp = seekFraction * duration
-    // `requestSeek` gets the data in place before the playhead moves, which is what stops firefox
-    // wedging its decoder on a seek into a hole. Absent for a media this player does not own, where
-    // there is no pipeline to ask and the element's own seek is all there is.
-    if (requestSeek) requestSeek(timestamp)
-    else player.seek(timestamp)
-  }, [player, requestSeek, seekFraction, duration])
+    if (!dragging || !isScrub.current) return
+    player.seek(seekFraction * duration)
+  }, [player, dragging, seekFraction, duration])
 
   const scaleX = useMemo(() => {
     return !duration || typeof currentTime !== 'number'

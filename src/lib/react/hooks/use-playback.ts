@@ -33,13 +33,6 @@ const RESTART_SETTLED_MS = 60_000
  */
 const SEEK_PREPARE_BUDGET_MS = 500
 
-/**
- * Under this gap between seek requests, it is a drag rather than a series of decisions.
- *
- * Kept equal to the engine's own settle window, so both layers agree on what a drag is.
- */
-const DRAG_SETTLE_MS = 250
-
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
 
@@ -127,8 +120,6 @@ export const usePlayback = (
    * deliberately not, since a streaming consumer passes a fresh closure several times a second.
    */
   const resumeRef = useRef<{ time: number, size: number } | null>(null)
-  // when the seek bar last asked for a position, which is how a drag is told from a click
-  const lastSeekRequestAt = useRef(0)
   // The renderer turns the first track on by itself, so the menu has to mirror that or it shows
   // "Disable" ticked over subtitles that are visibly on screen.
   const subtitleChoiceMade = useRef(false)
@@ -167,21 +158,18 @@ export const usePlayback = (
     if (!controller || seekPrepareBudgetMs <= 0) { player.seek(time); return }
 
     /*
-     * A drag is left exactly as it was.
+     * Every call gets the data first. There is deliberately no "this looks like a drag" shortcut.
      *
-     * The seek bar reports a fraction on every pointermove, so preparing each one would remux per
-     * move, and waiting on each would make a scrub feel like treacle. Neither is worth paying:
-     * a drag never reproduced this fault (its seeks land ~28ms apart, far too fast for a drain to
-     * complete), and the engine already coalesces the remux to wherever the drag stops.
+     * The first version of this guessed at drags from the gap between calls, and that is what let
+     * the fault through in production: the seek bar reports a change on the PRESS and again on every
+     * move, so a click that drifts one pixel produced two calls milliseconds apart, the second was
+     * read as a drag, and the playhead jumped onto unbuffered ground before its data existed. Two
+     * quick taps of the arrow keys would have done the same.
      *
-     * Discrete seeks are the ones that wedge it, at a few hundred ms apart, and those get the data
-     * first.
+     * The chrome knows what gesture it is in and now says so by only calling this for settled seeks,
+     * which is knowledge rather than inference. Rapid calls are safe here anyway: each supersedes
+     * the last through the engine's seek generation.
      */
-    const now = performance.now()
-    const dragging = now - lastSeekRequestAt.current < DRAG_SETTLE_MS
-    lastSeekRequestAt.current = now
-    if (dragging) { player.seek(time); return }
-
     let moved = false
     const move = () => {
       if (moved) return

@@ -35,7 +35,10 @@ export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabl
     // events the seek preview runs on, the second keeps the press from reaching the document
     // listeners that close the popover and refresh the auto-hide timer.
     activePointer.current = event.pointerId
-    event.currentTarget.setPointerCapture?.(event.pointerId)
+    // Throws NotFoundError for a pointer id that is not active, and an exception here would abandon
+    // the gesture before it records anything. Capture is an optimisation for tracking outside the
+    // element, never a requirement.
+    try { event.currentTarget.setPointerCapture?.(event.pointerId) } catch {}
     setDragging(true)
     onChangeRef.current(fractionFor(event.clientX, event.clientY))
   }, [disabled, fractionFor])
@@ -48,7 +51,7 @@ export const useDragValue = ({ ref, onChange, orientation = 'horizontal', disabl
   const endDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (activePointer.current !== event.pointerId) return
     activePointer.current = null
-    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    try { event.currentTarget.releasePointerCapture?.(event.pointerId) } catch {}
     setDragging(false)
   }, [])
 
