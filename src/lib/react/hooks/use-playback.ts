@@ -191,7 +191,15 @@ export const usePlayback = (
       player.seek(time)
       if (debug) {
         // eslint-disable-next-line no-console
-        console.warn(`[media-player] seek to ${time.toFixed(2)} moved after ${Math.round(performance.now() - startedAt)}ms via ${movedBecause}${movedBecause === 'deadline' ? ' (EXPOSED: playhead moved before its data)' : ''}`)
+        const video = controller.videoElement
+        let runway = 0
+        if (video) {
+          for (let i = 0; i < video.buffered.length; i++) {
+            if (video.buffered.start(i) <= time + 1 && time < video.buffered.end(i)) runway = video.buffered.end(i) - time
+          }
+        }
+        // eslint-disable-next-line no-console
+        console.warn(`[media-player] seek to ${time.toFixed(2)} moved after ${Math.round(performance.now() - startedAt)}ms via ${movedBecause}, runway ${runway.toFixed(1)}s${movedBecause === 'deadline' ? ' (EXPOSED: moved before its data was ready)' : ''}`)
       }
     }
     const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)

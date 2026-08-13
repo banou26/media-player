@@ -43,6 +43,8 @@ export type PlaybackController = {
    * because this can take as long as a read, which over a torrent has no ceiling.
    */
   prepareSeek: (time: number) => Promise<void>
+  /** The element this pipeline drives, so a caller can read what actually got buffered. */
+  videoElement: HTMLVideoElement
   selectSubtitleStream: (streamIndex: number | undefined) => void
   /** Keyframe index of the input, which is what maps a downloaded byte range onto the timeline. */
   indexes: MediaIndex[]
@@ -81,6 +83,16 @@ const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
 // how far past the playhead a range may start and still count as the one holding it
 const BOUNDARY_SLACK = 1
+/*
+ * Seconds of data a seek target needs behind it before the playhead is allowed to move there.
+ *
+ * Covering the target instant is not enough: the element plays through a one chunk island in well
+ * under a second and runs dry, and that underrun drains firefox's decoder just as a seek into a hole
+ * does. Measured in production, six seeks that all reported themselves prepared still wedged.
+ */
+const SEEK_RUNWAY = 3
+// reads allowed to build that runway, so a source that answers with nothing cannot spin here
+const SEEK_RUNWAY_READS = 12
 // the fastest a drag may move the consumer's download window
 const SEEK_REPORT_MS = 200
 // quiet time that ends a drag: pointermoves arrive every few ms, so this cannot cut one in half
@@ -219,6 +231,16 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let seeking = false
     // how many prepares are in flight, so eviction knows not to delete what they are fetching
     let preparing = 0
+    /*
+     * Where buffering should aim while a seek is being prepared.
+     *
+     * The playhead has not moved there yet, so anything anchored on `currentTime` is aiming at the
+     * position being left behind. `needsData` in particular would answer for the old position and
+     * stop reading, which is how a prepare came to leave a one chunk island: enough to cover the
+     * target instant, and nowhere near enough to play from.
+     */
+    let prepareTarget: number | undefined
+    const bufferAnchor = () => prepareTarget ?? videoElement.currentTime
     let finished = false
     // libav aborts the running task when a new one starts, so both flags need a generation token
     let readGeneration = 0
@@ -272,7 +294,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const needsData = () => {
       const ranges = getTimeRanges(sourceBuffer)
       if (!ranges.length) return true
-      const ct = videoElement.currentTime
+      const ct = bufferAnchor()
       // never read past what evict() keeps
       if (Math.max(...ranges.map((r) => r.end)) >= ct + POST_EVICT) return false
       const range = ranges.find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
@@ -417,14 +439,43 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * The CALLER owns the deadline: this can take as long as a read takes, and over a torrent that
      * is unbounded.
      */
+    /** Seconds of contiguous data past a position that make it safe to play from. */
+    const runwayFrom = (time: number) => {
+      const range = getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+      return range ? range.end - time : 0
+    }
+
     const prepareSeek = async (time: number) => {
-      if (destroyed || playableAt(time)) return
+      if (destroyed) return
+      if (runwayFrom(time) >= SEEK_RUNWAY) return
       finished = false
       preparing++
+      prepareTarget = time
+      const generation = seekGeneration
       try {
-        await seekTo(time)
+        if (!playableAt(time)) await seekTo(time)
+        /*
+         * Then keep reading until there is something to PLAY, not merely something to land on.
+         *
+         * `remuxer.seek` returns a single chunk, so the first version of this left a small island:
+         * the element arrived on covered ground, played through it in well under a second, and ran
+         * dry there. That underrun drains the decoder exactly as a seek into a hole would, and it
+         * wedged in production with every seek reporting itself as prepared. Preparing a point was
+         * never the requirement; preparing a runway is.
+         *
+         * Bounded twice over: by the runway being reached, and by a read that returns nothing new.
+         * The caller's deadline bounds the wall clock on top of that.
+         */
+        for (let attempt = 0; attempt < SEEK_RUNWAY_READS; attempt++) {
+          if (destroyed || generation !== seekGeneration || finished) break
+          if (runwayFrom(time) >= SEEK_RUNWAY) break
+          const before = runwayFrom(time)
+          await pump()
+          if (runwayFrom(time) <= before) break
+        }
       } finally {
         preparing--
+        if (prepareTarget === time) prepareTarget = undefined
       }
     }
 
@@ -564,6 +615,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     return {
       destroy: runTeardown,
       prepareSeek,
+      videoElement,
       selectSubtitleStream: (streamIndex: number | undefined) => subtitles.selectStream(streamIndex),
       indexes: metadata.indexes ?? [],
       duration: metadata.info.input.duration,
