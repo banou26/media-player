@@ -158,14 +158,33 @@ export const usePlayback = (
      * `playbackError` null and would otherwise erase the only evidence that anything went wrong.
      */
     const record = (error: unknown, recovered: boolean) => {
+      const at = Date.now()
+      const message = messageOf(error)
+      const detail = causeChain(error)
+      const errors = player.playbackErrors
+      const last = errors[errors.length - 1]
+
+      // A source that stays broken repeats one sentence for as long as it stays broken, so a
+      // consecutive repeat folds into the row it repeats rather than adding another. Only
+      // CONSECUTIVE ones: an identical failure either side of a different one is a second episode,
+      // and collapsing the two would lose the order that makes a report readable.
+      if (last && last.message === message && last.detail === detail && last.recovered === recovered) {
+        const folded: PlaybackErrorEntry = { ...last, count: last.count + 1, lastAt: at }
+        player.setSourceState({ playbackErrors: [...errors.slice(0, -1), folded] })
+        return
+      }
+
       const entry: PlaybackErrorEntry = {
-        at: Date.now(),
+        at,
+        lastAt: at,
+        count: 1,
+        // where it STARTED, kept as the row grows, because that is the position worth reporting
         atMediaTime: Number.isFinite(video.currentTime) ? video.currentTime : undefined,
-        message: messageOf(error),
-        detail: causeChain(error),
+        message,
+        detail,
         recovered,
       }
-      player.setSourceState({ playbackErrors: [...player.playbackErrors, entry] })
+      player.setSourceState({ playbackErrors: [...errors, entry] })
     }
     const fail = (error: unknown) => {
       if (cancelled) return

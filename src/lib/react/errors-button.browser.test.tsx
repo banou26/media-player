@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from './video-player'
 import { playerAssets } from '../../asset-urls'
-import { formatErrors } from './components/errors'
+import { countErrors, formatErrors } from './components/errors'
 
 /**
  * The record of failures the viewer never saw.
@@ -24,6 +24,8 @@ const sized = () => {
 
 const entry = (over: Partial<PlaybackErrorEntry> = {}): PlaybackErrorEntry => ({
   at: Date.UTC(2026, 7, 11, 17, 49, 24),
+  lastAt: Date.UTC(2026, 7, 11, 17, 49, 24),
+  count: 1,
   atMediaTime: 819,
   message: 'the media element failed: avcodec_send_packet error: End of file',
   detail: 'MediaError code 3',
@@ -113,5 +115,34 @@ describe('the playback error log', () => {
     // numbered and separated, so a report of several can be talked about
     expect(text.startsWith('1. ')).toBe(true)
     expect(text).toContain('\n\n2. ')
+  })
+
+  /**
+   * A repeat is one row, and still counts for what it is.
+   *
+   * The failure this whole control exists for repeats: a wedged element reports the same sentence
+   * every few seconds for as long as the source stays broken, and there is deliberately no ceiling
+   * on how many failures are kept. Folding a consecutive repeat into its own row is what keeps that
+   * from being both an unreadable panel and a list that grows without end.
+   */
+  it('folds a repeated failure into one row that carries its span and its count', () => {
+    const repeated = [
+      entry({ count: 40, lastAt: Date.UTC(2026, 7, 11, 17, 51, 4) }),
+      entry({ at: Date.UTC(2026, 7, 11, 17, 52, 0), lastAt: Date.UTC(2026, 7, 11, 17, 52, 0), message: 'Reading the video file failed', detail: undefined, recovered: false }),
+    ]
+
+    // forty failures, two rows: the button says how many went wrong, not how many lines it drew
+    expect(countErrors(repeated)).toBe(41)
+
+    const text = formatErrors(repeated)
+    expect(text).toContain('×40')
+    // the span it covers, so "40 times over two minutes" and "40 times in a second" stay different
+    expect(text).toContain('2026-08-11T17:49:24.000Z to 2026-08-11T17:51:04.000Z')
+    // the position and the recovery flag survive the fold
+    expect(text).toContain('(at 13:39)')
+    expect(text).toContain('[recovered]')
+    // a single failure gains neither a span nor a count
+    expect(text).toContain('2. 2026-08-11T17:52:00.000Z')
+    expect(text).not.toContain('×1')
   })
 })

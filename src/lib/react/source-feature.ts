@@ -30,9 +30,20 @@ export type TrackChoice = {
  * `cause` may be a `MediaError` that reads differently once the element has moved on.
  */
 export type PlaybackErrorEntry = {
-  /** Wall clock, so the report can be read next to a console log or a torrent's timeline. */
+  /** Wall clock of the FIRST of them, so the report can be read next to a console log. */
   at: number
-  /** Seconds into the media, which is usually the first question asked of a playback failure. */
+  /** Wall clock of the most recent one. Equal to `at` until a repeat has folded into this row. */
+  lastAt: number
+  /**
+   * How many times in a row this exact failure happened.
+   *
+   * A source that stays broken reports the same sentence every few seconds for as long as it stays
+   * broken, so consecutive identical failures fold into one row rather than filling the panel with a
+   * wall of one message. This is also what keeps the list from growing without end in that case,
+   * since there is no ceiling on how many failures are kept.
+   */
+  count: number
+  /** Seconds into the media, at the first of them, which is usually the first question asked. */
   atMediaTime?: number
   message: string
   /** The `cause` chain, already unwound, one line per level. */

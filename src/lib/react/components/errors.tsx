@@ -77,6 +77,12 @@ ${popoverStyle}
     .when {
       color: #bbb;
       ${fonts.bSmall.regular}
+
+      /* the one part of the line worth scanning for, so it is the one part at full brightness */
+      .count {
+        margin-left: 6px;
+        color: #fff;
+      }
     }
 
     .what {
@@ -101,12 +107,21 @@ const clock = (at: number) => new Date(at).toLocaleTimeString()
 const mediaTime = (seconds: number | undefined) =>
   seconds === undefined || !Number.isFinite(seconds) ? undefined : formatTime(Math.max(0, seconds))
 
+/** How many failures there have been, which is not how many rows: a repeat folds into its row. */
+export const countErrors = (errors: PlaybackErrorEntry[]) =>
+  errors.reduce((total, entry) => total + entry.count, 0)
+
 /** What lands on the clipboard: the same thing the panel shows, in the order it happened. */
 export const formatErrors = (errors: PlaybackErrorEntry[]) =>
   errors
     .map((entry, index) => {
       const at = mediaTime(entry.atMediaTime)
-      const head = `${index + 1}. ${new Date(entry.at).toISOString()}${at ? ` (at ${at})` : ''}${entry.recovered ? ' [recovered]' : ''}`
+      // A repeat carries the span it covers, so "40 times over two minutes" and "40 times in one
+      // second" are distinguishable in a report. Both happen, and they are different faults.
+      const when = entry.count > 1
+        ? `${new Date(entry.at).toISOString()} to ${new Date(entry.lastAt).toISOString()} ×${entry.count}`
+        : new Date(entry.at).toISOString()
+      const head = `${index + 1}. ${when}${at ? ` (at ${at})` : ''}${entry.recovered ? ' [recovered]' : ''}`
       return [head, entry.message, entry.detail].filter(Boolean).join('\n')
     })
     .join('\n\n')
@@ -142,7 +157,8 @@ export const ErrorsAction = () => {
     )
   }
 
-  const label = `Playback errors (${errors.length})`
+  // counted in failures rather than in rows, because a row that says ×40 is forty of them
+  const label = `Playback errors (${countErrors(errors)})`
 
   return (
     <div css={style} ref={containerRef}>
@@ -177,8 +193,11 @@ export const ErrorsAction = () => {
               <div className='entry no-hover' key={`${entry.at}-${index}`}>
                 <span className='when'>
                   {clock(entry.at)}
+                  {/* the span, so a row that is still growing is distinguishable from one that stopped */}
+                  {entry.count > 1 ? ` to ${clock(entry.lastAt)}` : ''}
                   {mediaTime(entry.atMediaTime) ? ` at ${mediaTime(entry.atMediaTime)}` : ''}
                   {entry.recovered ? ' recovered' : ''}
+                  {entry.count > 1 ? <span className='count'>{`×${entry.count}`}</span> : null}
                 </span>
                 <span className='what'>{entry.message}</span>
                 {entry.detail ? <span className='cause'>{entry.detail}</span> : null}

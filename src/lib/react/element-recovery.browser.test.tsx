@@ -116,9 +116,23 @@ describe('a media element that has failed', () => {
      * carries the count, so this asserts the log through the same surface a viewer would read it
      * through rather than through the store.
      */
-    const errorsButton = () => screen.container.querySelector('button.errors')
+    const errorsButton = () => screen.container.querySelector('button.errors') as HTMLButtonElement | null
     await expect.poll(() => !!errorsButton(), { timeout: 30_000 }).toBe(true)
     expect(errorsButton()!.getAttribute('aria-label')).toBe('Playback errors (4)')
+
+    /**
+     * Four failures, one row.
+     *
+     * They are the same failure repeated, which is what a source that stays broken produces, so they
+     * fold into a single row carrying a count. The label above still says four, because the fold is
+     * how the record is DRAWN and not what it holds: an unbounded list of one sentence repeated is
+     * both unreadable and unbounded, and this is what fixes each.
+     */
+    errorsButton()!.click()
+    await expect
+      .poll(() => screen.container.querySelectorAll('.error-list .entry').length, { timeout: 10_000 })
+      .toBe(1)
+    expect(screen.container.querySelector('.error-list .count')?.textContent).toBe('×4')
     // Four rebuilds means four libav loads, hence the generous budget on the whole test.
   }, 420_000)
 })
