@@ -295,9 +295,19 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const ranges = getTimeRanges(sourceBuffer)
       if (!ranges.length) return true
       const ct = bufferAnchor()
-      // never read past what evict() keeps
-      if (Math.max(...ranges.map((r) => r.end)) >= ct + POST_EVICT) return false
       const range = ranges.find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
+      /*
+       * Never read past what evict() keeps, measured on the run holding the anchor rather than
+       * across every island.
+       *
+       * Taking the max end over ALL ranges meant one stale island far ahead could refuse a read
+       * right where the playhead was about to be. Repeated seeking is exactly how those islands
+       * appear, and eviction is suppressed while a seek is being prepared, so they survive to do it.
+       * Seen in production as forward seeks getting a 4s runway while every BACKWARD seek collapsed
+       * to 1.0s, then 0.5s, then 0.3s, and wedged: the island left out at ~760s was past
+       * `target + POST_EVICT` for every one of them.
+       */
+      if (range && range.end >= ct + POST_EVICT) return false
       return !range || range.end < ct + BUFFER_TARGET
     }
 
