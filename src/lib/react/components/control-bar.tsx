@@ -190,6 +190,9 @@ export const ControlBar = () => {
   const pictureInPictureMode = usePlayer((state) => state.pictureInPictureMode)
   const burnedInSubtitles = usePlayer((state) => state.burnedInSubtitles)
   const subtitleTracks = usePlayer((state) => state.subtitleTracks)
+  // Keyboard seeks go through the same door as the seek bar: data first, then the playhead. See
+  // `requestSeek` on the source state for why an element that seeks into a hole is the problem.
+  const requestSeek = usePlayer((state) => state.requestSeek)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
 
   const burnIn = pictureInPictureMode === 'burn-in'
@@ -213,6 +216,7 @@ export const ControlBar = () => {
   }, [player])
 
   useEffect(() => {
+    const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
     const eventListener = (ev: KeyboardEvent) => {
       // on the window, so typing into a consumer's own input is the one case that opts out
       const target = ev.target as HTMLElement | null
@@ -232,10 +236,10 @@ export const ControlBar = () => {
       }
       else if (ev.key === 'ArrowRight') {
         if (!player.duration) return
-        player.seek(Math.min(player.currentTime + SEEK_STEP, player.duration))
+        seek(Math.min(player.currentTime + SEEK_STEP, player.duration))
       }
       else if (ev.key === 'ArrowLeft') {
-        player.seek(Math.max(player.currentTime - SEEK_STEP, 0))
+        seek(Math.max(player.currentTime - SEEK_STEP, 0))
       }
       else {
         shouldPreventDefault = false
@@ -247,7 +251,7 @@ export const ControlBar = () => {
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [player, modifyVolume])
+  }, [player, modifyVolume, requestSeek])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()

@@ -109,6 +109,14 @@ export type MediaPlayerLocalOptions =
     /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
     defaultFontUrl?: string
     bufferSize?: number
+    /**
+     * How long a seek waits for its own data before the playhead moves anyway, in ms. Default 500.
+     *
+     * Seeking into a hole is what wedges firefox's decoder, so the pipeline is asked for the target
+     * first. This is the ceiling on that wait, since a read over a torrent has none of its own. Set
+     * it to 0 to seek immediately and rely on the recovery instead.
+     */
+    seekPrepareBudgetMs?: number
 
     /** Byte spans available, painted on the seekbar and informing the thumbnail generator. */
     downloadedRanges?: DownloadedRange[]

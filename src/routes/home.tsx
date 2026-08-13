@@ -45,6 +45,12 @@ const style = css`
   }
 `
 
+// Dev only: lets a benchmark drive both arms of the seek change without rebuilding.
+const seekBudgetParam = () => {
+  const raw = new URLSearchParams(window.location.search).get('seekBudget')
+  return raw === null ? undefined : Number(raw)
+}
+
 export const Home = () => {
   const [source, setSource] = useState<RemuxerInput | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -104,6 +110,7 @@ export const Home = () => {
         {...playerAssets}
         {...sourceProps}
         title={source?.name}
+        seekPrepareBudgetMs={seekBudgetParam()}
         autoplay
       >
         {source

@@ -25,6 +25,21 @@ const RESTART_BACKOFF_MS = [0, 250, 1_000, 3_000, 10_000]
 // far enough back that an unrelated hiccup later in an episode starts from no delay again
 const RESTART_SETTLED_MS = 60_000
 
+/**
+ * How long a seek may wait for its data before the playhead moves anyway.
+ *
+ * The prevention only works while the wait is honoured, and a read over a torrent has no ceiling, so
+ * this is the ceiling. Half a second is the point where a seek stops feeling like a seek.
+ */
+const SEEK_PREPARE_BUDGET_MS = 500
+
+/**
+ * Under this gap between seek requests, it is a drag rather than a series of decisions.
+ *
+ * Kept equal to the engine's own settle window, so both layers agree on what a drag is.
+ */
+const DRAG_SETTLE_MS = 250
+
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
 
@@ -66,6 +81,7 @@ export const usePlayback = (
   const {
     read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '',
     jassubLegacyWasmUrl, defaultFontUrl, bufferSize, autoplay = false,
+    seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS,
   } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
 
   // The track the viewer picked, which is what a restart is keyed on. Distinct from the store's
@@ -111,6 +127,8 @@ export const usePlayback = (
    * deliberately not, since a streaming consumer passes a fresh closure several times a second.
    */
   const resumeRef = useRef<{ time: number, size: number } | null>(null)
+  // when the seek bar last asked for a position, which is how a drag is told from a click
+  const lastSeekRequestAt = useRef(0)
   // The renderer turns the first track on by itself, so the menu has to mirror that or it shows
   // "Disable" ticked over subtitles that are visibly on screen.
   const subtitleChoiceMade = useRef(false)
@@ -131,6 +149,54 @@ export const usePlayback = (
     controllerRef.current?.selectSubtitleStream(streamIndex)
   }, [player])
 
+  /**
+   * Seek with the data already there, or after the deadline, whichever comes first.
+   *
+   * The prevention for the firefox decoder wedge. Seeking into a hole makes the reader drain the
+   * decoder and never flush it again, so the pipeline is asked for the target first. The deadline is
+   * what keeps that honest: a read over a torrent has no ceiling, and a seek bar that waits on one
+   * is worse than the fault it avoids. So the playhead moves either when the data lands or when the
+   * budget runs out, once, whichever happens first.
+   *
+   * A seek into buffered ground resolves immediately, so scrubbing inside the buffer is unaffected.
+   */
+  const requestSeek = useCallback((time: number) => {
+    const controller = controllerRef.current
+    // no budget means the feature is off: seek at once and do not spend a read preparing something
+    // nobody is going to wait for
+    if (!controller || seekPrepareBudgetMs <= 0) { player.seek(time); return }
+
+    /*
+     * A drag is left exactly as it was.
+     *
+     * The seek bar reports a fraction on every pointermove, so preparing each one would remux per
+     * move, and waiting on each would make a scrub feel like treacle. Neither is worth paying:
+     * a drag never reproduced this fault (its seeks land ~28ms apart, far too fast for a drain to
+     * complete), and the engine already coalesces the remux to wherever the drag stops.
+     *
+     * Discrete seeks are the ones that wedge it, at a few hundred ms apart, and those get the data
+     * first.
+     */
+    const now = performance.now()
+    const dragging = now - lastSeekRequestAt.current < DRAG_SETTLE_MS
+    lastSeekRequestAt.current = now
+    if (dragging) { player.seek(time); return }
+
+    let moved = false
+    const move = () => {
+      if (moved) return
+      moved = true
+      player.seek(time)
+    }
+    const deadline = setTimeout(move, seekPrepareBudgetMs)
+    void controller
+      .prepareSeek(time)
+      // a failed prepare is not a reason to refuse the seek: the pump and the existing recovery
+      // both still apply, and refusing would strand the viewer on a bar that does nothing
+      .catch(() => {})
+      .finally(() => { clearTimeout(deadline); move() })
+  }, [player, seekPrepareBudgetMs])
+
   const selectAudioTrack = useCallback((id: string | number) => {
     if (typeof id !== 'number') return
     player.setSourceState({ selectedAudioTrack: id })
@@ -143,8 +209,8 @@ export const usePlayback = (
   const setSourceState = usePlayer((state) => state.setSourceState)
 
   useEffect(() => {
-    setSourceState({ selectSubtitleTrack, selectAudioTrack })
-  }, [setSourceState, selectSubtitleTrack, selectAudioTrack])
+    setSourceState({ selectSubtitleTrack, selectAudioTrack, requestSeek })
+  }, [setSourceState, selectSubtitleTrack, selectAudioTrack, requestSeek])
 
   useEffect(() => {
     if (!video || !canvas || !size || !read) return

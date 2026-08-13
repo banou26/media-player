@@ -128,6 +128,19 @@ export type SourceState = {
   /** Burn-in only. True while the composite is the picture on screen. */
   burnedInSubtitles: boolean
 
+  /**
+   * Move the playhead, letting the pipeline get the data there first.
+   *
+   * The chrome calls this instead of the player's own `seek`, because an element that demuxes into a
+   * hole is what wedges firefox's decoder: the underrun drains it and nothing ever flushes it again.
+   * Waiting is bounded by a deadline, so a source that cannot answer in time costs that deadline and
+   * not the whole read.
+   *
+   * Undefined for a media this player does not own, where there is no pipeline to prepare and the
+   * caller should seek directly.
+   */
+  requestSeek?: (time: number) => void
+
   /** Set when the pipeline fails. Cleared when it recovers. */
   playbackError: unknown
   /**

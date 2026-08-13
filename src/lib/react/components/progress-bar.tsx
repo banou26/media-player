@@ -184,6 +184,7 @@ const style = css`
 export const ProgressBar = () => {
   const player = usePlayer()
   const currentTime = usePlayer((state) => state.currentTime)
+  const requestSeek = usePlayer((state) => state.requestSeek)
   const duration = usePlayer((state) => state.duration)
   const size = usePlayer((state) => state.size)
   const downloadedRanges = usePlayer((state) => state.downloadedRanges)
@@ -275,8 +276,12 @@ export const ProgressBar = () => {
   useEffect(() => {
     if (seekFraction === undefined || !duration) return
     const timestamp = seekFraction * duration
-    player.seek(timestamp)
-  }, [player, seekFraction, duration])
+    // `requestSeek` gets the data in place before the playhead moves, which is what stops firefox
+    // wedging its decoder on a seek into a hole. Absent for a media this player does not own, where
+    // there is no pipeline to ask and the element's own seek is all there is.
+    if (requestSeek) requestSeek(timestamp)
+    else player.seek(timestamp)
+  }, [player, requestSeek, seekFraction, duration])
 
   const scaleX = useMemo(() => {
     return !duration || typeof currentTime !== 'number'

@@ -36,6 +36,13 @@ export type PlaybackOptions = {
 
 export type PlaybackController = {
   destroy: () => void
+  /**
+   * Get the data for a position in place BEFORE the playhead moves there.
+   *
+   * Resolves at once when that position already has data. The caller decides how long to wait,
+   * because this can take as long as a read, which over a torrent has no ceiling.
+   */
+  prepareSeek: (time: number) => Promise<void>
   selectSubtitleStream: (streamIndex: number | undefined) => void
   /** Keyframe index of the input, which is what maps a downloaded byte range onto the timeline. */
   indexes: MediaIndex[]
@@ -210,6 +217,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     let reading = false
     let seeking = false
+    // how many prepares are in flight, so eviction knows not to delete what they are fetching
+    let preparing = 0
     let finished = false
     // libav aborts the running task when a new one starts, so both flags need a generation token
     let readGeneration = 0
@@ -237,6 +246,18 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     }
 
     const evict = async (tight = false) => {
+      /*
+       * Hold off while data is being put in place for a position the playhead has not reached.
+       *
+       * Eviction is anchored on the playhead, and `prepareSeek` deliberately appends far from it, so
+       * running now deletes exactly what was just fetched. The 100ms interval below made that a
+       * certainty. The benchmark caught it as prepared seeks being the SLOWEST arm, which is the
+       * opposite of the point.
+       *
+       * `tight` still runs, because that one is the answer to a quota refusal and has to be able to
+       * free space no matter what else is happening.
+       */
+      if (preparing > 0 && !tight) return
       const ct = videoElement.currentTime
       const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
       const post = tight ? POST_EVICT_TIGHT : POST_EVICT
@@ -375,6 +396,38 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      */
     const alreadyPlayable = (time: number) => time >= lastSeekPosition && !!playheadRange()
 
+    /** Whether a GIVEN time has data behind it, as opposed to whether the playhead does. */
+    const playableAt = (time: number) =>
+      getTimeRanges(sourceBuffer).some((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+
+    /**
+     * Put the data in place for a position the playhead has NOT moved to yet.
+     *
+     * Firefox wedges its own decoder when the element demuxes into a hole: the underrun requests a
+     * drain, the drain completes, the re-prime that would flush the decoder never runs, and every
+     * packet after that comes back `avcodec_send_packet error: End of file`. Seeking only after the
+     * target has data removes the hole, and with it the drain and the whole failure.
+     *
+     * Measured on a standalone rig against a real 1080p stream: 7 wedges in 7 runs seeking the
+     * ordinary way, 0 in 4 seeking this way. The control matters, because appending first also
+     * delays the seek: delaying the seek by the same amount while appending nothing still wedged 4
+     * out of 4, so it is the data and not the delay.
+     *
+     * Returns as soon as there is nothing to wait for, so a seek into buffered ground costs nothing.
+     * The CALLER owns the deadline: this can take as long as a read takes, and over a torrent that
+     * is unbounded.
+     */
+    const prepareSeek = async (time: number) => {
+      if (destroyed || playableAt(time)) return
+      finished = false
+      preparing++
+      try {
+        await seekTo(time)
+      } finally {
+        preparing--
+      }
+    }
+
     /**
      * Where a drag reaches the consumer, at a rate a consumer can act on.
      *
@@ -437,6 +490,15 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const dragging = now - lastSeekingAt < DRAG_SETTLE_MS
       lastSeekingAt = now
       if (alreadyPlayable(time)) return
+      /*
+       * A seek for exactly this position is already running, so let it finish.
+       *
+       * `prepareSeek` starts one BEFORE the playhead moves, and the caller moves the playhead anyway
+       * once its budget runs out. Without this, the move fires `seeking`, which starts the identical
+       * read again and bumps the generation, throwing away everything the first one had done. The
+       * benchmark caught it as a seek that took twice as long as seeking the old way.
+       */
+      if (seeking && Math.abs(time - lastSeekPosition) < 0.001) return
       finished = false
       if (dragTimer) clearTimeout(dragTimer)
       if (!dragging) {
@@ -501,6 +563,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     return {
       destroy: runTeardown,
+      prepareSeek,
       selectSubtitleStream: (streamIndex: number | undefined) => subtitles.selectStream(streamIndex),
       indexes: metadata.indexes ?? [],
       duration: metadata.info.input.duration,
