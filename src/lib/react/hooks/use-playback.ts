@@ -170,13 +170,31 @@ export const usePlayback = (
      * which is knowledge rather than inference. Rapid calls are safe here anyway: each supersedes
      * the last through the engine's seek generation.
      */
+    /*
+     * A debug trace, off unless asked for.
+     *
+     * The fault this prevents is reproducible in seconds on some machines and not at all on others,
+     * so the only way to learn anything from someone else's reproduction is to have the seek say
+     * what it did. Set `window.__mediaPlayerSeekDebug = true` (the dev route does it for
+     * `?seekDebug=1`) and every seek reports whether the data was ready, how long it waited, and
+     * whether the playhead moved before the data arrived, which is the exact condition that wedges
+     * firefox.
+     */
+    const debug = typeof window !== 'undefined' && (window as { __mediaPlayerSeekDebug?: boolean }).__mediaPlayerSeekDebug
+    const startedAt = performance.now()
+
     let moved = false
+    let movedBecause: 'prepared' | 'deadline' = 'prepared'
     const move = () => {
       if (moved) return
       moved = true
       player.seek(time)
+      if (debug) {
+        // eslint-disable-next-line no-console
+        console.warn(`[media-player] seek to ${time.toFixed(2)} moved after ${Math.round(performance.now() - startedAt)}ms via ${movedBecause}${movedBecause === 'deadline' ? ' (EXPOSED: playhead moved before its data)' : ''}`)
+      }
     }
-    const deadline = setTimeout(move, seekPrepareBudgetMs)
+    const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)
     void controller
       .prepareSeek(time)
       // a failed prepare is not a reason to refuse the seek: the pump and the existing recovery

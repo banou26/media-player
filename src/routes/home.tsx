@@ -59,6 +59,12 @@ const seekBudgetParam = () => {
  * with a throttle, 0 in 6 without one. Over a torrent this lateness comes free; on this route it has
  * to be manufactured or the whole rig quietly tests nothing.
  */
+// `?seekDebug=1` makes every seek report what it did, which is how someone else's reproduction
+// becomes evidence rather than an anecdote
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('seekDebug')) {
+  ;(window as unknown as { __mediaPlayerSeekDebug: boolean }).__mediaPlayerSeekDebug = true
+}
+
 const readDelayParam = () => Number(new URLSearchParams(window.location.search).get('readDelay') ?? 0)
 
 const slowRead = (read: RemuxerInput['read'], delay: number): RemuxerInput['read'] =>
