@@ -51,6 +51,12 @@ const buffered = (video: HTMLVideoElement) =>
 const covers = (video: HTMLVideoElement, time: number) =>
   buffered(video).some(([start, end]) => start <= time + 1 && time < end)
 
+/** Seconds of contiguous data past a position, which is what makes it playable rather than landable. */
+const runwayFrom = (video: HTMLVideoElement, time: number) => {
+  const range = buffered(video).find(([start, end]) => start <= time + 1 && time < end)
+  return range ? range[1] - time : 0
+}
+
 describe('preparing a seek', () => {
   it('puts the target in the buffer and leaves the playhead where it was', async () => {
     const source = await httpSource()
@@ -73,8 +79,8 @@ describe('preparing a seek', () => {
       await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
       const startedAt = video.currentTime
 
-      // far enough in that nothing has fetched it yet, and inside a 5s fixture
-      const target = Math.min(3.5, Math.max(0, controller.duration - 0.5))
+      // unbuffered when the test starts, and early enough that a real runway fits in a ~5s fixture
+      const target = Math.min(1.2, Math.max(0, controller.duration - 0.5))
       expect(covers(video, target), 'the target must start unbuffered or this proves nothing').toBe(false)
 
       await controller.prepareSeek(target)
@@ -82,6 +88,20 @@ describe('preparing a seek', () => {
       expect(covers(video, target)).toBe(true)
       // the whole point: the element has NOT moved, so it never demuxed into the hole
       expect(video.currentTime).toBe(startedAt)
+
+      /**
+       * And enough to PLAY from, not merely to land on.
+       *
+       * `remuxer.seek` returns one chunk, so preparing only the target instant leaves an island the
+       * element plays through in well under a second. It then runs dry there, and that underrun
+       * drains firefox's decoder exactly as a seek into a hole would. Reproduced in production with
+       * every seek reporting itself prepared and runways of 0.5s to 1.9s.
+       *
+       * The reach is capped by the fixture, which is about 5s long, so this asks for whatever is
+       * left rather than a fixed three seconds.
+       */
+      const wanted = Math.min(2.5, controller.duration - target - 0.2)
+      expect(runwayFrom(video, target), 'a prepared seek must leave something to play').toBeGreaterThan(wanted)
     } finally {
       controller.destroy()
       container.remove()

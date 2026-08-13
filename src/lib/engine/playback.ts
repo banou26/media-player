@@ -451,9 +451,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       finished = false
       preparing++
       prepareTarget = time
-      const generation = seekGeneration
       try {
         if (!playableAt(time)) await seekTo(time)
+        /*
+         * Captured AFTER the seek, never before.
+         *
+         * `seekTo` bumps `seekGeneration` itself, so a generation read before it is stale the moment
+         * it returns and every staleness check below fails on its first pass. That silently disabled
+         * this entire loop: prepares came back in ~170ms with a 0.5s to 1.9s island and the runway
+         * was never built at all.
+         */
+        const generation = seekGeneration
         /*
          * Then keep reading until there is something to PLAY, not merely something to land on.
          *
