@@ -1,3 +1,5 @@
+
+
 # @banou/media-player
 
 A React video player for files the browser cannot open on its own. It takes a `read(offset, size)` and
@@ -21,6 +23,7 @@ import MediaPlayer from '@banou/media-player'
   libavWorkerUrl="/libav-worker.js"
   jassubWorkerUrl={jassubWorkerUrl}
   jassubWasmUrl="/jassub-worker-modern.wasm"
+  jassubLegacyWasmUrl="/jassub-worker.wasm"
   defaultFontUrl="/default.woff2"
   title="episode.mkv"
   autoplay
