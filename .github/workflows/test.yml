@@ -1,0 +1,58 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # vite-plus 0.2.4 asks for ^20.19.0 || ^22.18.0 || >=24.11.0
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # `npm test` runs scripts/fixture.mjs first, which synthesizes the test media with ffmpeg
+      # rather than carrying a multi megabyte blob in git history.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
+      # The browser project pins Chrome's sandbox ON (the reasoning is in vite.config.ts: an
+      # unsandboxed Chrome offers a hardware decoder whose GPU process dies mid stream, which reads
+      # exactly like a player bug). ubuntu images restrict the unprivileged user namespace that
+      # sandbox opens, so lift the restriction instead of dropping the sandbox.
+      - name: Allow the Chrome sandbox to open a user namespace
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      # vite.config.ts prefers a Chrome already on PATH and falls back to playwright's own download,
+      # so make sure that fallback exists and that the shared libraries either binary needs are present.
+      - run: npx playwright install --with-deps chromium
+
+      # public/ is gitignored, so a fresh checkout carries none of the libav and jassub assets the
+      # player loads at runtime. Without this the local playback test times out waiting for metadata.
+      - run: npm run copy-assets
+
+      - run: npm run types
+
+      - run: npm test
+
+      # A failed browser assertion leaves its evidence as a screenshot on disk and nowhere in the log.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failure-screenshots
+          path: |
+            src/**/__screenshots__/
+            .vitest-attachments/
+          if-no-files-found: ignore
