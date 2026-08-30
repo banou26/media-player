@@ -2,7 +2,7 @@ import type { ASS_Event } from 'jassub'
 import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
 
 import JASSUB from 'jassub'
-import { parse, stringify } from 'ass-compiler'
+import { parse } from 'ass-compiler'
 
 export type SubtitleStream = { streamIndex: number, title: string, language: string }
 
@@ -92,12 +92,6 @@ const styleIndex = (header: SubtitleHeaderPart, name: string) => {
   return header.styles.get(key) ?? header.styles.get('Default') ?? 0
 }
 
-// cleared so jassub scales the script to the canvas, not to the authored resolution
-const renderable = (content: string) => {
-  const parsed = parse(content)
-  return stringify({ ...parsed, info: { ...parsed.info, ScaledBorderAndShadow: 'no', LayoutResX: '', LayoutResY: '' } })
-}
-
 /**
  * `\r?\n`, not `\r\n`: an ASS header muxed straight out of a matroska file uses CRLF, but one libav
  * CONVERTED from another format (an srt track, most commonly) is LF only, and requiring CRLF rejected it.
@@ -168,7 +162,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       onDemandRender: false,
       video,
       canvas,
-      subContent: renderable(header.content),
+      subContent: header.content,
       workerUrl,
       modernWasmUrl: wasmUrl,
       ...legacyWasmUrl ? { wasmUrl: legacyWasmUrl } : {},
@@ -218,7 +212,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     jassub.freeTrack()
     const header = headers.get(next)
     if (!header) return
-    jassub.setTrack(renderable(header.content))
+    jassub.setTrack(header.content)
     for (const part of dialogues.get(next)?.values() ?? []) createEvent(jassub, part.assEvent)
     jassub.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
   }

@@ -127,8 +127,69 @@ export const ensureScaleFixture = async () => {
   return SCALE_FIXTURE_PATH
 }
 
+export const HEADER_FIXTURE = 'subtitle-header.mkv'
+export const HEADER_FIXTURE_PATH = PUBLIC_DIR + HEADER_FIXTURE
+
+/**
+ * A header whose every field has to reach libass untouched, in one frame.
+ *
+ * Two styles, neither called Default, so an event that resolved its style by anything other than the
+ * right index would land on the wrong one and be obvious. Both carry a fat Outline in a bright colour
+ * so the border is measurable rather than lost against the picture, and the lower line adds a blur.
+ * That gives two independent probes of the two fields the player used to rewrite:
+ *
+ *   ScaledBorderAndShadow  scales Outline and Shadow with the script, so it moves the plain line's box
+ *   LayoutResX/Y           scales blur radii, so it moves the GROWTH from the plain box to the blurred one
+ *
+ * The two lines sit at opposite alignments so a single frame carries both and each can be measured in
+ * its own half of the canvas.
+ */
+export const HEADER_HEADER = [
+  '[Script Info]',
+  'ScriptType: v4.00+',
+  'WrapStyle: 0',
+  'PlayResX: 1280',
+  'PlayResY: 720',
+  'LayoutResX: 1280',
+  'LayoutResY: 720',
+  'ScaledBorderAndShadow: yes',
+  '',
+  '[V4+ Styles]',
+  'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  'Style: Plain,Liberation Sans,45,&H00FFFFFF,&H000000FF,&H0000FFFF,&H00000000,0,0,0,0,100,100,0,0,1,6,0,8,10,10,40,1',
+  'Style: Blurred,Liberation Sans,45,&H00FFFFFF,&H000000FF,&H0000FFFF,&H00000000,0,0,0,0,100,100,0,0,1,6,0,2,10,10,40,1',
+  '',
+  '[Events]',
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Plain,,0,0,0,,HHHHHHHH',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Blurred,,0,0,0,,{\\blur6}HHHHHHHH',
+  '',
+].join('\n')
+
+export const ensureHeaderFixture = async () => {
+  if (await exists(HEADER_FIXTURE_PATH)) return HEADER_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = HEADER_FIXTURE_PATH + '.ass'
+  await writeFile(subs, HEADER_HEADER)
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-i', subs,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=eng',
+    HEADER_FIXTURE_PATH,
+  ])
+  await rm(subs, { force: true })
+  return HEADER_FIXTURE_PATH
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture]) {
+  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureHeaderFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
