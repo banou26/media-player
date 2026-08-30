@@ -94,8 +94,11 @@ export default defineConfig({
             // offering hardware decode after 3 GPU crashes PER PROCESS, which is why a reused browser
             // appeared to "warm up" and pass from the fourth run on. No user hits this: a real browser
             // is sandboxed. A test rig that is not will invent bugs that do not exist.
+            // `--mute-audio` is output only: currentTime, buffered and the decode path are identical
+            // muted, so it cannot change a result. Without it a suite that plays real media takes
+            // over the speakers of whatever machine runs it.
             provider: playwright({
-              launchOptions: { executablePath: findChrome(), chromiumSandbox: true },
+              launchOptions: { executablePath: findChrome(), chromiumSandbox: true, args: ['--mute-audio'] },
             }),
             /**
              * The viewport is set explicitly because the default is 414x896, a phone.
