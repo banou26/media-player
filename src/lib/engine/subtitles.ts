@@ -35,10 +35,29 @@ export type SubtitleRendererOptions = {
    * which throws. So leaving this unset does not degrade to the slower build, it fails outright.
    */
   legacyWasmUrl?: string
-  /** Fallback face for `liberation sans`. Without it jassub falls back to whatever the wasm build embeds. */
+  /**
+   * Fallback face for `liberation sans`. Without it jassub falls back to whatever the wasm build embeds.
+   *
+   * May be relative: it is resolved against the document before the worker sees it, for the reason
+   * given on `workerFetched`.
+   */
   defaultFontUrl?: string
   onStreams?: (streams: SubtitleStream[]) => void
 }
+
+/**
+ * A url the WORKER will fetch, resolved against the document first.
+ *
+ * jassub's worker is built from a `blob:` url, so a relative url handed to it resolves against that
+ * blob inside the worker and the fetch never lands. For the wasm that fails loudly. For the fallback
+ * font it fails in SILENCE: libass is left with no face to draw with, so the track renders nothing at
+ * all and the picture simply has no subtitles on it, with no error anywhere to say why.
+ *
+ * `workerUrl` is deliberately not passed through here. `new Worker()` is called on the main thread,
+ * where a relative url already resolves against the document.
+ */
+const workerFetched = (url: string | undefined) =>
+  url === undefined ? undefined : new URL(url, document.baseURI).toString()
 
 const convertTimestamp = (ms: number) => new Date(ms).toISOString().slice(11, 22)
 
@@ -126,7 +145,10 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
 export type SubtitleRenderer = ReturnType<typeof createSubtitleRenderer>
 
 export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
-  const { video, canvas, workerUrl, wasmUrl, legacyWasmUrl, defaultFontUrl } = options
+  const { video, canvas, workerUrl } = options
+  const wasmUrl = workerFetched(options.wasmUrl)!
+  const legacyWasmUrl = workerFetched(options.legacyWasmUrl)
+  const defaultFontUrl = workerFetched(options.defaultFontUrl)
   let jassub: JASSUB | undefined
   let attachments: [string, Uint8Array][] = []
   const headers = new Map<number, SubtitleHeaderPart>()
