@@ -1,4 +1,3 @@
-import type { ParsedASS, ParsedASSStyles } from 'ass-compiler'
 import type { ASS_Event } from 'jassub'
 import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
 
@@ -10,8 +9,17 @@ export type SubtitleStream = { streamIndex: number, title: string, language: str
 /** -1 turns subtitles off. It frees the track and matches no header, so nothing is set. */
 export const SUBTITLES_OFF = -1
 
-type SubtitleHeaderPart = { type: 'header', streamIndex: number, content: string, eventsContent: string, parsed: ParsedASS }
-type SubtitleDialoguePart = { type: 'dialogue', streamIndex: number, index: number, assEvent: ASS_Event }
+/**
+ * jassub's `ASS_Event` types `Style` as a string, which the library it wraps does not agree with:
+ * the field is written straight through to libass's `int Style`, an index into the track's style
+ * list. Corrected once, here, so a name cannot end up in it again.
+ */
+type StyledEvent = Omit<ASS_Event, 'Style'> & { Style: number }
+
+const createEvent = (jassub: JASSUB, event: StyledEvent) => jassub.createEvent(event as unknown as ASS_Event)
+
+type SubtitleHeaderPart = { type: 'header', streamIndex: number, content: string, eventsContent: string, styles: Map<string, number> }
+type SubtitleDialoguePart = { type: 'dialogue', streamIndex: number, index: number, assEvent: StyledEvent }
 
 export type SubtitleRendererOptions = {
   video: HTMLVideoElement
@@ -34,35 +42,36 @@ export type SubtitleRendererOptions = {
 
 const convertTimestamp = (ms: number) => new Date(ms).toISOString().slice(11, 22)
 
-const appendParsedStyle = (jassub: JASSUB, style: ParsedASSStyles['style'][number]) =>
-  jassub.createStyle({
-    ...style,
-    treat_fontname_as_pattern: 0,
-    Blur: 0,
-    Justify: 0,
-    FontName: style.Fontname,
-    FontSize: Number(style.Fontsize),
-    PrimaryColour: Number(style.PrimaryColour),
-    SecondaryColour: Number(style.SecondaryColour),
-    OutlineColour: Number(style.OutlineColour),
-    BackColour: Number(style.BackColour),
-    Bold: Number(style.Bold),
-    Italic: Number(style.Italic),
-    Underline: Number(style.Underline),
-    StrikeOut: Number(style.StrikeOut),
-    ScaleX: Number(style.ScaleX),
-    ScaleY: Number(style.ScaleY),
-    Spacing: Number(style.Spacing),
-    Angle: Number(style.Angle),
-    BorderStyle: Number(style.BorderStyle),
-    Outline: Number(style.Outline),
-    Shadow: Number(style.Shadow),
-    Alignment: Number(style.Alignment),
-    MarginL: Number(style.MarginL),
-    MarginR: Number(style.MarginR),
-    MarginV: Number(style.MarginV),
-    Encoding: Number(style.Encoding),
-  } as Parameters<JASSUB['createStyle']>[0])
+/**
+ * How many styles libass keeps in front of the ones the file declares.
+ *
+ * `ass_new_track` always allocates its own "Default" at index 0 before parsing a line of the header,
+ * so the file's first style lands at 1. That number is what an event's `Style` field holds: libass
+ * reads it as an index into the track's style list and nothing else. `subtitle-scale.browser.test.tsx`
+ * is what pins this, by measuring the rendered text against what libass itself draws.
+ */
+const LIBASS_OWN_STYLES = 1
+
+const headerStyles = (content: string) =>
+  // a duplicated name resolves to the LAST one, the way libass's own lookup scans the list backwards
+  new Map(parse(content).styles.style.map((style, index) => [style.Name, index + LIBASS_OWN_STYLES]))
+
+/**
+ * The index libass will resolve this event's style to.
+ *
+ * jassub types `ASS_Event.Style` as a string and writes it straight through to an `int`, so handing
+ * it a style NAME stores 0, which is libass's own default: Arial at size 18, with margins and a drop
+ * shadow of its own. Subtitles still appear, in a face and a size the file never asked for.
+ *
+ * Falling back to the header's own "Default", then to 0, is what libass does for a name it cannot
+ * find. The leading-`*` strip and the case fold on "Default" are its normalisation, kept so a
+ * `*Default` written by an older tool resolves here too.
+ */
+const styleIndex = (header: SubtitleHeaderPart, name: string) => {
+  const stripped = name.replace(/^\*+/, '')
+  const key = stripped.toLowerCase() === 'default' ? 'Default' : stripped
+  return header.styles.get(key) ?? header.styles.get('Default') ?? 0
+}
 
 // cleared so jassub scales the script to the canvas, not to the authored resolution
 const renderable = (content: string) => {
@@ -84,7 +93,7 @@ const toHeaderPart = (fragment: SubtitleFragment & { type: 'header' }): Subtitle
     console.warn(`subtitle stream ${fragment.streamIndex} has no Events format, ignoring the track`)
     return null
   }
-  return { type: 'header', streamIndex: fragment.streamIndex, content: fragment.content, eventsContent, parsed: parse(fragment.content) }
+  return { type: 'header', streamIndex: fragment.streamIndex, content: fragment.content, eventsContent, styles: headerStyles(fragment.content) }
 }
 
 const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment & { type: 'dialogue' }): SubtitleDialoguePart => {
@@ -102,6 +111,7 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
     index: dialogueIndex,
     assEvent: {
       ...event,
+      Style: styleIndex(header, event.Style),
       Effect: event.Effect ?? '',
       Text: event.Text.raw,
       Duration: (event.End - event.Start) * 1000,
@@ -109,7 +119,7 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
       End: event.End * 1000,
       ReadOrder: dialogueIndex,
       _index: dialogueIndex,
-    } as ASS_Event,
+    } as StyledEvent,
   }
 }
 
@@ -149,7 +159,6 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     // jassub 1.8.x binds setRate as the ratechange listener, so the Event becomes the rate
     video.removeEventListener('ratechange', (jassub as unknown as { _boundSetRate: EventListener })._boundSetRate)
     video.addEventListener('ratechange', onRateChange)
-    for (const style of header.parsed.styles.style) appendParsedStyle(jassub, style)
   }
 
   const pushAttachments = (incoming: Attachment[]) => {
@@ -175,7 +184,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         const part = toDialoguePart(header, fragment)
         if (byIndex.has(part.index)) continue
         byIndex.set(part.index, part)
-        if (selected === fragment.streamIndex) jassub?.createEvent(part.assEvent)
+        if (selected === fragment.streamIndex && jassub) createEvent(jassub, part.assEvent)
       }
     }
   }
@@ -188,8 +197,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     const header = headers.get(next)
     if (!header) return
     jassub.setTrack(renderable(header.content))
-    for (const style of header.parsed.styles.style) appendParsedStyle(jassub, style)
-    for (const part of dialogues.get(next)?.values() ?? []) jassub.createEvent(part.assEvent)
+    for (const part of dialogues.get(next)?.values() ?? []) createEvent(jassub, part.assEvent)
     jassub.setCurrentTime(video.paused, video.currentTime, video.playbackRate)
   }
 
