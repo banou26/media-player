@@ -21,17 +21,15 @@ const VOLUME_STEP = 0.05
 const SEEK_STEP = 5
 
 /**
- * Two stacked lines inside a tooltip, with a width to wrap against.
+ * Two stacked lines inside a tooltip.
  *
- * Applied to the content rather than to the tooltip, because react-tooltip renders into a portal and
- * an unconstrained tooltip grows to one long line that runs off the side of the player.
+ * The width to wrap against is no longer here: TooltipDisplay bounds every chip it draws, at the
+ * same 26 units this had imposed by hand, so a call site only says what its content is.
  */
 const tooltipLinesStyle = css`
   display: flex;
   flex-direction: column;
   gap: calc(0.4 * var(--mp-unit));
-  max-width: calc(26 * var(--mp-unit));
-  white-space: normal;
 
   .hint {
     opacity: 0.72;
@@ -334,9 +332,9 @@ export const ControlBar = () => {
                   </button>
                 }
                 toolTipText={
-                  // The tooltip is portaled out of this subtree, so the control bar's own rules
-                  // never reach it: a bare `small` stays inline and runs straight on from the line
-                  // above it. Both lines carry their layout themselves.
+                  // The chip is drawn in its own subtree, where the control bar's rules never
+                  // reach it: a bare `small` stays inline and runs straight on from the line above
+                  // it. Both lines carry their layout themselves.
                   <span css={tooltipLinesStyle}>
                     <span className='lead'>
                       {!burnIn

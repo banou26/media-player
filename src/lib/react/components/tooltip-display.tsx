@@ -13,9 +13,31 @@ export enum buttonSize {
 
 const style = (size: buttonSize) => css`
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
 
-  border-radius: calc(0.4 * var(--mp-unit));
+  /*
+   * Bounded here rather than at each call site.
+   *
+   * react-tooltip's own chip rule carries width: max-content, so with nothing opposing it a chip
+   * grows to the widest UNWRAPPED line of its content: a two sentence tooltip measured 1178px
+   * through this component. Both declarations are load bearing, since a bound with no wrapping only
+   * moves the overflow inside a narrow box. 26 units is the width control-bar.tsx was already
+   * imposing on its own two line tooltip by hand, so nothing in the bar changes shape.
+   */
+  max-width: min(calc(26 * var(--mp-unit)), calc(100vw - calc(2.4 * var(--mp-unit))));
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+
+  /*
+   * The radius carries !important for the same reason the paddings below do.
+   *
+   * react-tooltip injects its stylesheet from a passive effect while emotion inserts through
+   * useInsertionEffect, which runs earlier, so react-tooltip's sheet lands in the head LAST at
+   * exactly this specificity and wins every tie. Its own radius is 3px, which is what was drawn
+   * here until this was stated.
+   */
+  border-radius: calc(0.4 * var(--mp-unit))!important;
   user-select: none;
 
   z-index: 3;
