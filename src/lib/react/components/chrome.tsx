@@ -108,13 +108,56 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, childr
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
   // a tap and a click mean different things, so the last pointer kind is remembered
   const lastPointerType = useRef<string>('mouse')
+  // where the mouse last was, which is where it still is when nothing has moved
+  const pointer = useRef({ x: -1, y: -1 })
+  const root = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
+
+  // The caller's ref still gets the element: video.js attaches the fullscreen container through it,
+  // and this needs the same node to hit test against.
+  const setRoot = (element: HTMLDivElement | null) => {
+    root.current = element
+    if (typeof ref === 'function') ref(element)
+    else if (ref) (ref as { current: HTMLDivElement | null }).current = element
+  }
+
+  /**
+   * Is the mouse sitting on something it could press right now?
+   *
+   * The hide is a timeout on the last MOVEMENT, so a pointer parked on a control still runs it out
+   * and the control disappears from under the cursor. Everything then falls through to the video:
+   * `elementFromPoint` at the button's own centre returns the `video`, so a click pauses playback
+   * and a right click offers the browser's video menu rather than the control's. That is how a link
+   * drawn in an overlay stops behaving like a link, which is what this exists to stop.
+   *
+   * Only what actually takes pointer events can be hit, so this needs no list of selectors: the
+   * chrome's own layers opt out, an overlay item opts out until an app opts a child back in, and the
+   * picture is excluded here because resting on the picture is exactly when hiding is right.
+   *
+   * The mouse only. A finger has no resting position, and `elementFromPoint` on the last tap would
+   * keep the controls up forever after one press.
+   */
+  const pointerRestsOnAControl = () => {
+    if (lastPointerType.current !== 'mouse') return false
+    const { x, y } = pointer.current
+    if (!root.current || x < 0) return false
+    const hit = document.elementFromPoint(x, y)
+    return !!hit && root.current.contains(hit) && !hit.closest('.video')
+  }
+
+  const hideUnlessTheMouseIsOnAControl = () => {
+    if (pointerRestsOnAControl()) {
+      autoHide.current = setTimeout(hideUnlessTheMouseIsOnAControl, AUTO_HIDE_DELAY)
+      return
+    }
+    setHideUI(true)
+  }
 
   const reveal = () => {
     setHideUI(false)
     clearTimeout(autoHide.current)
-    autoHide.current = setTimeout(() => setHideUI(true), AUTO_HIDE_DELAY)
+    autoHide.current = setTimeout(hideUnlessTheMouseIsOnAControl, AUTO_HIDE_DELAY)
   }
 
   // Hides after the delay whether or not playback is running. A finger produces no move, so this is
@@ -122,6 +165,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, childr
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     lastPointerType.current = event.pointerType
     if (event.pointerType !== 'mouse') return
+    pointer.current = { x: event.clientX, y: event.clientY }
     reveal()
   }
 
@@ -157,7 +201,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, childr
   return (
     <div
       css={style}
-      ref={ref}
+      ref={setRoot}
       onPointerMove={onPointerMove}
       onPointerDown={onPointerDown}
       onMouseOut={onMouseOut}
