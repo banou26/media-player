@@ -51,3 +51,19 @@ export const SubtitlesInPicture = (props: SVGProps<SVGSVGElement>) => (
     <path d='M14.5 18.5h2m2 0h1' />
   </svg>
 )
+
+/**
+ * The same frame with the captions still on the MAIN picture: burn-in is available but off.
+ *
+ * The pair exists because that control is the one button in the bar whose glyph did not move with its
+ * state, so the state was carried by an accent colour and by nothing else. A pair, not a slash: a
+ * slashed resting state reads as unavailable, and the subtitles button beside it already draws
+ * Feather's slash for its own off state.
+ */
+export const SubtitlesOutsidePicture = (props: SVGProps<SVGSVGElement>) => (
+  <svg {...iconProps} {...props}>
+    <path d='M21 11V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h5' />
+    <rect x='12' y='13' width='10' height='8' rx='1' ry='1' />
+    <path d='M6 9h3m2 0h2' />
+  </svg>
+)

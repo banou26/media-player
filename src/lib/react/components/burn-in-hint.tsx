@@ -59,7 +59,7 @@ const style = css`
     flex: none;
     font-size: calc(2.6 * var(--mp-unit));
     line-height: 1;
-    color: #6EA8FE;
+    color: #fff;
   }
 `
 

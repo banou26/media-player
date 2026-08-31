@@ -10,7 +10,7 @@ import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
-import { SubtitlesInPicture } from './icons'
+import { SubtitlesInPicture, SubtitlesOutsidePicture } from './icons'
 import ErrorsAction from './errors'
 import SettingsAction from './settings'
 import SubtitlesAction from './subtitles'
@@ -95,16 +95,6 @@ const style = css`
           cursor: default;
           opacity: .4;
         }
-      }
-
-      /**
-       * The burn-in control's own on state.
-       *
-       * Not \`colors.hover\`: the pointer is on the button at the moment of the click, so an on state
-       * drawn in the hover colour is invisible exactly when it is being looked for.
-       */
-      button[aria-pressed='true'] svg {
-        stroke: ${colors.accent};
       }
 
       .play, .sound, .time, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
@@ -333,8 +323,13 @@ export const ControlBar = () => {
                     aria-label={burnIn ? 'Put the subtitles in the video' : 'Picture in picture'}
                     aria-pressed={burnIn ? burnedInSubtitles : undefined}
                   >
+                    {/* The glyph carries the on state, which is what every other toggle in this bar
+                        does. It used to be carried by an accent stroke instead, and that was the only
+                        blue in the chrome. */}
                     {burnIn
-                      ? <SubtitlesInPicture />
+                      ? burnedInSubtitles
+                        ? <SubtitlesInPicture />
+                        : <SubtitlesOutsidePicture />
                       : <img src={pictureInPicture} alt='' />}
                   </button>
                 }
