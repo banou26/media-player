@@ -14,6 +14,10 @@
       "types": "./dist/engine/index.d.ts",
       "import": "./dist/engine/index.js"
     },
+    "./remote": {
+      "types": "./dist/remote/index.d.ts",
+      "import": "./dist/remote/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -43,6 +47,7 @@
     "ass-compiler": "^0.1.16",
     "jassub": "^1.8.6",
     "libav-wasm": "^0.8.4",
+    "osra": "^0.6.12",
     "react-feather": "^2.0.10",
     "react-tooltip": "^5.28.0"
   },

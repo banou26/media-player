@@ -2,8 +2,9 @@
 import type { ReactNode } from 'react'
 import type { DownloadedRange } from './source-feature'
 import type { DelegatedTracks, ExternalThumbnails, PlayerMedia } from './media'
+import type { ExposePlayerOptions } from '../remote'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { useContainerAttach, useMediaAttach } from '@videojs/react'
 
@@ -23,6 +24,15 @@ export type MediaPlayerSource =
 
 /** Shared by both arms: nothing here depends on who owns the media. */
 type CommonOptions = {
+  /**
+   * Serve this player to the document that frames this one, so it can be read and driven from there
+   * through `mediaPlayer` (from `@banou/media-player/remote`). `true` serves the framing window and
+   * nothing else; an options object narrows the embedder by origin or replaces the transport, and may
+   * be written inline, since `id`, `origin` and `channel` are watched by value. A `transport` or
+   * `signal` is read when the player is served and changing either needs a remount. Off by default, and a
+   * no-op in a document nobody frames.
+   */
+  expose?: boolean | ExposePlayerOptions
   /**
    * Drawn across the top of the picture, in a layer of its own.
    *
@@ -191,6 +201,37 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // permanent no-op.
   const media = remote?.media ?? video
   useEffect(() => { setMedia?.(media); return () => setMedia?.(null) }, [media, setMedia])
+
+  // Served after it is attached, and re-served when the media changes: what an embedder drives is
+  // whatever this player drives at the time. Keyed on the option's `origin` and `channel`, not on the
+  // object: an inline `expose={{ origin }}` is a new object on every render, and re-serving on each
+  // would tell the embedder the media was swapped several times a second. `transport` and `signal`
+  // are read at serve time and a change to either needs a remount, which the prop's doc says.
+  //
+  // `id` is watched: a prop whose id changes has to be re-served under the new one, or the document
+  // keeps announcing under the old id and an embedder asking for the new one waits for ever.
+  //
+  // Imported lazily, so `osra` is a dependency of `@banou/media-player/remote` and not of every app
+  // that renders a player without ever exposing one.
+  const { expose } = options
+  const exposeOptions = expose === true ? {} : expose || undefined
+  const latestExpose = useRef(exposeOptions)
+  latestExpose.current = exposeOptions
+  const exposeId = exposeOptions ? exposeOptions.id : undefined
+  const exposeOrigin = exposeOptions ? exposeOptions.origin : undefined
+  const exposeChannel = exposeOptions ? exposeOptions.channel : undefined
+  useEffect(() => {
+    if (!expose || !media) return
+    let stop: (() => void) | undefined
+    let dropped = false
+    import('../remote')
+      .then(({ exposePlayer }) => {
+        if (dropped) return
+        stop = exposePlayer(media, latestExpose.current ?? {})
+      })
+      .catch(() => {})
+    return () => { dropped = true; stop?.() }
+  }, [media, !!expose, exposeId, exposeOrigin, exposeChannel])
 
   // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
   // so there is nothing for them to attach to and nothing to guard at the call site.

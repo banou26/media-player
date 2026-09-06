@@ -30,6 +30,7 @@ export default defineConfig({
       entry: {
         index: 'src/lib/index.tsx',
         'engine/index': 'src/lib/engine/index.ts',
+        'remote/index': 'src/lib/remote/index.ts',
       },
       fileName: (_format, name) => `${name}.js`,
       formats: ['es'],

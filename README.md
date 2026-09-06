@@ -138,6 +138,64 @@ its published name so it stays an honest consumer.
   Built by `vite.config.ts` into `build/`.
 - `src/lib/engine/` the pipeline, with no React in it: MediaSource feeding, remux, jassub, thumbnails.
   Published as `@banou/media-player/engine`.
+- `src/lib/remote` is the player driven from ANOTHER document, over [osra](https://osra.banou.dev).
+  Published as `@banou/media-player/remote`.
+
+  In the document that renders the player, one prop serves it to whoever frames that document,
+  and only to them, or to a named origin:
+
+  ```tsx
+  <MediaPlayer expose read={read} size={size} publicPath="/" {...workers} />
+  <MediaPlayer expose={{ origin: 'https://anime.fkn.app' }} media={media} />
+  ```
+
+  A document that serves more than one player gives each an id, and an embedder asks for the one it
+  wants:
+
+  ```tsx
+  <MediaPlayer expose={{ id: 'left' }} {...left} />
+  <MediaPlayer expose={{ id: 'right' }} {...right} />
+  ```
+
+  ```ts
+  const left = mediaPlayer(iframe, { id: 'left', origin })
+  const right = mediaPlayer(iframe, { id: 'right', origin })
+  ```
+
+  Both sides default to one unnamed player, so a document with one never says it. Whatever the count,
+  it is ONE connection per document in each direction: the ids multiplex over it, serving an id twice
+  replaces that player (which is how a source switch is followed), and asking for an id nobody serves
+  yet simply waits until somebody does.
+
+  In the embedder, `mediaPlayer` hands back a media of its own, the same `PlayerMedia` shape the
+  player drives, so it reads, moves, listens and can even be handed to a second `<MediaPlayer>`:
+
+  ```ts
+  import { mediaPlayer } from '@banou/media-player/remote'
+
+  const player = mediaPlayer(iframe, { origin: 'https://torrent.fkn.app' })
+  await player.ready
+  await player.play()
+  player.currentTime = 30
+  player.addEventListener('seeked', () => console.log(player.currentTime))
+  player.destroy()
+  ```
+
+  `play()` settles with the far element's own answer and rejects if the mirror is destroyed while it
+  is in flight, the way an element's rejects on an interrupted play, so await it or catch it;
+  `pause()` and `load()` swallow theirs.
+
+  Reads are synchronous because the far side is mirrored: every event over there arrives with a
+  snapshot, and a write moves the mirror at once before going out to be applied. `play()` settles
+  with the far element's own answer, so an autoplay refusal there rejects here. `ready` stays pending
+  while nobody answers and rejects on `destroy()` or an aborted `signal`; a `MessagePort` whose peer
+  has gone raises no event, so nothing can tell a dead transport from a slow one and the wait has to
+  be bounded rather than waited out. Use `signal` for the player's whole lifetime, or
+  `Promise.race([player.ready, timeout])` for the wait alone.
+  A player that switches sources, or a player document that reloads, is followed: the mirror reports
+  `emptied` and then the new state, the way an element would. Hand a remote player to a second
+  `<MediaPlayer media={player}>` after `ready`. A document served with no frame around it serves
+  nobody; `exposePlayer(media)` does the same without React.
 - `src/lib/react/` the player component, its chrome, and the hooks.
 
 Built by `vite.lib.config.ts` into `dist/`, which is what npm publishes.
