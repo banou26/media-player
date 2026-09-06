@@ -24,6 +24,17 @@ export { DEFAULT_PLAYER_ID, PLAYER_CHANNEL, PLAYER_EVENTS } from './protocol'
 /** How long a peer has to answer its handshake before the mirror stops waiting on it and moves on. */
 const HANDSHAKE_MS = 10_000
 /** How many embedders one player will report to, per id. A page needs one; the cap is there so a peer cannot grow the set without bound. */
+/**
+ * How long `autoplay` waits for the far player to actually start before calling it refused.
+ *
+ * It is a bound on a refusal that announces nothing, not on buffering: a player that starts answers
+ * with its own `playing` and settles the wait immediately, however long the source took.
+ */
+const PLAY_CONFIRM_MS = 1_500
+
+const notStartedError = () =>
+  new DOMException('the far player did not start playing', 'NotAllowedError')
+
 const MAX_SUBSCRIBERS = 8
 /** How many distinct player ids one channel will hold. The id comes from the peer, so it is bounded too. */
 const MAX_PLAYERS = 32
@@ -184,9 +195,21 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     call: async (id, name) => {
       const media = medias.get(id)
       if (!media || !CALLABLE.includes(name)) return
-      if (name === 'play') await media.play()
-      else if (name === 'pause') media.pause()
-      else media.load?.()
+      try {
+        if (name === 'play') await media.play()
+        else if (name === 'pause') media.pause()
+        else media.load?.()
+      } finally {
+        // What the call ACTUALLY did, whether it threw or not.
+        //
+        // An embedder writes its mirror optimistically when it calls, exactly as an element does, and
+        // then waits for events to correct it. A play that is refused fires no event at all, so
+        // without this the mirror is left believing it is playing, stops asking, and the far video
+        // sits paused for ever while seeks keep landing on it. Worse, a player whose `play()`
+        // RESOLVES without starting (a wrapper that swallows the refusal) is invisible to a promise
+        // and visible here. Measured against stub's watch party, 2026-09-07.
+        announce(id, 'timeupdate')
+      }
     },
   }
 
@@ -265,6 +288,22 @@ export type MediaPlayerHandle =
      * lifetime or `Promise.race` for the wait alone.
      */
     readonly ready: Promise<void>
+    /**
+     * Start playing, muting first if that is what the far document requires, and say which happened.
+     *
+     * `play()` runs under the FAR document's autoplay policy, and no message carries a user gesture
+     * across a frame boundary: however deliberately somebody clicked over here, an unmuted element in
+     * a document nobody has touched refuses to start. Muted playback is always permitted, so this
+     * tries honestly first and falls back rather than leaving the player stopped.
+     *
+     * `muted` in the result is what the player ended up as, so an app that gets `true` can offer the
+     * viewer a way to turn sound on. That click is itself the gesture the document was missing, and
+     * clearing `muted` afterwards needs no permission from anyone.
+     *
+     * If muted playback is refused too, the FIRST error is what rejects, since a policy refusal says
+     * more than whatever the retry hit, and the player is left unmuted as it was found.
+     */
+    autoplay: () => Promise<{ muted: boolean }>
     /** stop mirroring and release the channel; the far player keeps playing */
     destroy: () => void
   }
@@ -523,6 +562,47 @@ export const mediaPlayer = (
   // like an element's, `play` settles with the far side's own answer, so an autoplay refusal over
   // there rejects over here, and the mirror goes back to paused when it does
   player.play = () => { state.paused = false; return call('play').catch(error => { state.paused = true; throw error }) }
+  // Whether the far player is actually running, shortly after being asked to. Its own `playing`
+  // settles this the moment it arrives; the timeout is for the refusal that announces nothing, and
+  // reads the state the call itself reported on its way out.
+  const startedPlaying = () => new Promise<boolean>(resolve => {
+    // Deliberately NOT short-circuiting on `state.paused` here: `play()` has just written it
+    // optimistically, so it reads as playing whatever the far side does. Only an event from over
+    // there, or the state left behind once the call has answered, can settle this.
+    const finish = (started: boolean) => {
+      clearTimeout(timer)
+      player.removeEventListener('playing', ok)
+      player.removeEventListener('play', ok)
+      resolve(started)
+    }
+    const ok = () => finish(true)
+    player.addEventListener('playing', ok)
+    player.addEventListener('play', ok)
+    const timer = setTimeout(() => finish(!state.paused), PLAY_CONFIRM_MS)
+  })
+
+  const askToPlay = async () => {
+    // read before `play()` writes its optimism over it
+    const alreadyPlaying = !state.paused
+    let refusal: unknown
+    try { await player.play() } catch (error) { refusal = error }
+    if (alreadyPlaying) return { started: true, refusal }
+    // the far side's own word, not the promise's: a wrapper that resolves a refused play is common
+    // enough that trusting the promise is what left followers paused for ever
+    return { started: await startedPlaying(), refusal }
+  }
+
+  player.autoplay = async () => {
+    const first = await askToPlay()
+    if (first.started) return { muted: player.muted }
+    // already muted and still refused, or torn down mid-try: nothing left to trade away
+    if (player.muted || signal.aborted) throw first.refusal ?? notStartedError()
+    player.muted = true
+    const second = await askToPlay()
+    if (second.started) return { muted: true }
+    player.muted = false
+    throw first.refusal ?? second.refusal ?? notStartedError()
+  }
   player.pause = () => { state.paused = true; call('pause').catch(() => {}) }
   player.load = () => { call('load').catch(() => {}) }
   Object.defineProperty(player, 'ready', { value: ready, enumerable: false })

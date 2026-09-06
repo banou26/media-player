@@ -650,3 +650,153 @@ describe('an optimistic write', () => {
     expect(player.currentTime).toBe(400)
   })
 })
+
+describe('autoplay, for a document nobody has clicked', () => {
+  /** An element under a real autoplay policy: it starts only while muted. */
+  const gatedMedia = () => {
+    const media = fakeMedia()
+    media.play = async () => {
+      media.calls.push('play')
+      if (!media.muted) throw new DOMException('play() failed because the user did not interact', 'NotAllowedError')
+      media.paused = false
+      media.dispatchEvent(new Event('play'))
+    }
+    return media
+  }
+
+  const gatedPair = () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = gatedMedia()
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    return { media, player, stop }
+  }
+
+  it('mutes and plays when the far document refuses sound, and says that it did', async () => {
+    const { media, player, stop } = gatedPair()
+    open.push(stop, player.destroy)
+    await player.ready
+
+    expect(await player.autoplay()).toEqual({ muted: true })
+    await settled()
+    expect(media.paused).toBe(false)
+    expect(media.muted).toBe(true)
+    // it asked honestly first: the fallback is a second attempt, not the only one
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(2)
+  })
+
+  it('leaves sound alone when the far document allows it', async () => {
+    const { media, player, stop } = pair()
+    open.push(stop, player.destroy)
+    await player.ready
+
+    expect(await player.autoplay()).toEqual({ muted: false })
+    await settled()
+    expect(media.paused).toBe(false)
+    expect(media.muted).toBe(false)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+
+  it('reports a player the viewer had already muted as muted', async () => {
+    const { player, stop } = pair()
+    open.push(stop, player.destroy)
+    await player.ready
+    player.muted = true
+    await settled()
+
+    expect(await player.autoplay()).toEqual({ muted: true })
+  })
+
+  it('rejects with the refusal and restores sound when muting does not help either', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = fakeMedia()
+    media.play = async () => {
+      media.calls.push('play')
+      throw new DOMException(media.muted ? 'no decoder' : 'the user did not interact', 'NotAllowedError')
+    }
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    open.push(stop, player.destroy)
+    await player.ready
+
+    await expect(player.autoplay()).rejects.toThrow(/did not interact/)
+    await settled()
+    expect(media.paused).toBe(true)
+    // a player left silenced by a failed attempt would be a worse state than it was found in
+    expect(media.muted).toBe(false)
+    expect(player.muted).toBe(false)
+  })
+
+  it('does not retry a player that was destroyed mid-attempt', async () => {
+    const { media, player, stop } = gatedPair()
+    open.push(stop)
+    await player.ready
+    const attempt = player.autoplay()
+    player.destroy()
+
+    await expect(attempt).rejects.toThrow()
+    await settled()
+    expect(media.muted).toBe(false)
+  })
+})
+
+describe('a player whose play() resolves without playing', () => {
+  /**
+   * The shape that stranded stub's watch party: a wrapper that swallows the autoplay refusal and
+   * resolves anyway, so nothing rejects, no `play` event fires, and the video stays paused.
+   */
+  const lyingMedia = () => {
+    const media = fakeMedia()
+    media.play = async () => { media.calls.push('play') }
+    return media
+  }
+
+  const lyingPair = () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = lyingMedia()
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    return { media, player, stop }
+  }
+
+  it('leaves the mirror reading paused, so the next apply asks again', async () => {
+    const { media, player, stop } = lyingPair()
+    open.push(stop, player.destroy)
+    await player.ready
+
+    await player.play()
+    await settled()
+    // the optimistic write said playing; the far side's answer to the call says otherwise
+    expect(media.paused).toBe(true)
+    expect(player.paused, 'a mirror that believes a lie never asks again').toBe(true)
+  })
+
+  it('is caught by autoplay, which reads the player rather than its promise', async () => {
+    const { media, player, stop } = lyingPair()
+    open.push(stop, player.destroy)
+    await player.ready
+
+    // muting does not help this one either: it never plays, and that is what must be reported
+    await expect(player.autoplay()).rejects.toThrow(/did not start playing/)
+    // the restore is a write like any other, so it lands on the next turn of the channel
+    await settled()
+    expect(media.muted, 'and it must not be left silenced by a failed attempt').toBe(false)
+  })
+
+  it('accepts a player that starts even though its promise says nothing', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = fakeMedia()
+    // resolves before playback begins, which is what a buffering player does
+    media.play = async () => {
+      media.calls.push('play')
+      setTimeout(() => { media.paused = false; media.dispatchEvent(new Event('playing')) }, 30)
+    }
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    open.push(stop, player.destroy)
+    await player.ready
+
+    expect(await player.autoplay()).toEqual({ muted: false })
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+})
