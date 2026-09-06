@@ -166,6 +166,15 @@ jobs:
 
             // the remote entry imports osra and the build leaves it external, so it has to be declared
             assert.ok(manifest.dependencies?.osra, "osra is imported by ./remote but not declared as a dependency")
+
+            // Trusted publishing signs a provenance statement naming this repository, and the
+            // registry refuses a tarball whose manifest does not name the same one. Checked HERE
+            // because that refusal arrives at the very END: the 422 lands after the statement has
+            // already been signed and written to the public transparency log, so a manifest that
+            // cannot pass costs a sigstore entry for a version that was never published.
+            const expected = `https://github.com/${process.env.GITHUB_REPOSITORY}`
+            const declared = (manifest.repository?.url ?? manifest.repository ?? "").replace(/^git\+/, "").replace(/\.git$/, "")
+            assert.equal(declared, expected, `package.json repository is ${declared || "unset"}, and provenance will claim ${expected}`)
             console.log(`artifact ok: ${manifest.name}@${manifest.version}`)
           '
         env:

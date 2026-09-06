@@ -73,5 +73,9 @@
   },
   "overrides": {
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Banou26/media-player.git"
   }
 }
