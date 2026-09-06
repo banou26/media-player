@@ -1,0 +1,187 @@
+# Publishes @banou/media-player when its version changes, with no npm token anywhere.
+#
+# THE FILENAME IS PART OF THE TRUST RELATIONSHIP AND MUST NOT CHANGE. npm trusted publishing binds
+# the package to a repository PLUS a workflow filename, both case-sensitive, and this file is the one
+# registered on npmjs.com for Banou26/media-player. The `name:` below is display text and is safe to
+# edit; `publish-lib.yml` is not. Renaming it, or the repository, stops every publish with an auth
+# error that reads like a revoked credential.
+#
+# Chained on the test workflow rather than triggered by the push itself: main has no promotion gate,
+# so a push starts Test and this at the same moment, and a publish that overtook its own suite would
+# ship whatever was committed. `workflow_run` runs this only after Test has actually gone green, and
+# on the commit Test validated rather than on wherever main has moved since.
+name: Publish @banou/media-player
+
+on:
+  workflow_run:
+    # matches the `name:` of test.yml, not its filename
+    workflows: [Test]
+    types: [completed]
+    branches: [main]
+  # for re-running a publish that failed after the version already landed, which a push cannot repeat
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Publish even when no green test run exists for this commit'
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-lib
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # the OIDC token npm exchanges for short-lived publish credentials. Without it the job has no
+      # way to authenticate at all, because there is deliberately no token secret anywhere.
+      id-token: write
+      # only to push the release tag
+      contents: write
+      # reading the test workflow's runs is how a manual dispatch proves it was gated
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # publish exactly the commit the test run validated, not whatever main moved to since
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # A dispatch must not satisfy the gate merely by existing: the button stays, it just has to
+      # point at a commit Test has already passed on.
+      - name: Require a green test run for this commit
+        if: github.event_name == 'workflow_dispatch' && inputs.force != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          green=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?head_sha=${{ github.sha }}&status=completed" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
+          echo "successful test runs for ${{ github.sha }}: ${green}"
+          if [ "$green" -lt 1 ]; then
+            echo "::error::no successful test run for this commit - wait for Test, or dispatch again with force=true"
+            exit 1
+          fi
+
+      # NO registry-url on purpose. That input writes an .npmrc pinning auth to ${NODE_AUTH_TOKEN},
+      # which is empty here; npm then believes it is authenticated, skips the OIDC exchange entirely,
+      # and the publish dies with an E404 on the PUT. registry.npmjs.org is the default anyway.
+      #
+      # NO `cache: npm` either: setup-node registers a post-job step that saves the cache, and this
+      # workflow skips its install whenever the version has not moved, which is most runs. With
+      # nothing to save that post-step errors and the JOB goes red while every step in it reports
+      # success.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      # Trusted publishing needs npm >= 11.5.1. Node 24 ships something recent enough today, which is
+      # exactly why this runs rather than being assumed: the day the runner image moves, an unpinned
+      # npm would fail at the publish step with an auth error that looks like a revoked credential
+      # rather than a stale CLI.
+      - name: Use an npm that supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm --version)"
+
+      # Decided BEFORE installing, so an unchanged version costs seconds rather than a full build.
+      #
+      # Compared against the REGISTRY rather than against the previous commit, which makes the step
+      # idempotent: a publish that failed halfway is retried correctly, and a re-run of a successful
+      # one is a no-op. A git diff would report "changed" on the retry and "unchanged" on the re-run,
+      # and both are wrong.
+      #
+      # FOUR outcomes, not two, because "the registry says 0.8.19" and "the registry did not answer"
+      # are different facts and only one of them is evidence.
+      - name: Decide whether the version moved
+        id: decide
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          echo "local=$LOCAL" >> "$GITHUB_OUTPUT"
+
+          set +e
+          PUBLISHED=$(cd "${RUNNER_TEMP:-/tmp}" && npm view @banou/media-player version 2>/tmp/npm-view.err)
+          VIEW_CODE=$?
+          set -e
+
+          if [ "$VIEW_CODE" -eq 0 ] && [ -n "$PUBLISHED" ]; then
+            :
+          elif grep -q 'E404' /tmp/npm-view.err; then
+            PUBLISHED=""
+            echo "::notice::@banou/media-player is not on the registry; this would be its first publish."
+          else
+            echo "::error::could not read @banou/media-player from the registry (exit $VIEW_CODE). Refusing to guess."
+            cat /tmp/npm-view.err
+            exit 1
+          fi
+
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+          if [ "$LOCAL" = "$PUBLISHED" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::@banou/media-player $LOCAL is already published; nothing to do."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::publishing @banou/media-player ${PUBLISHED:-none} -> $LOCAL"
+          fi
+
+      - name: Install
+        if: steps.decide.outputs.changed == 'true'
+        run: npm ci
+
+      # `prepublishOnly` builds this again below; building here means a broken build fails on its own
+      # step rather than inside npm's publish output, and gives the verification something to read.
+      - name: Build the library
+        if: steps.decide.outputs.changed == 'true'
+        run: npm run build-lib
+
+      # Read the ARTIFACT, never the source that is supposed to produce it.
+      - name: Verify the artifact before it leaves the runner
+        if: steps.decide.outputs.changed == 'true'
+        run: |
+          node -e '
+            const { strict: assert } = require("node:assert")
+            const { existsSync } = require("node:fs")
+            const manifest = require("./package.json")
+            assert.equal(manifest.name, "@banou/media-player")
+            assert.equal(manifest.version, process.env.LOCAL, "built version does not match package.json")
+
+            // every path the export map promises has to be on disk: a consumer importing a subpath
+            // that was never built gets a resolution error at install-time-plus-one, in their app
+            const missing = []
+            const walk = (value) => {
+              if (typeof value === "string") { if (value.startsWith("./") && !existsSync(value)) missing.push(value); return }
+              if (value && typeof value === "object") Object.values(value).forEach(walk)
+            }
+            walk(manifest.exports)
+            assert.equal(missing.length, 0, `the export map names files that were not built: ${missing.join(", ")}`)
+
+            // a file: or link: specifier resolves on this machine and nowhere else. The consumers of
+            // this package develop against it with `file:../media-player`, so the mistake is one
+            // copy-paste away.
+            const deps = { ...manifest.dependencies, ...manifest.peerDependencies }
+            const local = Object.entries(deps).filter(([, range]) => /^(file:|link:|portal:)/.test(range))
+            assert.equal(local.length, 0, `a consumer could not install: ${local.map(([n, r]) => `${n}@${r}`).join(", ")}`)
+
+            // the remote entry imports osra and the build leaves it external, so it has to be declared
+            assert.ok(manifest.dependencies?.osra, "osra is imported by ./remote but not declared as a dependency")
+            console.log(`artifact ok: ${manifest.name}@${manifest.version}`)
+          '
+        env:
+          LOCAL: ${{ steps.decide.outputs.local }}
+
+      # No credential is passed. npm exchanges the job's OIDC identity for a short-lived token against
+      # the trusted publisher configured on npmjs.com for Banou26/media-player + publish-lib.yml.
+      # BOTH HALVES ARE THE TRUST RELATIONSHIP, and both are case-sensitive.
+      - name: Publish
+        if: steps.decide.outputs.changed == 'true'
+        run: npm publish --access public --loglevel verbose
+
+      - name: Tag the release
+        if: steps.decide.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.local }}
+        run: |
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
