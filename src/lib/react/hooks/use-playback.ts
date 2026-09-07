@@ -64,7 +64,7 @@ const causeChain = (error: unknown) => {
  */
 export const usePlayback = (
   video: HTMLVideoElement | null,
-  canvas: HTMLCanvasElement | null,
+  subtitles: HTMLElement | null,
   /** null when the media is remote: there are no bytes, so there is no pipeline to run. */
   options: MediaPlayerLocalOptions | null,
 ) => {
@@ -227,7 +227,7 @@ export const usePlayback = (
   }, [setSourceState, selectSubtitleTrack, selectAudioTrack, requestSeek])
 
   useEffect(() => {
-    if (!video || !canvas || !size || !read) return
+    if (!video || !subtitles || !size || !read) return
     let cancelled = false
     player.setSourceState({ playbackError: null, ready: false })
 
@@ -293,7 +293,7 @@ export const usePlayback = (
       try {
         const controller = await startPlayback({
           videoElement: video,
-          canvasElement: canvas,
+          subtitleContainer: subtitles,
           read: (offset, length) => readRef.current!(offset, length),
           length: size,
           publicPath,
@@ -355,7 +355,7 @@ export const usePlayback = (
     // identity. A streaming consumer passes a fresh closure on every state update, which is several
     // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
-    player, video, canvas, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
+    player, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
     jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
   ])
 }

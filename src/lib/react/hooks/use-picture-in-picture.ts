@@ -19,10 +19,14 @@ export type PictureInPicture = {
  * hidden mirror. Where it does not, and the engine is Gecko, the same composite becomes the picture
  * in the page so that the BROWSER'S own picture in picture control carries the subtitles with it,
  * which it otherwise cannot: it takes a video element, and the subtitles live on a canvas above one.
+ *
+ * The second argument is the subtitle LAYER, not that canvas. From jassub 2 the canvas belongs to the
+ * renderer and is replaced on every pipeline rebuild, so only the layer lives long enough to hold.
  */
 export const usePictureInPicture = (
   video: HTMLVideoElement | null,
-  canvas: HTMLCanvasElement | null,
+  /** The subtitle layer, not the canvas: see `PictureInPictureOptions.subtitles`. */
+  subtitles: HTMLElement | null,
 ): PictureInPicture => {
   const controller = useRef<PictureInPictureController | null>(null)
   const [burnedIn, setBurnedIn] = useState(false)
@@ -31,10 +35,10 @@ export const usePictureInPicture = (
   const [mode] = useState<PictureInPictureMode | null>(() => pictureInPictureMode())
 
   useEffect(() => {
-    if (!video || !canvas || !mode) return
+    if (!video || !subtitles || !mode) return
     const instance = createPictureInPicture({
       video,
-      canvas,
+      subtitles,
       mode,
       onBurnedInChange: setBurnedIn,
     })
@@ -44,7 +48,7 @@ export const usePictureInPicture = (
       controller.current = null
       setBurnedIn(false)
     }
-  }, [video, canvas, mode])
+  }, [video, subtitles, mode])
 
   const toggle = useCallback(() => {
     void controller.current?.toggle().catch((error) => {
@@ -53,6 +57,6 @@ export const usePictureInPicture = (
   }, [])
 
   // null rather than a dead callback: the chrome hides the control instead of offering one that
-  // cannot work, and there is nothing to composite without both an element and a canvas.
-  return { toggle: video && canvas && mode ? toggle : null, mode, burnedIn }
+  // cannot work, and there is nothing to composite without both a video and a subtitle layer.
+  return { toggle: video && subtitles && mode ? toggle : null, mode, burnedIn }
 }

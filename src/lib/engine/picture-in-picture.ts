@@ -27,8 +27,15 @@ export type PictureInPictureMode = 'window' | 'burn-in'
 
 export type PictureInPictureOptions = {
   video: HTMLVideoElement
-  /** The subtitle canvas. jassub sizes it to the video's content rect, so it maps 1:1. */
-  canvas: HTMLCanvasElement
+  /**
+   * The subtitle LAYER, not the canvas inside it.
+   *
+   * From jassub 2 the canvas is created and removed by the subtitle renderer, one per pipeline
+   * build, so an element captured here would stop being the one being painted the moment the audio
+   * track changed. The layer is what React owns for the life of the player, so hiding and restoring
+   * it stays correct across a rebuild, and the canvas is looked up per frame.
+   */
+  subtitles: HTMLElement
   maxWidth?: number
   /** Where the mirror is mounted. It must be in the document. Defaults to the video's parent. */
   container?: HTMLElement
@@ -87,7 +94,7 @@ export const pictureInPictureMode = (): PictureInPictureMode | null => {
 
 /** Takes over the document's Media Session play/pause handlers while a session is open. */
 export const createPictureInPicture = (options: PictureInPictureOptions): PictureInPictureController => {
-  const { video, canvas } = options
+  const { video, subtitles } = options
   const mode = options.mode ?? pictureInPictureMode() ?? 'window'
   const maxWidth = options.maxWidth ?? (mode === 'burn-in' ? BURN_IN_MAX_WIDTH : DEFAULT_MAX_WIDTH)
 
@@ -112,9 +119,12 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   const draw = (composite: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
     context.drawImage(video, 0, 0, composite.width, composite.height)
-    // drawImage throws on a zero-sized source, which the canvas is until jassub has painted
-    if (canvas.width > 0 && canvas.height > 0) {
-      context.drawImage(canvas, 0, 0, composite.width, composite.height)
+    // Resolved per frame: the renderer replaces this element on every pipeline rebuild. A canvas
+    // jassub has transferred reports the size of the last frame its worker committed, so the zero
+    // check still keeps drawImage off a source with no dimensions to read.
+    const surface = subtitles.querySelector('canvas')
+    if (surface && surface.width > 0 && surface.height > 0) {
+      context.drawImage(surface, 0, 0, composite.width, composite.height)
     }
   }
 
@@ -254,18 +264,23 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
    * The real element is dimmed, never `display: none`: jassub sizes the subtitle canvas from its
    * `offsetWidth`/`offsetHeight`, and a collapsed box silently yields a composite with no subtitles
    * in it, which is exactly the thing being asked for.
+   *
+   * The LAYER is what gets hidden, rather than the canvas inside it. The canvas is replaced whenever
+   * the pipeline is rebuilt, so hiding that would leave the replacement visible over the composite
+   * (doubled subtitles) and would restore `display` onto an element that is no longer in the tree
+   * (subtitles gone for the rest of the session). The layer outlives both.
    */
   const present = (mirror: HTMLVideoElement) => {
     const videoOpacity = video.style.opacity
-    const canvasDisplay = canvas.style.display
+    const subtitlesDisplay = subtitles.style.display
     mirror.style.cssText =
       'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:1'
     video.style.opacity = '0'
-    canvas.style.display = 'none'
+    subtitles.style.display = 'none'
     restore = () => {
       restore = undefined
       video.style.opacity = videoOpacity
-      canvas.style.display = canvasDisplay
+      subtitles.style.display = subtitlesDisplay
     }
   }
 

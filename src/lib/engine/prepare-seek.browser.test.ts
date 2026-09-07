@@ -21,12 +21,12 @@ const FIXTURE = '/test-video.mkv'
 const sized = () => {
   const video = document.createElement('video')
   video.muted = true
-  const canvas = document.createElement('canvas')
+  const subtitles = document.createElement('div')
   const container = document.createElement('div')
   container.style.cssText = 'width: 640px; height: 360px;'
-  container.append(video, canvas)
+  container.append(video, subtitles)
   document.body.append(container)
-  return { video, canvas, container }
+  return { video, subtitles, container }
 }
 
 const httpSource = async () => {
@@ -66,10 +66,10 @@ describe('preparing a seek', () => {
       return
     }
 
-    const { video, canvas, container } = sized()
+    const { video, subtitles, container } = sized()
     const controller = await startPlayback({
       videoElement: video,
-      canvasElement: canvas,
+      subtitleContainer: subtitles,
       read: source.read,
       length: source.size,
       ...playerAssets,
@@ -112,10 +112,10 @@ describe('preparing a seek', () => {
     const source = await httpSource()
     if (!source) return
 
-    const { video, canvas, container } = sized()
+    const { video, subtitles, container } = sized()
     const controller = await startPlayback({
       videoElement: video,
-      canvasElement: canvas,
+      subtitleContainer: subtitles,
       read: source.read,
       length: source.size,
       ...playerAssets,

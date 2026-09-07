@@ -49,6 +49,19 @@ const style = css`
     z-index: 2;
   }
 
+  /* The subtitle layer sits UNDER the title and the spinner, where the canvas itself used to sit.
+     As a plain child div it is matched by the rule above and raised to the overlay items' level,
+     which paints subtitles over the title's gradient, over the spinner and over the error text.
+     Naming the type as well is what takes it back: :not() carries the specificity of its argument,
+     so the rule above is (0,2,1) and a bare .subtitles at (0,2,0) loses to it whatever the source
+     order, while div.subtitles ties at (0,2,1) and second place in the same block then wins.
+     subtitle-layering.browser.test.tsx measures the computed value rather than trusting this. */
+  & > div.subtitles {
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+
   canvas {
     height: 100%;
     width: 100%;
@@ -93,7 +106,7 @@ export type ChromeProps = {
   ref?: Ref<HTMLDivElement> | ((element: HTMLDivElement | null) => void)
   /** Absent means render no video element: the media belongs to someone else and arrives as children. */
   onVideoRef?: (element: HTMLVideoElement | null) => void
-  onCanvasRef: (element: HTMLCanvasElement | null) => void
+  onSubtitleRef: (element: HTMLDivElement | null) => void
   /** The app's own content, over the video and outside the click-to-pause region, unlike `children`. */
   overlay?: ReactNode
   /** False draws no control bar at all, leaving the picture, the title and the overlay. */
@@ -101,7 +114,7 @@ export type ChromeProps = {
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -207,7 +220,7 @@ export const Chrome = ({ ref, onVideoRef, onCanvasRef, overlay, controls, childr
       onMouseOut={onMouseOut}
       className={hideUI ? 'hide' : ''}
     >
-      <Overlay onCanvasRef={onCanvasRef} />
+      <Overlay onSubtitleRef={onSubtitleRef} />
       {overlayItems(overlay).map(({ key, item }) => (
         <div
           key={key}

@@ -13,7 +13,14 @@ export type MediaIndex = { pos: number, timestamp: number }
 
 export type PlaybackOptions = {
   videoElement: HTMLVideoElement
-  canvasElement: HTMLCanvasElement
+  /**
+   * The subtitle layer. The renderer creates its own canvas inside it, one per jassub instance.
+   *
+   * Renamed from `canvasElement` in the jassub 2 migration, deliberately: passing a canvas here now
+   * means jassub transfers it to a worker and deletes it on teardown, so a caller that kept handing
+   * over an element it owns has to see a type error rather than a runtime one.
+   */
+  subtitleContainer: HTMLElement
   read: (offset: number, size: number) => Promise<ArrayBuffer>
   length: number
   /** serves BOTH `libav.wasm` and `libav-jspi.wasm`; libav-wasm picks one on `WebAssembly.Suspending` */
@@ -114,7 +121,7 @@ export const terminateRemuxer = (remuxer: { worker: Worker, destroy: () => Promi
 
 export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackController> => {
   const {
-    videoElement, canvasElement, read, length, publicPath, libavWorkerUrl,
+    videoElement, subtitleContainer, read, length, publicPath, libavWorkerUrl,
     jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
     onAudioStreams,
@@ -152,7 +159,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     const subtitles = createSubtitleRenderer({
       video: videoElement,
-      canvas: canvasElement,
+      container: subtitleContainer,
       workerUrl: jassubWorkerUrl,
       wasmUrl: jassubWasmUrl,
       legacyWasmUrl: jassubLegacyWasmUrl,

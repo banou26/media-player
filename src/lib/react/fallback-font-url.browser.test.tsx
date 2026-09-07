@@ -2,25 +2,32 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from './video-player'
+import { ink, readSurface } from './subtitle-surface.fixture'
 import { playerAssets } from '../../asset-urls'
 
 /**
  * A relative `defaultFontUrl` has to reach the worker as something it can actually fetch.
  *
- * jassub's worker is built from a `blob:` url and fetches the fallback font itself, so a relative url
- * resolves against that blob inside the worker and never lands. libass is then left with no face to
- * draw with and the track renders NOTHING: no error, no warning, just a picture with no subtitles on
- * it. The app never hit this because `asset-urls.ts` builds absolute urls, but the option is public
- * API and "/my-font.woff2" is the obvious thing for a consumer to pass.
+ * The worker fetches the fallback font itself, and a relative url handed straight to it resolves
+ * against the WORKER's url rather than the document's. libass is then left with no face to draw with
+ * and the track renders NOTHING: no error, no warning, just a picture with no subtitles on it. The
+ * app never hit this because `asset-urls.ts` hands over urls the bundler emitted, but the option is
+ * public API and "my-font.woff2" is the obvious thing for a consumer to pass. `workerFetched` in
+ * `subtitles.ts` is what resolves it against the document first.
  *
  * Measured before the fix: nothing painted at all. After: the same ink as the absolute url.
+ *
+ * Under jassub 1 the worker was built from a `blob:` url, which made the mismatch dramatic. jassub 2
+ * loads a real module url from this origin, so a ROOT-relative path would now resolve by accident and
+ * prove nothing. Hence the leading slash is stripped below: a path-relative url is the one that still
+ * resolves differently for the worker than for the document, and it is the case worth pinning.
  *
  * The face is checked as well as the fact of painting, because a font that failed to load and one
  * that loaded both leave a canvas behind; only the size tells them apart. The reference is ffmpeg's
  * own libass on this fixture, as in `subtitle-scale.browser.test.tsx`.
  */
 const FIXTURE = '/subtitle-scale.mkv'
-const RELATIVE_FONT = '/default.woff2'
+const RELATIVE_FONT = playerAssets.defaultFontUrl.replace(/^\//, '')
 const REFERENCE_INK_HEIGHT_PER_1080 = 48
 const BOX = { width: 1920, height: 1080 }
 
@@ -47,23 +54,18 @@ const httpSource = async () => {
   }
 }
 
-const inkHeight = (canvas: HTMLCanvasElement) => {
-  const { width, height } = canvas
-  if (!width || !height) return 0
-  const { data } = canvas.getContext('2d')!.getImageData(0, 0, width, height)
-  let top = height, bottom = -1
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3]! <= 16) continue
-      if (y < top) top = y
-      if (y > bottom) bottom = y
-      break
-    }
-  }
-  return bottom < 0 ? 0 : bottom - top + 1
+const measured = (element: HTMLCanvasElement | null) => {
+  const read = element && readSurface(element)
+  return { read, height: (read && ink(read)?.height) ?? 0 }
 }
 
 describe('the fallback font url', () => {
+  it('is actually testing a relative url', () => {
+    // The input is derived rather than written, so it can stop being relative without anyone noticing
+    // and take the whole point of the test with it.
+    expect(RELATIVE_FONT, 'the derived font url is not relative any more').not.toMatch(/^([a-z]+:)?\//i)
+  })
+
   it('is resolved against the document, so a relative one still draws', async () => {
     const source = await httpSource()
     if (!source) {
@@ -79,14 +81,18 @@ describe('the fallback font url', () => {
 
     const canvas = () => screen.container.querySelector('canvas')
     const deadline = performance.now() + 30_000
-    let painted = 0
-    while (performance.now() < deadline && !painted) {
-      const surface = canvas()
-      painted = surface ? inkHeight(surface) : 0
-      if (!painted) await new Promise((resolve) => setTimeout(resolve, 150))
+    let drawn = measured(null)
+    while (performance.now() < deadline && !drawn.height) {
+      drawn = measured(canvas())
+      if (!drawn.height) await new Promise((resolve) => setTimeout(resolve, 150))
     }
 
-    const surface = canvas()!
+    const painted = drawn.height
+    // The size comes back with the pixels, from the same readback, so a resize landing between the
+    // two cannot make them disagree. It IS the element's own width and height underneath: a
+    // transferred canvas reports the size of the last frame its worker committed, which is the
+    // number wanted here, and only its CONTENT is unreachable.
+    const surface = drawn.read ?? { width: 0, height: 0 }
     const expected = REFERENCE_INK_HEIGHT_PER_1080 * (surface.height / 1080)
     const report = `relative ${RELATIVE_FONT}: canvas ${surface.width}x${surface.height}, ink height ${painted}, libass draws ${expected.toFixed(0)}`
     // eslint-disable-next-line no-console

@@ -194,7 +194,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const setContainer = useContainerAttach()
 
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null)
+  const [subtitleLayer, setSubtitleLayer] = useState<HTMLDivElement | null>(null)
 
   // Attaching is not optional in either arm: the store installs `setSourceState` in `attach`, and
   // video.js only runs attach once media is non-null, so skipping it would leave every write below a
@@ -235,7 +235,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
 
   // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
   // so there is nothing for them to attach to and nothing to guard at the call site.
-  usePlayback(video, canvas, local)
+  usePlayback(video, subtitleLayer, local)
 
   const generatedThumbnails = useSeekThumbnails({
     publicPath,
@@ -249,7 +249,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     toggle: togglePictureInPicture,
     mode: pictureInPictureMode,
     burnedIn: burnedInSubtitles,
-  } = usePictureInPicture(video, canvas)
+  } = usePictureInPicture(video, subtitleLayer)
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
   // attaches: when attach swaps in the real setter the identity changes and these publish again.
@@ -305,7 +305,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       // No element in the remote arm: the media is somebody else's, and whatever renders it is
       // passed in as children. Rendering an idle <video> here would sit over it.
       onVideoRef={remote ? undefined : setVideo}
-      onCanvasRef={setCanvas}
+      onSubtitleRef={setSubtitleLayer}
       overlay={options.overlay}
       controls={options.controls}
     >

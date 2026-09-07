@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from './video-player'
+import { painted } from './subtitle-surface.fixture'
 import { playerAssets } from '../../asset-urls'
 
 /**
@@ -54,40 +55,6 @@ const httpSource = async () => {
   }
 }
 
-type Ink = { x1: number, y1: number, x2: number, y2: number, width: number, height: number }
-
-/** the bounding box of everything the renderer actually painted */
-const ink = (canvas: HTMLCanvasElement): Ink | null => {
-  const { width, height } = canvas
-  if (!width || !height) return null
-  const context = canvas.getContext('2d')
-  if (!context) throw new Error('the subtitle canvas has no 2d context')
-  const { data } = context.getImageData(0, 0, width, height)
-  let x1 = width, y1 = height, x2 = -1, y2 = -1
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3]! <= 16) continue
-      if (x < x1) x1 = x
-      if (x > x2) x2 = x
-      if (y < y1) y1 = y
-      if (y > y2) y2 = y
-    }
-  }
-  if (x2 < 0) return null
-  return { x1, y1, x2, y2, width: x2 - x1 + 1, height: y2 - y1 + 1 }
-}
-
-const painted = async (canvas: () => HTMLCanvasElement | null, timeout: number) => {
-  const deadline = performance.now() + timeout
-  while (performance.now() < deadline) {
-    const element = canvas()
-    const box = element && ink(element)
-    if (box) return box
-    await new Promise((resolve) => setTimeout(resolve, 200))
-  }
-  return null
-}
-
 describe('how big a subtitle comes out', () => {
   it('paints it the size libass paints it, not the size of libass\'s own default style', async () => {
     const source = await httpSource()
@@ -102,13 +69,17 @@ describe('how big a subtitle comes out', () => {
       sized(),
     )
 
-    const canvas = () => screen.container.querySelector('canvas')
-    const box = await painted(canvas, 60_000)
+    const drawn = await painted(() => screen.container.querySelector('canvas'), 60_000)
+    const box = drawn?.box ?? null
 
-    const element = canvas()!
-    const scale = element.height / REFERENCE.perHeight
+    // The size comes back with the pixels, from the same readback, so a resize landing between the
+    // two cannot make them disagree. It IS the element's own width and height underneath: a
+    // transferred canvas reports the size of the last frame its worker committed, which is the
+    // number wanted here, and only its CONTENT is unreachable.
+    const surface = drawn?.surface ?? { width: 0, height: 0 }
+    const scale = surface.height / REFERENCE.perHeight
     const expected = { width: REFERENCE.width * scale, height: REFERENCE.height * scale }
-    const report = `canvas ${element.width}x${element.height}, ink ${box ? `${box.width}x${box.height} at ${box.x1},${box.y1}` : 'NOTHING PAINTED'}, libass draws ${expected.width.toFixed(0)}x${expected.height.toFixed(0)}`
+    const report = `canvas ${surface.width}x${surface.height}, ink ${box ? `${box.width}x${box.height} at ${box.x1},${box.y1}` : 'NOTHING PAINTED'}, libass draws ${expected.width.toFixed(0)}x${expected.height.toFixed(0)}`
     // eslint-disable-next-line no-console
     console.log(report)
 

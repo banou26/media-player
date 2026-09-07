@@ -22,9 +22,9 @@ import MediaPlayer from '@banou/media-player'
   publicPath="/"
   libavWorkerUrl="/libav-worker.js"
   jassubWorkerUrl={jassubWorkerUrl}
-  jassubWasmUrl="/jassub-worker-modern.wasm"
-  jassubLegacyWasmUrl="/jassub-worker.wasm"
-  defaultFontUrl="/default.woff2"
+  jassubWasmUrl={jassubWasmUrl}
+  jassubLegacyWasmUrl={jassubLegacyWasmUrl}
+  defaultFontUrl={defaultFontUrl}
   title="episode.mkv"
   autoplay
 />
@@ -64,9 +64,10 @@ containers carry headers, fonts and attachments that occupy no time at all.
 
 ### The assets your app has to serve
 
-Nothing is bundled: the workers and the wasm are fetched at runtime from urls you provide, so they have
-to be copied out of `node_modules` and hosted. `src/asset-urls.ts` is a worked example, and the
-`copy-assets` script is what puts them in `public/`.
+The workers and the wasm are fetched at runtime from urls you provide, never from anything this
+package resolves for itself. libav's are plain files to copy out of `node_modules`, which is what the
+`copy-assets` script does. jassub's cannot be copied and have to be built by your bundler; see below.
+`src/asset-urls.ts` is the worked example for both.
 
 `publicPath` is the directory **libav's two wasm files** are served from, and both have to be there:
 
@@ -79,25 +80,62 @@ libav-wasm picks between them at runtime on `typeof WebAssembly.Suspending === '
 only one does not fail everywhere: it fails on exactly the browsers that pick the missing file, which
 reads as a browser bug rather than a missing asset. Serve both.
 
-The rest are named individually: `libavWorkerUrl` (`libav-wasm/build/worker.js`) and the optional
-`defaultFontUrl`. jassub also has two builds, and the same warning applies:
+`libavWorkerUrl` (`libav-wasm/build/worker.js`) is named individually and still copies fine.
+
+### jassub's assets are imported, not copied
+
+jassub 2's worker is an ES module that imports `abslink` and `lfa-ponyfill` by bare specifier plus
+five relative siblings, and it spawns a nested worker of its own. Copying one file out of
+`node_modules` produces something no browser can load, so the bundler has to build that graph. With
+vite that is one query each, in your own source:
+
+```ts
+import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url'
+import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?no-inline&url'
+import jassubLegacyWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?no-inline&url'
+import defaultFontUrl from 'jassub/dist/default.woff2?no-inline&url'
+```
+
+`?no-inline` is load bearing for anything built with `build.lib` set: vite inlines every asset as a
+base64 data url in library mode and ignores `assetsInlineLimit` while doing it, so without it the two
+wasm builds and the font land in your entry chunk as about 5.9 MB of base64. `src/asset-urls.ts` in
+this repo is the same four lines and is meant to be copied.
+
+**If you build with `build.lib` set, build these four in a separate pass with it UNSET.** `?no-inline`
+covers the assets you name, and it cannot cover the ones jassub names for itself: its emscripten glue
+resolves the wasm with `new URL('./wasm/...', import.meta.url)` inside the worker, and lib mode inlines
+those too. Measured on this version, one entry importing exactly the four lines above:
+
+| build | worker chunk | base64 wasm blobs |
+| --- | --- | --- |
+| `build.lib` set | 2,922,207 bytes | 2 |
+| no `build.lib` | 110,525 bytes | 0 |
+
+`assetsInlineLimit: 0` and the function form both make no difference, because lib mode decides to
+inline before it consults either. A second vite config with a single JS entry, no `lib`, and the same
+`outDir` produces the 110 KB worker, the 30 KB pthread glue and both wasm files as real files.
+
+`?no-inline&url` needs a type declaration, because vite's own ambient `*?url` only matches a specifier
+ENDING in `?url`. See `src/vite-env.d.ts`.
+
+The two wasm builds are picked at runtime:
 
 | option | file | when it is used |
 | --- | --- | --- |
-| `jassubWasmUrl` | `jassub/dist/jassub-worker-modern.wasm` | wherever WebAssembly SIMD exists |
-| `jassubLegacyWasmUrl` | `jassub/dist/jassub-worker.wasm` | Safari before 16.4, and anything else without SIMD |
+| `jassubWasmUrl` | `jassub/dist/wasm/jassub-worker-modern.wasm` | wherever RELAXED SIMD exists |
+| `jassubLegacyWasmUrl` | `jassub/dist/wasm/jassub-worker.wasm` | everywhere else |
 
-`jassubLegacyWasmUrl` is optional in the type and not in practice: jassub falls back to a bare
-`'jassub-worker.wasm'`, which it resolves against the `blob:` url its worker is built from, and that
-throws. Leaving it unset does not fall back to the slower build, it loses subtitles entirely.
+The test is RELAXED simd, not baseline simd: jassub validates a module using `i8x16.relaxed_swizzle`.
+That is a much later feature than plain SIMD, so the second file is not a museum piece for ancient
+Safari the way it was under jassub 1. Serve both.
 
-jassub ships a classic worker script, so wrap it:
+Serve the wasm as `application/wasm`: jassub instantiates it with `instantiateStreaming`, which
+refuses any other content type.
 
-```ts
-const jassubWorkerUrl = URL.createObjectURL(
-  new Blob([`importScripts("/jassub-worker.js")`], { type: 'application/javascript' }),
-)
-```
+No cross-origin isolation is needed. jassub allocates a shared `WebAssembly.Memory` unconditionally,
+which constructs on a plain origin in both engines (measured on Chrome 152 and Firefox 154), and its
+own thread count is gated on `crossOriginIsolated`, so without COOP and COEP it simply runs single
+threaded.
 
 The chrome brings its own scale and needs nothing from the host page's root font. Everything is sized
 against `--mp-unit`, which defaults to `10px` on the player element; set it there to rescale the whole
@@ -115,6 +153,11 @@ every load.
 Subtitles are painted by jassub onto a canvas over the video, and picture in picture takes a video
 element and nothing else, so the browser has no way to composite the two: a plain
 `requestPictureInPicture()` puts the bare video in the window and leaves the subtitles on the page.
+
+That canvas belongs to jassub from version 2 on: the constructor transfers it to a worker, which an
+element accepts exactly once, and `destroy()` removes it from the document. So the player renders a
+subtitle LAYER and the engine mounts one canvas inside it per pipeline build. Anything reaching for
+the surface has to look it up through the layer each time rather than hold it.
 
 So the player composites them itself. Every presented frame is drawn to an offscreen canvas with the
 subtitle canvas on top, and `captureStream()` turns that into a MediaStream backing a hidden video

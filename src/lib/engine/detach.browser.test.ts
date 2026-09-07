@@ -94,12 +94,12 @@ describe('startPlayback teardown', () => {
     }
 
     const video = document.createElement('video')
-    const canvas = document.createElement('canvas')
-    document.body.append(video, canvas)
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
 
     const controller = await startPlayback({
       videoElement: video,
-      canvasElement: canvas,
+      subtitleContainer: subtitles,
       read: source.read,
       length: source.size,
       ...playerAssets,
@@ -115,6 +115,6 @@ describe('startPlayback teardown', () => {
     expect(video.error).toBeNull()
 
     video.remove()
-    canvas.remove()
+    subtitles.remove()
   })
 })

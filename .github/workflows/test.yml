@@ -39,13 +39,20 @@ jobs:
       # so make sure that fallback exists and that the shared libraries either binary needs are present.
       - run: npx playwright install --with-deps chromium
 
-      # public/ is gitignored, so a fresh checkout carries none of the libav and jassub assets the
-      # player loads at runtime. Without this the local playback test times out waiting for metadata.
+      # public/ is gitignored, so a fresh checkout carries none of the libav assets the player loads
+      # at runtime. Without this the local playback test times out waiting for metadata. jassub's
+      # worker and wasm are NOT here: they come through the bundler from src/asset-urls.ts.
       - run: npm run copy-assets
 
       - run: npm run types
 
       - run: npm test
+
+      # The jassub worker and wasm reach the page through bundler queries rather than a copy, and the
+      # serve path the browser tests run on resolves those queries differently from the build path.
+      # A specifier that only works in dev therefore passes every test above, so the production build
+      # is its own gate.
+      - run: npm run build
 
       # A failed browser assertion leaves its evidence as a screenshot on disk and nowhere in the log.
       - uses: actions/upload-artifact@v4

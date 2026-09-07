@@ -6,13 +6,32 @@ import { css, keyframes } from '@emotion/react'
 import { usePlayer } from '../player'
 import { fonts } from '../../utils/fonts'
 
+/**
+ * The subtitle layer.
+ *
+ * A container rather than the `<canvas>` this used to render. From jassub 2 the canvas belongs to
+ * the renderer: the constructor transfers it to a worker, which an element accepts exactly once for
+ * its whole life, and `destroy()` removes it from the document. React can own neither, and this
+ * pipeline is rebuilt in place on an audio track change and on an element recovery, so the canvas is
+ * created per jassub instance inside this box instead.
+ *
+ * The geometry is unchanged. The layer covers the picture and centres its child the way the chrome
+ * root centred the canvas directly, so jassub's inline pixel size still wins over the percentages
+ * and its inline `top` and `left` are still neutralised.
+ */
 const style = css`
-  top: unset !important;
-  left: unset !important;
-  width: 100%;
-  height: 100%;
-  margin: auto;
-  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  canvas {
+    top: unset !important;
+    left: unset !important;
+    width: 100%;
+    height: 100%;
+    margin: auto;
+    pointer-events: none;
+  }
 `
 
 const titleStyle = css`
@@ -88,7 +107,7 @@ const errorMessage = (error: unknown) =>
     ? error.message
     : typeof error === 'string' ? error : 'Playback failed'
 
-export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElement | null) => void }) => {
+export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivElement | null) => void }) => {
   const title = usePlayer((state) => state.title)
   const hideUI = usePlayer((state) => state.hideUI)
   const playbackError = usePlayer((state) => state.playbackError)
@@ -120,7 +139,7 @@ export const Overlay = ({ onCanvasRef }: { onCanvasRef: (element: HTMLCanvasElem
       {playbackError
         ? <div css={errorStyle}>{errorMessage(playbackError)}</div>
         : undefined}
-      <canvas ref={onCanvasRef} css={style} />
+      <div className="subtitles" ref={onSubtitleRef} css={style} />
     </>
   )
 }

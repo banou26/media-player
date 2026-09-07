@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from './video-player'
+import { inkBetween, readSurface } from './subtitle-surface.fixture'
 import { playerAssets } from '../../asset-urls'
 
 /**
@@ -69,30 +70,12 @@ const httpSource = async () => {
   }
 }
 
-type Box = { width: number, height: number }
-
-/** the bounding box of what was painted between two rows, so each line can be read on its own */
-const inkBetween = (canvas: HTMLCanvasElement, from: number, to: number): Box | null => {
-  const { width } = canvas
-  if (!width || !canvas.height) return null
-  const { data } = canvas.getContext('2d')!.getImageData(0, from, width, to - from)
-  let x1 = width, y1 = to - from, x2 = -1, y2 = -1
-  for (let y = 0; y < to - from; y++) {
-    for (let x = 0; x < width; x++) {
-      if (data[(y * width + x) * 4 + 3]! <= 16) continue
-      if (x < x1) x1 = x
-      if (x > x2) x2 = x
-      if (y < y1) y1 = y
-      if (y > y2) y2 = y
-    }
-  }
-  if (x2 < 0) return null
-  return { width: x2 - x1 + 1, height: y2 - y1 + 1 }
-}
-
-const halves = (canvas: HTMLCanvasElement) => {
-  const middle = Math.floor(canvas.height / 2)
-  return { plain: inkBetween(canvas, 0, middle), blurred: inkBetween(canvas, middle, canvas.height) }
+/** Each line read on its own, the top half against the bottom half of the render surface. */
+const halves = (surface: HTMLCanvasElement) => {
+  const read = readSurface(surface)
+  if (!read) return { read: null, plain: null, blurred: null }
+  const middle = Math.floor(read.height / 2)
+  return { read, plain: inkBetween(read, 0, middle), blurred: inkBetween(read, middle, read.height) }
 }
 
 describe('the subtitle header', () => {
@@ -111,14 +94,18 @@ describe('the subtitle header', () => {
 
     const canvas = () => screen.container.querySelector('canvas')
     const deadline = performance.now() + 60_000
-    let drawn: ReturnType<typeof halves> = { plain: null, blurred: null }
+    let drawn: ReturnType<typeof halves> = { read: null, plain: null, blurred: null }
     while (performance.now() < deadline && !(drawn.plain && drawn.blurred)) {
-      const surface = canvas()
-      drawn = surface ? halves(surface) : { plain: null, blurred: null }
+      const element = canvas()
+      drawn = element ? halves(element) : { read: null, plain: null, blurred: null }
       if (!(drawn.plain && drawn.blurred)) await new Promise((resolve) => setTimeout(resolve, 150))
     }
 
-    const surface = canvas()!
+    // The size comes back with the pixels, from the same readback, so a resize landing between the
+    // two cannot make them disagree. It IS the element's own width and height underneath: a
+    // transferred canvas reports the size of the last frame its worker committed, which is the
+    // number wanted here, and only its CONTENT is unreachable.
+    const surface = drawn.read ?? { width: 0, height: 0 }
     const scale = surface.height / REFERENCE.perHeight
     const report = `canvas ${surface.width}x${surface.height}, plain ${drawn.plain ? `${drawn.plain.width}x${drawn.plain.height}` : 'NONE'}, blurred ${drawn.blurred ? `${drawn.blurred.width}x${drawn.blurred.height}` : 'NONE'}, libass draws plain ${REFERENCE.plain.width}x${REFERENCE.plain.height} and grows the blur by ${REFERENCE.blurGrowth}`
     // eslint-disable-next-line no-console

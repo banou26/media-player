@@ -38,15 +38,25 @@ const playingVideo = async () => {
   document.body.append(host)
   await video.play()
 
-  // the subtitle canvas the engine composites over the frame
-  const canvas = document.createElement('canvas')
-  canvas.width = 320
-  canvas.height = 180
-  canvas.getContext('2d')!.fillRect(10, 150, 80, 10)
-  host.append(canvas)
+  // The subtitle LAYER, with the canvas the engine composites over the frame inside it. That nesting
+  // is the shape jassub 2 forces: the renderer owns the canvas and replaces it on every pipeline
+  // rebuild, so the layer is the only element that lives as long as the player does.
+  const subtitles = document.createElement('div')
+  host.append(subtitles)
+  const surface = paintedSurface()
+  subtitles.append(surface)
 
   cleanups.push(() => { clearInterval(paint); host.remove() })
-  return { video, canvas, host }
+  return { video, subtitles, surface, host }
+}
+
+/** A stand-in for what the subtitle renderer mounts: a canvas with something visible on it. */
+const paintedSurface = () => {
+  const surface = document.createElement('canvas')
+  surface.width = 320
+  surface.height = 180
+  surface.getContext('2d')!.fillRect(10, 150, 80, 10)
+  return surface
 }
 
 const stub = (target: object, key: string, value: unknown) => {
@@ -88,13 +98,13 @@ describe('picture in picture mode detection', () => {
 
 describe('burn-in picture in picture', () => {
   it('completes a toggle instead of recursing, on a browser with no window api', async () => {
-    const { video, canvas } = await playingVideo()
+    const { video, subtitles } = await playingVideo()
     const warnings: unknown[] = []
     const realWarn = console.warn
     console.warn = (...args: unknown[]) => { warnings.push(args[0]) }
     cleanups.push(() => { console.warn = realWarn })
 
-    const pip = createPictureInPicture({ video, canvas, mode: 'burn-in' })
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
     cleanups.push(() => pip.destroy())
 
     // The old shape never returned here: it re-entered itself until the stack overflowed.
@@ -103,8 +113,8 @@ describe('burn-in picture in picture', () => {
   })
 
   it('makes the composite the picture, at a size the browser will offer to pop out', async () => {
-    const { video, canvas, host } = await playingVideo()
-    const pip = createPictureInPicture({ video, canvas, mode: 'burn-in' })
+    const { video, subtitles, host } = await playingVideo()
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
     cleanups.push(() => pip.destroy())
     await pip.toggle()
 
@@ -114,17 +124,17 @@ describe('burn-in picture in picture', () => {
     expect(mirror.videoHeight).toBeGreaterThan(140)
 
     // the real element must stay laid out: jassub sizes the subtitle canvas off its offset box, and
-    // a collapsed box yields a composite with no subtitles in it
+    // a collapsed box yields a composite with no subtitles in it. The LAYER is what gets hidden.
     expect(video.style.display).not.toBe('none')
     expect(video.offsetWidth).toBeGreaterThan(0)
     expect(video.style.opacity).toBe('0')
-    expect(canvas.style.display).toBe('none')
+    expect(subtitles.style.display).toBe('none')
   })
 
   it('puts the real picture back, and only after the composite is gone', async () => {
-    const { video, canvas, host } = await playingVideo()
+    const { video, subtitles, host } = await playingVideo()
     video.style.opacity = '0.9'
-    const pip = createPictureInPicture({ video, canvas, mode: 'burn-in' })
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
     cleanups.push(() => pip.destroy())
 
     await pip.toggle()
@@ -133,12 +143,45 @@ describe('burn-in picture in picture', () => {
     await pip.toggle()
     expect(host.querySelectorAll('video')).toHaveLength(1)
     expect(video.style.opacity).toBe('0.9')
-    expect(canvas.style.display).not.toBe('none')
+    expect(subtitles.style.display).not.toBe('none')
+  })
+
+  /**
+   * The subtitle canvas is replaced whenever the pipeline is rebuilt, which on Gecko is routine: an
+   * audio track change or an element recovery does it, and burn-in is the Gecko-only mode.
+   *
+   * Hiding the CANVAS rather than the layer survives neither half of that. The replacement is never
+   * hidden, so it paints the live line on top of the composite's burned-in one, which is the doubled
+   * subtitles this mode exists to avoid; and `restore` then writes `display` back onto an element
+   * that has left the tree, so the live surface would stay hidden for the rest of the session.
+   *
+   * `offsetWidth` is the probe rather than `style.display`, because it is what actually distinguishes
+   * the two: a canvas inside a hidden layer has no box, whatever its own display says.
+   */
+  it('keeps a replaced surface out of the composite, and gives it back afterwards', async () => {
+    const { video, subtitles, surface, host } = await playingVideo()
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+
+    await pip.toggle()
+    expect(host.querySelectorAll('video')).toHaveLength(2)
+
+    // the rebuild: the renderer takes its canvas away and mounts a fresh one
+    surface.remove()
+    const replacement = paintedSurface()
+    subtitles.append(replacement)
+
+    expect(replacement.offsetWidth, 'the replaced surface paints over the composite').toBe(0)
+
+    await pip.toggle()
+    expect(host.querySelectorAll('video')).toHaveLength(1)
+    expect(subtitles.style.display).not.toBe('none')
+    expect(replacement.offsetWidth, 'the replaced surface never came back').toBeGreaterThan(0)
   })
 
   it('lets a pause from the browser window stick, and resume again', async () => {
-    const { video, canvas, host } = await playingVideo()
-    const pip = createPictureInPicture({ video, canvas, mode: 'burn-in' })
+    const { video, subtitles, host } = await playingVideo()
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
     cleanups.push(() => pip.destroy())
     await pip.toggle()
 
@@ -159,11 +202,11 @@ describe('burn-in picture in picture', () => {
   })
 
   it('does not report itself on after a destroy landing inside the metadata wait', async () => {
-    const { video, canvas, host } = await playingVideo()
+    const { video, subtitles, host } = await playingVideo()
     const states: boolean[] = []
     const pip = createPictureInPicture({
       video,
-      canvas,
+      subtitles,
       mode: 'burn-in',
       onBurnedInChange: (on) => states.push(on),
     })

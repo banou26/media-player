@@ -127,6 +127,71 @@ export const ensureScaleFixture = async () => {
   return SCALE_FIXTURE_PATH
 }
 
+export const STALL_FIXTURE = 'stall-source.mp4'
+export const STALL_FIXTURE_PATH = PUBLIC_DIR + STALL_FIXTURE
+
+/**
+ * A FRAGMENTED mp4, which is the only thing a SourceBuffer will take.
+ *
+ * `test-video.mp4` is a plain progressive file with one `moov` and no `moof`, because its job is to
+ * be played by the browser directly. This one exists to be appended by hand so a test can build an
+ * element that is UN-PAUSED and presenting nothing, which is the buffering stall the subtitle
+ * repaint has to survive and which no player-level test can produce on demand.
+ */
+export const ensureStallFixture = async () => {
+  if (await exists(STALL_FIXTURE_PATH)) return STALL_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24:duration=4',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'baseline', '-level', '3.0', '-g', '24',
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    STALL_FIXTURE_PATH,
+  ])
+  return STALL_FIXTURE_PATH
+}
+
+export const SEEK_FIXTURE = 'subtitle-seek.mkv'
+export const SEEK_FIXTURE_PATH = PUBLIC_DIR + SEEK_FIXTURE
+
+/**
+ * A line that COVERS ONLY THE FIRST HALF of the video, which no other fixture does.
+ *
+ * The scale and header tracks run to 20 seconds over a 6 second picture, so every moment of those
+ * files has a line on screen and no seek within them can ever change what is drawn. That makes them
+ * useless for the thing this one exists for: proving that scrubbing while PAUSED repaints, which
+ * jassub 2 does not do by itself because it draws only from presented frames.
+ *
+ * Deliberately the same header as the scale fixture apart from the timing, so a failure here is
+ * about the seek and not about anything libass had to resolve differently.
+ */
+export const SEEK_HEADER = SCALE_HEADER.replace(
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Default,,0,0,0,,HHHHHHHH',
+  'Dialogue: 0,0:00:00.00,0:00:02.50,Default,,0,0,0,,HHHHHHHH',
+)
+
+export const ensureSeekFixture = async () => {
+  if (await exists(SEEK_FIXTURE_PATH)) return SEEK_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = SEEK_FIXTURE_PATH + '.ass'
+  await writeFile(subs, SEEK_HEADER)
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-i', subs,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=eng',
+    SEEK_FIXTURE_PATH,
+  ])
+  await rm(subs, { force: true })
+  return SEEK_FIXTURE_PATH
+}
+
 export const HEADER_FIXTURE = 'subtitle-header.mkv'
 export const HEADER_FIXTURE_PATH = PUBLIC_DIR + HEADER_FIXTURE
 
@@ -189,7 +254,7 @@ export const ensureHeaderFixture = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureHeaderFixture]) {
+  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
