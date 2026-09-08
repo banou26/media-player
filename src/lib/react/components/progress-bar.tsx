@@ -194,11 +194,24 @@ export const ProgressBar = () => {
   const indexes = usePlayer((state) => state.indexes)
   const thumbnails = usePlayer((state) => state.thumbnails)
   const thumbnailAt = usePlayer((state) => state.thumbnailAt)
+  const requestThumbnail = usePlayer((state) => state.requestThumbnail)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
   const [seekFraction, setSeekFraction] = useState<number | undefined>(undefined)
   const [progressBarHoverTime, setProgressBarOverTime] = useState<number | undefined>(undefined)
+
+  /*
+   * Move the preview and the generator's next pick together.
+   *
+   * The frame under the pointer is both the one drawn and the one worth decoding first, and every
+   * place that opens or closes the preview goes through here so the two can never disagree. The
+   * request is a bare assignment inside the generator, so a pointermove costs nothing extra.
+   */
+  const showPreviewAt = (time: number | undefined) => {
+    setProgressBarOverTime(time)
+    requestThumbnail(time)
+  }
 
   // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
   const dragPointerType = useRef<string | undefined>(undefined)
@@ -235,7 +248,7 @@ export const ProgressBar = () => {
     }
     setSeekFraction(fraction)
     if (dragPointerType.current === 'mouse') return
-    setProgressBarOverTime(fraction * duration)
+    showPreviewAt(fraction * duration)
   }
 
   const { dragging, handlers } = useDragValue({ ref: progressBarRef, onChange: onSeekDrag })
@@ -269,7 +282,7 @@ export const ProgressBar = () => {
     pressFraction.current = undefined
     // a lifted finger leaves nothing over the bar, so the preview it opened closes with it
     if (ev.pointerType === 'mouse') return
-    setProgressBarOverTime(undefined)
+    showPreviewAt(undefined)
   }
 
   // offsetX is relative to whichever child is under the pointer, and a captured pointer has none
@@ -281,12 +294,12 @@ export const ProgressBar = () => {
   }
 
   const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
-    setProgressBarOverTime(timeAtClientX(ev.clientX))
+    showPreviewAt(timeAtClientX(ev.clientX))
   }
 
   const hideProgressBarTime = () => {
     if (!progressBarRef.current) return
-    setProgressBarOverTime(undefined)
+    showPreviewAt(undefined)
   }
 
   // duration is 0 until metadata lands, which is never a divisor

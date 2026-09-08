@@ -58,6 +58,13 @@ player.play()
 
 `useSeekThumbnails` and `usePictureInPicture` are exported for reuse outside the bundled chrome.
 
+`useSeekThumbnails` returns `{ thumbnails, requestThumbnail }`. Previews are generated from the start
+of the file to the end, which is right until somebody points at the seekbar: `requestThumbnail(time)`
+moves the preview covering `time` to the front of that queue, and the walk carries on behind it from
+wherever it had got to. Pass `undefined` when the pointer leaves. The bundled seekbar calls it for
+you, so this is only for a chrome you draw yourself. It cannot interrupt a decode already in flight,
+so the wait is the tail of that one rather than the whole backlog.
+
 `downloadedRanges` paints byte spans you already hold onto the seekbar, mapped through the keyframe
 index rather than by percentage, because a file's download progress is not its playback progress:
 containers carry headers, fonts and attachments that occupy no time at all.

@@ -237,7 +237,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // so there is nothing for them to attach to and nothing to guard at the call site.
   usePlayback(video, subtitleLayer, local)
 
-  const generatedThumbnails = useSeekThumbnails({
+  const { thumbnails: generatedThumbnails, requestThumbnail } = useSeekThumbnails({
     publicPath,
     workerUrl: libavWorkerUrl,
     length: thumbnailsEnabled === false ? undefined : size,
@@ -264,12 +264,14 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({
       thumbnails,
       thumbnailAt,
+      requestThumbnail,
       togglePictureInPicture,
       pictureInPictureMode,
       burnedInSubtitles,
     })
   }, [
-    setSourceState, thumbnails, thumbnailAt, togglePictureInPicture, pictureInPictureMode, burnedInSubtitles,
+    setSourceState, thumbnails, thumbnailAt, requestThumbnail, togglePictureInPicture, pictureInPictureMode,
+    burnedInSubtitles,
   ])
 
   // A delegated track list writes the same store fields the engine writes, so the menus never learn

@@ -29,6 +29,17 @@ const KEYFRAME_TIMEOUT = 10_000
 export type ThumbnailGenerator = {
   /** Report which byte ranges are readable. Called with no argument when the whole file is. */
   update: (ranges?: [number, number][]) => void
+  /**
+   * Where the viewer is pointing, so that preview is decoded next. `undefined` when they stop.
+   *
+   * Only the slot covering `time` jumps the queue, and only for as long as it is still waiting, so
+   * this moves one preview forward rather than re-ordering the run. Everything behind it keeps the
+   * order it was claimed in and carries on the moment the jumped slot is done.
+   *
+   * It cannot interrupt a decode that has already started, so the wait is the tail of the one in
+   * flight and not the whole backlog.
+   */
+  prioritize: (time: number | undefined) => void
   destroy: () => void
 }
 
@@ -68,7 +79,35 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
 
     let thumbnails: ThumbnailImage[] = []
     let destroyed = false
-    let queue = Promise.resolve()
+
+    /*
+     * Slots claimed for decoding but not yet started, in the order they were claimed.
+     *
+     * A promise chain used to be this queue, which fixed the running order at the moment each slot
+     * was chained on and left nothing a hover could reach: the preview under the pointer waited
+     * behind every slot already queued, which on a long file is the rest of the run. The order is
+     * the same, it is just held somewhere a pick can look into.
+     */
+    const pending: Slot[] = []
+    let running = false
+    /** Where the pointer is on the seekbar, or undefined when it is off it. */
+    let priorityTime: number | undefined
+
+    /*
+     * The slot to decode next: the one under the pointer when it is still waiting, else the oldest claim.
+     *
+     * Requiring the slot to COVER the time is what keeps this a single jump rather than a re-sort
+     * around the cursor. Once that slot is decoded nothing covers the pointer any more, so the very
+     * next pick is the oldest claim again and the sequential walk carries on where it left off.
+     */
+    const nextIndex = () => {
+      const at = priorityTime
+      if (at !== undefined) {
+        const hit = pending.findIndex(({ timestamp, endTime }) => timestamp <= at && at < endTime)
+        if (hit >= 0) return hit
+      }
+      return 0
+    }
 
     // the slider assumes a gapless storyboard, so gaps get sentinels the UI hides
     const emit = () => {
@@ -88,29 +127,44 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
       onThumbnails(display)
     }
 
-    const generate = (slot: Slot) => {
-      slot.done = true
-      queue = queue
-        .then(async () => {
-          if (destroyed) return
-          const png = await Promise.race([
-            remuxer.readKeyframe(slot.timestamp),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), KEYFRAME_TIMEOUT)),
-          ])
-          const bitmap = await createImageBitmap(new Blob([png], { type: 'image/png' }))
-          const canvas = new OffscreenCanvas(width, Math.max(1, Math.round(bitmap.height * (width / bitmap.width))))
-          canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-          bitmap.close()
-          const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.7 })
-          if (destroyed) return
-          thumbnails = [...thumbnails, { url: URL.createObjectURL(blob), startTime: slot.timestamp, endTime: slot.endTime }]
-            .sort((a, b) => a.startTime - b.startTime)
-          emit()
-        })
+    const decode = async (slot: Slot) => {
+      if (destroyed) return
+      const png = await Promise.race([
+        remuxer.readKeyframe(slot.timestamp),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), KEYFRAME_TIMEOUT)),
+      ])
+      const bitmap = await createImageBitmap(new Blob([png], { type: 'image/png' }))
+      const canvas = new OffscreenCanvas(width, Math.max(1, Math.round(bitmap.height * (width / bitmap.width))))
+      canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+      bitmap.close()
+      const blob = await canvas.convertToBlob({ type: 'image/webp', quality: 0.7 })
+      if (destroyed) return
+      thumbnails = [...thumbnails, { url: URL.createObjectURL(blob), startTime: slot.timestamp, endTime: slot.endTime }]
+        .sort((a, b) => a.startTime - b.startTime)
+      emit()
+    }
+
+    // one decode at a time, because there is one wasm worker behind them all
+    const pump = () => {
+      if (running || destroyed || !pending.length) return
+      const slot = pending.splice(nextIndex(), 1)[0]!
+      running = true
+      void decode(slot)
         .catch(() => {
           slot.attempts += 1
+          // left claimable again, so a later `update` retries it
           slot.done = slot.attempts >= MAX_ATTEMPTS
         })
+        .finally(() => {
+          running = false
+          pump()
+        })
+    }
+
+    const claim = (slot: Slot) => {
+      slot.done = true
+      pending.push(slot)
+      pump()
     }
 
     emit()
@@ -120,11 +174,16 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
         if (destroyed) return
         for (const slot of slots) {
           if (slot.done) continue
-          if (!ranges || ranges.some(([from, to]) => from <= slot.startByte && slot.endByte <= to)) generate(slot)
+          if (!ranges || ranges.some(([from, to]) => from <= slot.startByte && slot.endByte <= to)) claim(slot)
         }
+      },
+      prioritize: (time) => {
+        if (destroyed) return
+        priorityTime = time
       },
       destroy: () => {
         destroyed = true
+        pending.length = 0
         for (const t of thumbnails) URL.revokeObjectURL(t.url)
         thumbnails = []
         terminateRemuxer(remuxer)

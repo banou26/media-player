@@ -231,6 +231,37 @@ export const HEADER_HEADER = [
   '',
 ].join('\n')
 
+/**
+ * Twenty seconds with a keyframe every two, which is what makes generation ORDER observable.
+ *
+ * The other fixtures are a few seconds long and yield one or two thumbnail slots, so any order is
+ * the same order. Nine slots is enough that a preview jumped to the front lands nowhere near where
+ * a start-to-end walk would have put it. Tiny and flat-coloured because the picture is never looked
+ * at here, only the sequence the slots come back in.
+ */
+export const THUMBNAIL_FIXTURE = 'thumbnail-order.mkv'
+export const THUMBNAIL_FIXTURE_PATH = PUBLIC_DIR + THUMBNAIL_FIXTURE
+/** Seconds between keyframes, which the generator is then asked to match with `interval`. */
+export const THUMBNAIL_KEYFRAME_INTERVAL = 2
+export const THUMBNAIL_DURATION = 20
+
+export const ensureThumbnailFixture = async () => {
+  if (await exists(THUMBNAIL_FIXTURE_PATH)) return THUMBNAIL_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', `testsrc=size=160x90:rate=24:duration=${THUMBNAIL_DURATION}`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${THUMBNAIL_DURATION}`,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
+    // -g alone is a ceiling the encoder may undercut, so the cadence is forced outright
+    '-g', String(24 * THUMBNAIL_KEYFRAME_INTERVAL),
+    '-force_key_frames', `expr:gte(t,n_forced*${THUMBNAIL_KEYFRAME_INTERVAL})`,
+    '-c:a', 'aac',
+    THUMBNAIL_FIXTURE_PATH,
+  ])
+  return THUMBNAIL_FIXTURE_PATH
+}
+
 export const ensureHeaderFixture = async () => {
   if (await exists(HEADER_FIXTURE_PATH)) return HEADER_FIXTURE_PATH
   await mkdir(PUBLIC_DIR, { recursive: true })
@@ -254,7 +285,7 @@ export const ensureHeaderFixture = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture]) {
+  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

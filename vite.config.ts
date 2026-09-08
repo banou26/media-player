@@ -68,15 +68,15 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['src/**/*.test.{ts,tsx}'],
-          exclude: ['src/**/*.browser.test.{ts,tsx}'],
+          include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.{ts,tsx}'],
+          exclude: ['src/**/*.browser.test.{ts,tsx}', 'tests/**/*.browser.test.{ts,tsx}'],
         },
       },
       {
         extends: true,
         test: {
           name: 'browser',
-          include: ['src/**/*.browser.test.{ts,tsx}'],
+          include: ['src/**/*.browser.test.{ts,tsx}', 'tests/**/*.browser.test.{ts,tsx}'],
           browser: {
             enabled: true,
             // MEDIA_PLAYER_HEADFUL=1 to watch it, and to check whether a layout or a codec decision

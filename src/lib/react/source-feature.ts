@@ -83,6 +83,17 @@ export type SourceState = {
    * Falls back to scanning `thumbnails` when absent, which is what the engine's generator fills.
    */
   thumbnailAt?: (time: number) => ThumbnailImage | undefined
+  /**
+   * Where the pointer is on the seekbar, so the preview under it is generated before the rest.
+   *
+   * Generation otherwise walks the file start to end, so pointing at the last third of a long video
+   * means waiting out everything before it. Called on every pointermove, which is why it is a
+   * callback on the store rather than a piece of state: a hover time held in the store would
+   * re-render every subscriber for each move.
+   *
+   * A no-op on a source that brings its own storyboard, and until the generator has booted.
+   */
+  requestThumbnail: (time: number | undefined) => void
 
   /**
    * Both selectors may answer with a promise, and the menu waits on it.
@@ -168,6 +179,7 @@ export type SourceState = {
 const initialState: SourceState = {
   indexes: [],
   thumbnails: [],
+  requestThumbnail: () => {},
   subtitleTracks: [],
   selectedSubtitleTrack: undefined,
   selectSubtitleTrack: () => {},

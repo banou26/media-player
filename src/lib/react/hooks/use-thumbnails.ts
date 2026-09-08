@@ -1,7 +1,7 @@
 import type { ThumbnailGenerator, ThumbnailImage } from '../../engine'
 import type { DownloadedRange } from '../source-feature'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { createThumbnailGenerator } from '../../engine'
 
@@ -19,9 +19,21 @@ export type UseSeekThumbnailsOptions = {
   downloadedRanges?: DownloadedRange[]
 }
 
+export type SeekThumbnails = {
+  thumbnails: ThumbnailImage[]
+  /**
+   * Where the viewer is pointing on the seekbar, so that preview is decoded next.
+   *
+   * Stable for the life of the hook, so it can be published to the store once and called from a
+   * pointermove without re-rendering anything. A no-op until the generator boots, and on a source
+   * that brings its own storyboard.
+   */
+  requestThumbnail: (time: number | undefined) => void
+}
+
 export const useSeekThumbnails = ({
   publicPath, workerUrl, length, read, downloadedRanges,
-}: UseSeekThumbnailsOptions): ThumbnailImage[] => {
+}: UseSeekThumbnailsOptions): SeekThumbnails => {
   const [thumbnails, setThumbnails] = useState<ThumbnailImage[]>([])
   const generatorRef = useRef<ThumbnailGenerator | null>(null)
   const readRef = useRef(read)
@@ -74,5 +86,9 @@ export const useSeekThumbnails = ({
 
   useEffect(() => { generatorRef.current?.update(ranges) }, [ranges])
 
-  return thumbnails
+  const requestThumbnail = useCallback((time: number | undefined) => {
+    generatorRef.current?.prioritize(time)
+  }, [])
+
+  return { thumbnails, requestThumbnail }
 }
