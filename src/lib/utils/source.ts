@@ -24,8 +24,19 @@ const fromUrl = async (
 ) => {
   const length = _length ?? await probeLength(url, credentials)
   const read = async (offset: number, size: number) => {
+    /*
+     * A read that starts at or past the end answers empty, the way slicing a Blob does.
+     *
+     * Without this the range comes out as `bytes=<offset>-<length-1>` with the last byte before the
+     * first, which is not a range a server can satisfy: it answers 416 and the read throws, so the
+     * demuxer's ordinary walk into EOF surfaces as "Reading the video file failed" on a file that is
+     * perfectly fine. The blob arm has always returned empty here, so this is also what makes the two
+     * arms of `inputToRemuxerInput` behave the same.
+     */
+    const end = Math.min(offset + size, length) - 1
+    if (end < offset) return new ArrayBuffer(0)
     const response = await fetch(url, {
-      headers: { Range: `bytes=${offset}-${Math.min(offset + size, length) - 1}` },
+      headers: { Range: `bytes=${offset}-${end}` },
       credentials,
     })
     if (!response.ok) throw new Error(`The source could not be read: HTTP ${response.status}`)
