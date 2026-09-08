@@ -8,6 +8,7 @@ import { usePlayer } from '../player'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import BurnInHint from './burn-in-hint'
+import SkipChapter from './skip-chapter'
 
 const AUTO_HIDE_DELAY = 3_000
 
@@ -233,6 +234,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
       {controls === false ? null : <ControlBar />}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
+      <SkipChapter />
       <div className="video" onClick={onVideoClick}>
         {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}

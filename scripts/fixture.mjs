@@ -312,6 +312,53 @@ export const ensureChapterFixture = async () => {
   return CHAPTER_FIXTURE_PATH
 }
 
+/**
+ * The shape an anime episode actually has, so the skip offer can be driven end to end.
+ *
+ * Prologue, Opening, Episode, Ending, Preview is the second most common sequence in the sample the
+ * classifier was built from. The two themes are 20s rather than the real 90s to keep the fixture
+ * small, which is still well clear of the 15s below which nothing is offered at all.
+ */
+export const ANIME_FIXTURE = 'anime-chapters.mkv'
+export const ANIME_FIXTURE_PATH = PUBLIC_DIR + ANIME_FIXTURE
+export const ANIME_CHAPTERS = [
+  { start: 0, end: 10, title: 'Prologue' },
+  { start: 10, end: 30, title: 'Opening' },
+  { start: 30, end: 70, title: 'Episode' },
+  { start: 70, end: 90, title: 'Ending' },
+  { start: 90, end: 100, title: 'Preview' },
+]
+
+export const ensureAnimeFixture = async () => {
+  if (await exists(ANIME_FIXTURE_PATH)) return ANIME_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const meta = ANIME_FIXTURE_PATH + '.ffmeta'
+  await writeFile(meta, [
+    ';FFMETADATA1',
+    ...ANIME_CHAPTERS.flatMap(({ start, end, title }) => [
+      '[CHAPTER]',
+      'TIMEBASE=1/1000',
+      `START=${start * 1000}`,
+      `END=${end * 1000}`,
+      `title=${title}`,
+    ]),
+  ].join('\n') + '\n')
+
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=12:duration=100',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=100',
+    '-i', meta,
+    '-map_metadata', '2',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    ANIME_FIXTURE_PATH,
+  ])
+  await rm(meta, { force: true })
+  return ANIME_FIXTURE_PATH
+}
+
 export const ensureHeaderFixture = async () => {
   if (await exists(HEADER_FIXTURE_PATH)) return HEADER_FIXTURE_PATH
   await mkdir(PUBLIC_DIR, { recursive: true })
@@ -335,7 +382,7 @@ export const ensureHeaderFixture = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture]) {
+  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
