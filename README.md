@@ -150,10 +150,39 @@ chrome at once.
 
 ## What it does
 
-Play and pause, seek with a preview thumbnail and a keyframe-accurate scrub, volume on a log curve,
-mute, playback speed, audio track selection, subtitle track selection, picture in picture, fullscreen,
-and keyboard shortcuts. Nothing is persisted: volume, speed and track choices start at their defaults
-every load.
+Play and pause, seek with a preview thumbnail and a keyframe-accurate scrub, chapters on the seekbar,
+an offer to skip an opening or ending, volume on a log curve, mute, playback speed, audio track
+selection, subtitle track selection, picture in picture, fullscreen, and keyboard shortcuts. Nothing
+is persisted: volume, speed and track choices start at their defaults every load.
+
+### Chapters
+
+Chapters come from the container, and the seekbar draws them as segments with a break at each
+boundary. Hovering one lifts it above its neighbours and names it beside the time in the preview.
+
+Pass `chapters` to supply them yourself, on either arm, and they win over whatever the file declared:
+
+```tsx
+<MediaPlayer {...source} chapters={[{ start: 0, end: 88, title: 'Opening' }]} />
+```
+
+They are `{ start, end, title }` in seconds, ordered and non-overlapping, and they need not cover the
+whole duration. A local file gets them from libav automatically, so this is for a source that knows
+chapters the container does not.
+
+### Skip Opening and Skip Ending
+
+When a chapter looks like an opening or an ending, a button offers to jump past it, appearing a
+second before the chapter and staying six seconds. It never skips on its own, so a wrong guess costs
+a button nobody presses rather than a jump out of the episode.
+
+The guess is made from the chapter title, against the names releases actually use (`OP`, `Opening`,
+`ED`, `Ending`, `Credits`, and the same names carrying a song), and it defers across the whole file:
+`Intro` is the opening where nothing else claims to be, and the cold open where an `OP` follows it.
+A file whose chapters carry no usable name at all falls back to shape, where a chapter of about
+ninety seconds in each half of the runtime is the opening and the ending. Nothing shorter than
+fifteen seconds is ever offered, and a disc that is mostly themes offers nothing, because there the
+themes are what is being watched.
 
 ### Picture in picture keeps the subtitles
 
