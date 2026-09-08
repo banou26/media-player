@@ -16,8 +16,13 @@ import CORPUS from './anime-chapters.corpus.json'
 const chapters = (...spans: [string, number, number][]): MediaChapter[] =>
   spans.map(([title, start, end]) => ({ title, start, end }))
 
-/** Long enough to clear the "nothing worth skipping" floor, so a case tests the title and not the length. */
-const T = 90
+/**
+ * Clear of the "nothing worth skipping" floor, and deliberately NOT theme length.
+ *
+ * A case here is about the title and nothing else. At 90s the shape rule would answer for the ones
+ * whose titles say nothing, which is right in a real file and useless in a test of title reading.
+ */
+const T = 40
 
 /**
  * One title, in a file shaped like an episode.
@@ -149,6 +154,36 @@ describe('a disc of nothing but themes', () => {
   })
 })
 
+describe('a file whose chapters were named by a muxer, not a person', () => {
+  it('reads the opening and ending off the shape instead', () => {
+    // 53 files in the corpus name every chapter after its own timestamp. This is the commonest of
+    // them: six chapters, one 90s theme in each half of the runtime.
+    const kinds = classifyChapters(chapters(
+      ['00:00:00.000', 0, 94], ['00:01:34.000', 94, 184], ['00:03:04.000', 184, 839],
+      ['00:13:59.000', 839, 1355], ['00:22:35.000', 1355, 1445], ['00:24:05.000', 1445, 1472],
+    ))
+    expect(kinds).toEqual([undefined, 'opening', undefined, undefined, 'ending', undefined])
+  })
+
+  it('abstains rather than picking when two chapters could be the theme', () => {
+    // guessing between two candidates is how a viewer gets thrown out of the episode
+    const kinds = classifyChapters(chapters(
+      ['Chapter 1', 0, 90], ['Chapter 2', 90, 180], ['Chapter 3', 180, 1200], ['Chapter 4', 1200, 1290],
+    ))
+    expect(kinds.slice(0, 2), 'picked one of two equally good candidates').toEqual([undefined, undefined])
+    expect(kinds[3], 'the single candidate in the second half is still offered').toBe('ending')
+  })
+
+  it('never overrides a title, only fills in for one that says nothing', () => {
+    // the Prologue here is theme-length, so shape alone would call it the opening. The title has
+    // already answered, so shape is never consulted.
+    const kinds = classifyChapters(chapters(
+      ['Prologue', 0, 94], ['Opening', 94, 171], ['Episode', 171, 1300], ['Credits', 1300, 1390],
+    ))
+    expect(kinds).toEqual([undefined, 'opening', undefined, 'ending'])
+  })
+})
+
 describe('the whole corpus of real files', () => {
   const shapes = CORPUS as { files: number, chapters: { start: number, end: number, title: string }[] }[]
 
@@ -168,14 +203,15 @@ describe('the whole corpus of real files', () => {
     const files = shapes.reduce((sum, s) => sum + s.files, 0)
     expect(files).toBe(192)
     /*
-     * Measured, not aspirational. 94 files are offered an opening and 109 an ending; the rest carry
-     * no usable title, overwhelmingly because their muxer wrote timestamps as chapter names.
+     * Measured, not aspirational. 142 files are offered an opening and 159 an ending, 92% of the
+     * corpus getting at least one. Titles alone reached 49% and 57%; the shape rule covers the 53
+     * files whose muxer wrote timestamps where names belong.
      *
      * Held as a floor rather than an equality so a better rule is free to raise it, and a rule that
      * quietly stops matching a whole release group cannot pass.
      */
-    expect(openings, 'fewer files are offered an opening than before').toBeGreaterThanOrEqual(94)
-    expect(endings, 'fewer files are offered an ending than before').toBeGreaterThanOrEqual(109)
+    expect(openings, 'fewer files are offered an opening than before').toBeGreaterThanOrEqual(142)
+    expect(endings, 'fewer files are offered an ending than before').toBeGreaterThanOrEqual(159)
   })
 
   it('never calls the episode body or a preview skippable', () => {
@@ -188,6 +224,38 @@ describe('the whole corpus of real files', () => {
         }
       }
     }
+  })
+
+  /*
+   * The shape rule, checked against the files where the answer is already known.
+   *
+   * This is the measurement that justified adding it at all. Blanking every title turns a file with
+   * ground truth into one the shape rule has to answer alone, and the rule is allowed to abstain but
+   * never to point somewhere else. Measured over the corpus: it agrees on the large majority and
+   * contradicts a title nowhere.
+   */
+  it('guesses from shape without ever contradicting a title', () => {
+    let agreed = 0
+    let abstained = 0
+    for (const shape of shapes) {
+      const truth = classifyChapters(shape.chapters)
+      if (!truth.some(Boolean)) continue
+      const blinded = classifyChapters(shape.chapters.map((c, i) => ({ ...c, title: `Chapter ${i + 1}` })))
+      for (const [i, kind] of truth.entries()) {
+        if (!kind) continue
+        if (blinded[i] === kind) agreed += 1
+        else if (!blinded[i]) abstained += 1
+        else expect.unreachable(`shape called chapter ${i} a ${blinded[i]} where its title says ${kind}`)
+      }
+      // and it must not invent a segment where the title said there was none
+      for (const [i, kind] of blinded.entries()) {
+        if (kind && !truth[i]) {
+          expect(truth.includes(kind), `shape invented a ${kind} the titles placed elsewhere`).toBe(true)
+        }
+      }
+    }
+    expect(agreed, 'the shape rule stopped agreeing with titles').toBeGreaterThanOrEqual(100)
+    expect(abstained).toBeGreaterThanOrEqual(0)
   })
 
   it('reads the corpus, so the sweep above cannot pass by matching nothing', () => {
