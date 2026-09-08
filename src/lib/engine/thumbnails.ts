@@ -25,6 +25,17 @@ const READAHEAD = 1_000_000
 const MAX_ATTEMPTS = 3
 // a keyframe decode can hang without ever settling
 const KEYFRAME_TIMEOUT = 10_000
+/**
+ * How much more of the file has to become readable before the index is walked again.
+ *
+ * An index is only as complete as the bytes behind it, and over a torrent those arrive for minutes
+ * after the player starts. Re-walking on every range change would demux the file over and over; a
+ * multiplier makes the number of walks logarithmic in the file size instead, so a download that
+ * starts at 2% re-indexes around eight times on its way to whole rather than hundreds.
+ */
+const REINDEX_GROWTH = 1.5
+/** And never re-walk for a trickle, however early. */
+const REINDEX_MIN_BYTES = 4_000_000
 
 export type ThumbnailGenerator = {
   /** Report which byte ranges are readable. Called with no argument when the whole file is. */
@@ -60,22 +71,37 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
     const interval = Math.max(options.interval ?? INTERVAL, duration / MAX_THUMBNAILS)
 
     type Slot = { timestamp: number, endTime: number, startByte: number, endByte: number, done: boolean, attempts: number }
-    const slots: Slot[] = []
-    for (const [i, index] of metadata.indexes.entries()) {
-      const last = slots.at(-1)
-      if (last && index.timestamp - last.timestamp < interval) continue
-      slots.push({
-        timestamp: index.timestamp,
-        endTime: duration,
-        startByte: index.pos,
-        endByte: Math.min((metadata.indexes[i + 1]?.pos ?? length) + READAHEAD, length),
-        done: false,
-        attempts: 0,
-      })
+    let slots: Slot[] = []
+
+    /**
+     * The slot list for one index, which is only ever as complete as the bytes it was built from.
+     *
+     * libav walks the clusters it can read and stops, WITHOUT failing: on a file whose first tenth is
+     * readable it reports a single keyframe and a correct duration, because the duration comes from
+     * the header. That single entry then becomes a single slot whose endTime falls through to the
+     * duration, which is one preview covering the whole seekbar.
+     */
+    const buildSlots = (indexes: typeof metadata.indexes): Slot[] => {
+      const built: Slot[] = []
+      for (const [i, index] of indexes.entries()) {
+        const last = built.at(-1)
+        if (last && index.timestamp - last.timestamp < interval) continue
+        built.push({
+          timestamp: index.timestamp,
+          endTime: duration,
+          startByte: index.pos,
+          endByte: Math.min((indexes[i + 1]?.pos ?? length) + READAHEAD, length),
+          done: false,
+          attempts: 0,
+        })
+      }
+      for (const [i, slot] of built.entries()) slot.endTime = built[i + 1]?.timestamp ?? duration
+      // reading the last keyframe runs the demuxer into EOF, which crashes the libav build
+      if (built.length > 1 && (built.at(-1)!.timestamp > duration - interval * 2)) built.pop()
+      return built
     }
-    for (const [i, slot] of slots.entries()) slot.endTime = slots[i + 1]?.timestamp ?? duration
-    // reading the last keyframe runs the demuxer into EOF, which crashes the libav build
-    if (slots.length > 1 && (slots.at(-1)!.timestamp > duration - interval * 2)) slots.pop()
+
+    slots = buildSlots(metadata.indexes)
 
     let thumbnails: ThumbnailImage[] = []
     let destroyed = false
@@ -92,6 +118,19 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
     let running = false
     /** Where the pointer is on the seekbar, or undefined when it is off it. */
     let priorityTime: number | undefined
+
+    /**
+     * How much of the file was readable when the current index was built.
+     *
+     * Negative until the first update, which establishes it: the boot walk has just happened against
+     * whatever was readable then, so the first report of the ranges is the baseline rather than a
+     * reason to walk again.
+     */
+    let indexedBytes = -1
+    let reindexWanted = false
+    let reindexing = false
+    /** The ranges last reported, so a walk deferred behind a decode can still claim against them. */
+    let lastRanges: [number, number][] | undefined
 
     /*
      * The slot to decode next: the one under the pointer when it is still waiting, else the oldest claim.
@@ -146,7 +185,25 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
 
     // one decode at a time, because there is one wasm worker behind them all
     const pump = () => {
-      if (running || destroyed || !pending.length) return
+      if (running || destroyed || reindexing) return
+      /*
+       * A deferred index walk goes first.
+       *
+       * There is one worker behind both, and a walk started while a decode holds it would have them
+       * interleaved on the same demuxer. Taking it here means the walk happens at the one moment
+       * nothing else is using it, and it happens BEFORE the next decode so that decode comes from
+       * the new slot list rather than the stale one.
+       */
+      if (reindexWanted) {
+        reindexWanted = false
+        const ranges = lastRanges
+        void reindex(readableTo(ranges)).then(() => {
+          claimReadable(ranges)
+          pump()
+        })
+        return
+      }
+      if (!pending.length) return
       const slot = pending.splice(nextIndex(), 1)[0]!
       running = true
       void decode(slot)
@@ -167,15 +224,74 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
       pump()
     }
 
+    /**
+     * Walk the index again now that more of the file can be read, and keep what is already drawn.
+     *
+     * A preview survives if its slot survives, which is why the previous timestamps are matched
+     * rather than the list being thrown away: the first slot is almost always still the first slot,
+     * and re-decoding it would throw away work and flicker the seekbar for no reason. What DOES
+     * change is its endTime, since a slot that used to run to the end of the file now runs only as
+     * far as the neighbour the new index revealed.
+     */
+    const reindex = async (readable: number) => {
+      reindexing = true
+      try {
+        const next = await remuxer.init()
+        if (destroyed) return
+        indexedBytes = readable
+        const rebuilt = buildSlots(next.indexes)
+        if (!rebuilt.length) return
+
+        const drawn = new Map(thumbnails.map((t) => [t.startTime, t]))
+        for (const slot of rebuilt) {
+          if (drawn.has(slot.timestamp)) slot.done = true
+        }
+        slots = rebuilt
+        // a preview whose slot is gone is no longer addressable, and its blob would leak
+        const kept = new Set(rebuilt.map((slot) => slot.timestamp))
+        for (const t of thumbnails) if (!kept.has(t.startTime)) URL.revokeObjectURL(t.url)
+        thumbnails = rebuilt
+          .filter((slot) => drawn.has(slot.timestamp))
+          .map((slot) => ({ url: drawn.get(slot.timestamp)!.url, startTime: slot.timestamp, endTime: slot.endTime }))
+        // anything claimed against the old list is stale, and the update below re-claims from the new one
+        pending.length = 0
+        emit()
+      } catch {
+        // an index that could not be re-read leaves the old one in place, and the next update retries
+      } finally {
+        reindexing = false
+      }
+    }
+
+    /** The end of what can be read, which is what an index walk can reach. */
+    const readableTo = (ranges?: [number, number][]) =>
+      ranges ? ranges.reduce((most, [, to]) => Math.max(most, to), 0) : length
+
+    const claimReadable = (ranges?: [number, number][]) => {
+      for (const slot of slots) {
+        if (slot.done) continue
+        if (!ranges || ranges.some(([from, to]) => from <= slot.startByte && slot.endByte <= to)) claim(slot)
+      }
+    }
+
     emit()
 
     return {
       update: (ranges) => {
         if (destroyed) return
-        for (const slot of slots) {
-          if (slot.done) continue
-          if (!ranges || ranges.some(([from, to]) => from <= slot.startByte && slot.endByte <= to)) claim(slot)
+        lastRanges = ranges
+        const readable = readableTo(ranges)
+        if (indexedBytes < 0) indexedBytes = readable
+        else {
+          const grown = readable >= Math.max(indexedBytes * REINDEX_GROWTH, indexedBytes + REINDEX_MIN_BYTES)
+          // and one last walk when the file becomes whole, so a finished download is fully indexed
+          const whole = readable >= length && indexedBytes < length
+          if (grown || whole) reindexWanted = true
         }
+        claimReadable(ranges)
+        // claims first, so a walk that has to wait for a decode does not hold up the previews that
+        // the current index can already produce
+        pump()
       },
       prioritize: (time) => {
         if (destroyed) return
