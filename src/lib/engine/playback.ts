@@ -11,6 +11,18 @@ export type { AudioStream }
 /** A keyframe index entry: the byte offset a keyframe starts at, and the time it plays at. */
 export type MediaIndex = { pos: number, timestamp: number }
 
+/**
+ * One named span of the timeline, in SECONDS.
+ *
+ * Chapters are not required to tile the duration: a container routinely declares a last chapter that
+ * ends fractionally before the file does, and nothing guarantees the first starts at zero. Anything
+ * drawing them has to treat the gaps as ordinary un-named time rather than assume full cover.
+ *
+ * libav also reports an `index`, dropped here the way `MediaIndex` drops it: array position already
+ * carries it, and a caller supplying their own chapters should not have to number them.
+ */
+export type MediaChapter = { start: number, end: number, title: string }
+
 export type PlaybackOptions = {
   videoElement: HTMLVideoElement
   /**
@@ -55,6 +67,8 @@ export type PlaybackController = {
   selectSubtitleStream: (streamIndex: number | undefined) => void
   /** Keyframe index of the input, which is what maps a downloaded byte range onto the timeline. */
   indexes: MediaIndex[]
+  /** Named spans the container declared, empty when it declared none. */
+  chapters: MediaChapter[]
   duration: number
   videoMimeType: string
   audioMimeType: string
@@ -643,6 +657,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       videoElement,
       selectSubtitleStream: (streamIndex: number | undefined) => subtitles.selectStream(streamIndex),
       indexes: metadata.indexes ?? [],
+      chapters: metadata.chapters ?? [],
       duration: metadata.info.input.duration,
       videoMimeType: metadata.info.output.videoMimeType,
       audioMimeType: metadata.info.output.audioMimeType,

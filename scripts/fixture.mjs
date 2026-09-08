@@ -262,6 +262,56 @@ export const ensureThumbnailFixture = async () => {
   return THUMBNAIL_FIXTURE_PATH
 }
 
+/**
+ * Twenty seconds carrying three chapters of deliberately UNEQUAL length.
+ *
+ * Equal chapters would let a layout bug that divides the bar evenly pass, which is the whole thing
+ * the segmented seekbar has to get right. 4s, 8s and 8s against a 20s picture are 20%, 40% and 40%.
+ *
+ * The chapters also stop at 20.0 while the file runs to 20.023, which is not a mistake: libav
+ * reports exactly that for this file, so the tail beyond the last chapter is real and the bar has to
+ * survive chapters that do not tile the whole duration.
+ */
+export const CHAPTER_FIXTURE = 'chapters.mkv'
+export const CHAPTER_FIXTURE_PATH = PUBLIC_DIR + CHAPTER_FIXTURE
+/** What libav reports back for this file, in seconds, and what the tests assert against. */
+export const CHAPTERS = [
+  { start: 0, end: 4, title: 'Intro' },
+  { start: 4, end: 12, title: 'The Middle Bit' },
+  { start: 12, end: 20, title: 'Outro' },
+]
+
+export const ensureChapterFixture = async () => {
+  if (await exists(CHAPTER_FIXTURE_PATH)) return CHAPTER_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  // ffmpeg takes chapters only as an FFMETADATA input mapped over the output, never as a flag
+  const meta = CHAPTER_FIXTURE_PATH + '.ffmeta'
+  await writeFile(meta, [
+    ';FFMETADATA1',
+    ...CHAPTERS.flatMap(({ start, end, title }) => [
+      '[CHAPTER]',
+      'TIMEBASE=1/1000',
+      `START=${start * 1000}`,
+      `END=${end * 1000}`,
+      `title=${title}`,
+    ]),
+  ].join('\n') + '\n')
+
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=160x90:rate=24:duration=20',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=20',
+    '-i', meta,
+    '-map_metadata', '2',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48',
+    '-c:a', 'aac',
+    CHAPTER_FIXTURE_PATH,
+  ])
+  await rm(meta, { force: true })
+  return CHAPTER_FIXTURE_PATH
+}
+
 export const ensureHeaderFixture = async () => {
   if (await exists(HEADER_FIXTURE_PATH)) return HEADER_FIXTURE_PATH
   await mkdir(PUBLIC_DIR, { recursive: true })
@@ -285,7 +335,7 @@ export const ensureHeaderFixture = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture]) {
+  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

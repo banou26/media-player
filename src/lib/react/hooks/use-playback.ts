@@ -73,9 +73,19 @@ export const usePlayback = (
   // null, and the effect below returns before touching them in that case.
   const {
     read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '',
-    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, autoplay = false,
+    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, autoplay = false, chapters,
     seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS,
   } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
+
+  /*
+   * Through a ref because a caller's array is a new identity every render.
+   *
+   * In the effect's dependencies it would tear down and restart the whole pipeline on each render.
+   * Only its value at publish time matters, and a later change is picked up by the effect in
+   * `video-player.tsx` that owns the other half of this precedence.
+   */
+  const chaptersRef = useRef(chapters)
+  chaptersRef.current = chapters
 
   // The track the viewer picked, which is what a restart is keyed on. Distinct from the store's
   // `selectedAudioStream`, which is whatever is playing right now.
@@ -335,7 +345,12 @@ export const usePlayback = (
           return
         }
         controllerRef.current = controller
-        player.setSourceState({ indexes: controller.indexes })
+        // a caller's chapters beat the container's, and this is the writer that would otherwise
+        // land last and overwrite them
+        player.setSourceState({
+          indexes: controller.indexes,
+          chapters: chaptersRef.current ?? controller.chapters,
+        })
         // a track chosen before this pipeline existed has to be re-applied to the new renderer
         const chosen = player.selectedSubtitleTrack
         if (typeof chosen === 'number') controller.selectSubtitleStream(chosen)

@@ -1,5 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
+import type { MediaChapter } from '../engine'
 import type { DownloadedRange } from './source-feature'
 import type { DelegatedTracks, ExternalThumbnails, PlayerMedia } from './media'
 import type { ExposePlayerOptions } from '../remote'
@@ -44,6 +45,19 @@ type CommonOptions = {
    */
   title?: string
   autoplay?: boolean
+
+  /**
+   * Named spans of the timeline, drawn as segments on the seekbar.
+   *
+   * Common to both arms rather than remote-only, unlike `thumbnails`. A local file is just as likely
+   * to declare none (mp4 and webm routinely carry no chapters at all), and a caller often knows
+   * chapters the container does not: skip-intro ranges from a metadata API are the usual case. Given
+   * here they WIN over whatever the container declared, and they paint on the first frame rather than
+   * waiting for the pipeline to boot.
+   *
+   * Expected in seconds, ordered by start and non-overlapping. They need not cover the duration.
+   */
+  chapters?: MediaChapter[]
 
   /**
    * Draw the control bar. Defaults to true.
@@ -183,7 +197,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const local = remote ? null : options as MediaPlayerLocalOptions
   // `title` is common to both arms, so it is read off `options`. Everything else here belongs to the
   // local arm and is absent when the media is remote.
-  const { title } = options
+  const { title, chapters } = options
   const {
     size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled,
   } = local ?? ({} as Partial<MediaPlayerLocalOptions>)
@@ -300,6 +314,19 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       selectAudioTrack: (id) => audio.select(String(id)),
     })
   }, [setSourceState, audio])
+
+  /*
+   * Guarded, and its own effect, for the reason the ones above are.
+   *
+   * Folded into the effect that publishes `title` and `size` it would write `chapters: undefined`
+   * every time one of those changed, erasing the list libav had already found. The other half of the
+   * precedence lives at the engine's publish site, which prefers this prop when it has one: between
+   * them the two writers land on the same value whichever runs last.
+   */
+  useEffect(() => {
+    if (!chapters) return
+    setSourceState({ chapters })
+  }, [setSourceState, chapters])
 
   return (
     <Chrome

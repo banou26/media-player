@@ -1,4 +1,4 @@
-import type { MediaIndex, PictureInPictureMode, ThumbnailImage } from '../engine'
+import type { MediaChapter, MediaIndex, PictureInPictureMode, ThumbnailImage } from '../engine'
 
 import { definePlayerFeature } from '@videojs/core/dom'
 
@@ -77,6 +77,14 @@ export type SourceState = {
 
   /** Keyframe index of the input, which turns a downloaded byte range into a time range. */
   indexes: MediaIndex[]
+  /**
+   * Named spans of the timeline, drawn as segments on the seekbar. Empty when the source has none.
+   *
+   * Ordered by start and non-overlapping, which is what the seekbar assumes. They need not cover the
+   * whole duration: the engine passes on whatever the container declared, and a caller-supplied list
+   * is whatever the caller knows.
+   */
+  chapters: MediaChapter[]
   thumbnails: ThumbnailImage[]
   /**
    * Answers for one time directly, when the source has a storyboard it can index but not enumerate.
@@ -178,6 +186,7 @@ export type SourceState = {
 
 const initialState: SourceState = {
   indexes: [],
+  chapters: [],
   thumbnails: [],
   requestThumbnail: () => {},
   subtitleTracks: [],

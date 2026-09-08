@@ -7,6 +7,8 @@ import { css } from '@emotion/react'
 import { usePlayer } from '../player'
 import { useDragValue } from '../hooks/use-drag-value'
 import { fonts } from '../../utils/fonts'
+import { formatTime } from '../../utils/time'
+import { segmentBounds, segmentMask } from '../../utils/chapters'
 
 const style = css`
   position: relative;
@@ -41,6 +43,37 @@ const style = css`
     }
   }
 
+  /*
+   * One copy of the track per mask, stacked.
+   *
+   * The rest track paints every segment except the one under the pointer, the focus track paints only that one and
+   * is the only element that grows. Both are full bar width, which is what keeps every percentage
+   * and every scaleX inside them meaning exactly what it meant before chapters existed: the gaps are
+   * cut by a mask, not by resizing anything.
+   *
+   * The mask sits HERE and never on .loaded-part or .play. Those two carry a scaleX, and a mask
+   * travels with its element's transform, so a gap drawn on them would slide with the fill.
+   */
+  .track {
+    position: absolute;
+    inset: 0;
+    /* never a hit target: .padding is the only one, and a second would break the drag gesture and
+       fire a bubbling mouseout at every boundary crossing */
+    pointer-events: none;
+  }
+
+  /*
+   * The segment under the pointer, on TOP of the growth the whole bar already got.
+   *
+   * Measured off YouTube's live player, hovering one chapter of five: every other segment goes 4px
+   * to 6px, and the one under the pointer goes to 10px. Both grow about the bar's centre line, so
+   * the emphasised segment bulges above and below its neighbours rather than sitting on them. 6 x
+   * 1.667 is 10, and the 1.5 the layers inside already carry gets this track from 4 to exactly that.
+   */
+  .track.focus {
+    transform: scaleY(1.667);
+  }
+
 
   .background-bar {
     position: absolute;
@@ -63,6 +96,23 @@ const style = css`
 
     text-shadow: 0 0 4px rgba(0, 0, 0, 1);
     ${fonts.bMedium.bold}
+
+    gap: calc(.6 * var(--mp-unit));
+
+    /*
+     * The chapter under the pointer, next to the time, which is where the reference puts it.
+     *
+     * It is the one part of this pill whose width the player does not control, so it is capped and
+     * ellipsised rather than allowed to push the box outside the picture. The cap and the clamp that
+     * positions the pill are set together on the element, since a centred box can only be kept
+     * inside the bar if the clamp knows its half width.
+     */
+    .chapter-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+      font-weight: normal;
+    }
 
     position: absolute;
     /* Anchored on its bottom edge rather than its top: now that it has a background its height
@@ -195,6 +245,7 @@ export const ProgressBar = () => {
   const thumbnails = usePlayer((state) => state.thumbnails)
   const thumbnailAt = usePlayer((state) => state.thumbnailAt)
   const requestThumbnail = usePlayer((state) => state.requestThumbnail)
+  const chapters = usePlayer((state) => state.chapters)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
@@ -326,17 +377,6 @@ export const ProgressBar = () => {
     [duration, indexes.length, downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
   )
 
-  const cusorTimeString = useMemo(() => {
-    if (!progressBarHoverTime || progressBarHoverTime < 0) return undefined
-    const hours = Math.floor(progressBarHoverTime! / 3600)
-    const minutes = Math.floor((progressBarHoverTime! - hours * 3600) / 60)
-    const seconds = Math.floor(progressBarHoverTime! - hours * 3600 - minutes * 60)
-    const hoursString =
-      hours > 0
-        ? `${hours}:`
-        : ''
-    return `${hoursString}${minutes < 10 ? '0' : ''}${minutes}:${seconds < 10 ? '0' : ''}${seconds}`
-  }, [progressBarHoverTime])
 
   /*
    * Follow the pointer while it is actually moving, and NOT on the press itself.
@@ -359,6 +399,38 @@ export const ProgressBar = () => {
       : currentTime / duration
   }, [duration, currentTime])
 
+  const bounds = useMemo(() => segmentBounds(chapters, duration), [chapters, duration])
+  const segmented = bounds.length > 0
+
+  /*
+   * Which segment the pointer is in, or -1.
+   *
+   * Compared against `undefined` rather than tested for truth: a hover at exactly time zero is a
+   * real hover, and the falsy check used elsewhere in this file silently drops it.
+   */
+  const focusedSegment = useMemo(() => {
+    if (!segmented || progressBarHoverTime === undefined || !duration) return -1
+    const at = (progressBarHoverTime / duration) * 100
+    const found = bounds.findIndex((from, i) => i < bounds.length - 1 && at >= from && at < bounds[i + 1]!)
+    // past the last boundary the pointer is in the final segment, which no `at < to` test catches
+    return found >= 0 ? found : bounds.length - 2
+  }, [segmented, bounds, progressBarHoverTime, duration])
+
+  const restMask = useMemo(
+    () => segmented ? segmentMask(bounds, (i) => i !== focusedSegment) : undefined,
+    [segmented, bounds, focusedSegment],
+  )
+  const focusMask = useMemo(
+    () => focusedSegment >= 0 ? segmentMask(bounds, (i) => i === focusedSegment) : undefined,
+    [bounds, focusedSegment],
+  )
+
+  /** The chapter the pointer is over. Absent while it is over un-named time between chapters. */
+  const hoveredChapter = useMemo(() => {
+    if (progressBarHoverTime === undefined) return undefined
+    return chapters.find(({ start, end }) => start <= progressBarHoverTime && progressBarHoverTime < end)
+  }, [chapters, progressBarHoverTime])
+
   // an empty url is a gap sentinel, so it renders nothing
   const thumbnail = useMemo(() => {
     if (!progressBarHoverTime) return undefined
@@ -372,41 +444,71 @@ export const ProgressBar = () => {
     )
   }, [thumbnails, thumbnailAt, progressBarHoverTime])
 
+  /*
+   * The whole track, drawn once per mask.
+   *
+   * Every layer inside is full bar width whichever mask it carries, so the loaded parts' percentage
+   * offsets and both scaleX transforms keep meaning what they meant before chapters existed. Only
+   * what is painted differs.
+   */
+  const track = (variant: 'focus' | undefined, mask: string | undefined) => (
+    <div
+      className={variant ? `track ${variant}` : 'track'}
+      style={mask ? { maskImage: mask } : undefined}
+    >
+      <div className="background-bar" />
+      {/* bar showing the currently loaded progress */}
+      <div className="loaded">
+        {loadedParts}
+      </div>
+      {/* bar displaying the current playback progress */}
+      <div className="play-container">
+        <div className="play" style={{ transform: `scaleX(${scaleX})` }}></div>
+      </div>
+    </div>
+  )
+
   return (
     <div
       css={style}
       ref={progressBarRef}
-      className={dragging ? 'progress-bar dragging' : 'progress-bar'}
+      className={[
+        'progress-bar',
+        dragging ? 'dragging' : '',
+        segmented ? 'segmented' : '',
+      ].filter(Boolean).join(' ')}
       onMouseMove={onProgressBarOver}
       onMouseOut={hideProgressBarTime}
     >
-      <div className="background-bar" />
+      {track(undefined, restMask)}
       {
         progressBarHoverTime
           ? (
             <div
               className="cursor-time"
               /* the inset grew with the pill: content sized and centred, its half width is now the
-                 padding plus the text, so the old 18px let a filled box hang past both ends */
-              style={{ left: `clamp(calc(3 * var(--mp-unit)), ${timePercentage(progressBarHoverTime)}%, calc(100% - calc(3 * var(--mp-unit))))` }}
+                 padding plus the text, so the old 18px let a filled box hang past both ends. With a
+                 chapter title the box is wider again and capped, so the clamp switches to half that
+                 cap, which is the only width a centred box can be kept inside the bar by. */
+              style={{
+                left: hoveredChapter
+                  ? `clamp(var(--thumbnail-half), ${timePercentage(progressBarHoverTime)}%, calc(100% - var(--thumbnail-half)))`
+                  : `clamp(calc(3 * var(--mp-unit)), ${timePercentage(progressBarHoverTime)}%, calc(100% - calc(3 * var(--mp-unit))))`,
+                maxWidth: hoveredChapter ? 'var(--thumbnail-width)' : undefined,
+              }}
             >
-              {cusorTimeString}
+              <span className="cursor-time-value">{formatTime(progressBarHoverTime)}</span>
+              {hoveredChapter ? <span className="chapter-title">{hoveredChapter.title}</span> : undefined}
             </div>
           )
           : undefined
       }
       <div className="progress"></div>
-      {/* bar showing the currently loaded progress */}
-      <div className="loaded">
-        {loadedParts}
-      </div>
       {/* bar to show when hovering to potentially seek */}
       <div className="hover"></div>
-      {/* bar displaying the current playback progress */}
-      <div className='play-container'>
-        <div className="play" style={{ transform: `scaleX(${scaleX})` }}></div>
-      </div>
-      <div className="chapters"></div>
+      {/* the segment under the pointer, drawn taller. Sits after the flat track so it paints over
+          it, and before .padding so it never takes the press. */}
+      {focusMask ? track('focus', focusMask) : undefined}
       <div className="scrubber"></div>
       <div
         className="padding"

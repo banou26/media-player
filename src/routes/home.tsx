@@ -66,6 +66,8 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
 }
 
 const readDelayParam = () => Number(new URLSearchParams(window.location.search).get('readDelay') ?? 0)
+/** Dev convenience: `?src=/chapters.mkv` opens a file on load, so a case can be linked to. */
+const srcParam = () => new URLSearchParams(window.location.search).get('src')
 
 const slowRead = (read: RemuxerInput['read'], delay: number): RemuxerInput['read'] =>
   delay > 0
@@ -91,6 +93,13 @@ export const Home = () => {
   }, [])
 
   const openFile = useCallback((file: File) => open({ blob: file, name: file.name }), [open])
+
+  useEffect(() => {
+    const src = srcParam()
+    if (!src) return
+    const url = new URL(src, window.location.href).toString()
+    void open({ url, name: decodeURIComponent(url.split('/').pop() || '') })
+  }, [open])
 
   useEffect(() => {
     const over = (event: DragEvent) => { event.preventDefault(); setDragging(true) }

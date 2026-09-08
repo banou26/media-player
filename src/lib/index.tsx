@@ -35,6 +35,7 @@ export type { RemuxerInput } from './utils/source'
 // The engine is also published on its own subpath for consumers that want the pipeline with no React.
 export type {
   AudioStream,
+  MediaChapter,
   MediaIndex,
   PictureInPictureController,
   PlaybackController,
