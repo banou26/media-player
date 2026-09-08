@@ -70,11 +70,38 @@ describe('the offer to skip an opening', () => {
     await expect.poll(() => offered(screen.container), { timeout: 20_000 }).toBe(true)
     expect(skipButton(screen.container)!.textContent).toBe('Skip Opening')
 
+    // the offer runs to about seven seconds all in, so this measurement cannot outlive it
+    expect(video().paused, 'the offer could close on its own before it is pressed').toBe(true)
+
     skipButton(screen.container)!.click()
     // past the opening, which is the whole point. The seek is asked for rather than forced, so the
     // element can take a moment to arrive.
     await expect.poll(() => video().currentTime >= OPENING.end, { timeout: 30_000 }).toBe(true)
     await expect.poll(() => offered(screen.container), { timeout: 5_000 }).toBe(false)
+  }, 180_000)
+
+  it('waits for the picture to catch up before offering anything', async () => {
+    const source = await httpSource()
+    if (!source) return
+
+    const screen = await render(
+      <MediaPlayer {...source} {...playerAssets} title="Anime" />,
+      sized(),
+    )
+    const video = () => screen.container.querySelector('video')!
+    await expect.poll(() => video().readyState > 0, { timeout: 60_000 }).toBe(true)
+
+    /*
+     * A chapter mark runs ahead of the picture it marks, by two to three seconds on real files, so
+     * an offer made the instant the playhead crosses the boundary spends its opening seconds over
+     * the end of the previous scene. Nothing should be on screen immediately.
+     */
+    video().currentTime = OPENING.start
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(offered(screen.container), 'offered before the opening had started').toBe(false)
+
+    // and it does arrive shortly after
+    await expect.poll(() => offered(screen.container), { timeout: 20_000 }).toBe(true)
   }, 180_000)
 
   it('takes itself away after a few seconds even if it is never pressed', async () => {

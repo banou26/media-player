@@ -6,13 +6,25 @@ import { classifyChapters } from '../../utils/chapters'
 import { usePlayer } from '../player'
 
 /**
- * How long the offer stays on screen after the playhead enters the chapter.
+ * How long to wait after entering the chapter before offering anything.
  *
- * Short on purpose. The button is a suggestion drawn from a chapter title, and a title can be wrong,
- * so the cost of a mistake is capped at a few seconds of a button nobody wanted rather than a jump
- * out of the episode. Nothing is ever skipped without a press.
+ * A chapter mark sits a beat ahead of the picture it marks: measured on real files the opening is
+ * still two to three seconds away when the playhead crosses into its chapter, so an offer made at
+ * the boundary spends its first seconds over the end of the previous scene. Waiting hands those
+ * seconds back.
  */
-const OFFER_MS = 5_000
+const OFFER_DELAY_MS = 1_000
+/**
+ * How long the offer then stays on screen.
+ *
+ * Six rather than five so that, with the delay above, about five of them land over the opening
+ * itself rather than over the shot before it.
+ *
+ * Short on purpose either way. The button is a suggestion drawn from a chapter title, and a title
+ * can be wrong, so the cost of a mistake is capped at a few seconds of a button nobody wanted rather
+ * than a jump out of the episode. Nothing is ever skipped without a press.
+ */
+const OFFER_MS = 6_000
 /** A jump back by more than this is a seek rather than playback, and re-opens the offer. */
 const SEEK_BACK_S = 1
 
@@ -118,9 +130,12 @@ export const SkipChapter = () => {
       setShow(false)
       return
     }
-    setShow(true)
-    const timer = setTimeout(() => setShow(false), OFFER_MS)
-    return () => clearTimeout(timer)
+    const open = setTimeout(() => setShow(true), OFFER_DELAY_MS)
+    const close = setTimeout(() => setShow(false), OFFER_DELAY_MS + OFFER_MS)
+    return () => {
+      clearTimeout(open)
+      clearTimeout(close)
+    }
   }, [at, seekEpoch])
 
   // the offer closes the moment the playhead leaves, however it left
