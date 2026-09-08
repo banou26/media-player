@@ -175,6 +175,19 @@ export type SourceState = {
   ready: boolean
 
   /**
+   * Where a seek is headed while the element has not arrived there yet, in seconds.
+   *
+   * The element's own `currentTime` does not move until it can present the frame, which on a long
+   * GOP is a few hundred milliseconds after the click. Reading it directly leaves the seekbar and
+   * the clock sitting at the old position for that whole time, which reads as the player ignoring
+   * the click. The chrome shows THIS instead while it is set, so the bar and the clock answer at
+   * once and the spinner says the picture is still coming.
+   *
+   * Undefined whenever no seek is outstanding, which is almost always.
+   */
+  seekingTo?: number
+
+  /**
    * The write seam, wired in `attach`. Only the React layer calls it.
    *
    * It is a no-op until the media element attaches. Every caller writes either from an engine

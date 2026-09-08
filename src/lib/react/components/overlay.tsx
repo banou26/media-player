@@ -115,6 +115,9 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
   const size = usePlayer((state) => state.size)
   // video.js's own: readyState below HAVE_FUTURE_DATA while not paused
   const waiting = usePlayer((state) => state.waiting)
+  // a seek that has not presented its frame yet is a wait like any other, and the one most likely to
+  // be mistaken for the player having ignored the click
+  const seekingTo = usePlayer((state) => state.seekingTo)
 
   return (
     <>
@@ -129,11 +132,11 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
           </div>
         )
         : undefined}
-      {/* Two different waits, one spinner. With bytes it is pre-metadata rather than buffering: the
+      {/* Three waits, one spinner. With bytes it is pre-metadata rather than buffering: the
           store reports 0 both before metadata and for a genuinely unknown duration, so `size` is what
           tells whether a source was handed over at all. A media this player does not own has neither
           `size` nor `ready`, and reports the ordinary `waiting` every element does. */}
-      {(size ? !ready : waiting) && !playbackError
+      {((size ? !ready : waiting) || seekingTo !== undefined) && !playbackError
         ? <div css={loadingStyle} />
         : undefined}
       {playbackError

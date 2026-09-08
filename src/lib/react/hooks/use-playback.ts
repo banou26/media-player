@@ -32,6 +32,13 @@ const RESTART_SETTLED_MS = 60_000
  * this is the ceiling. Half a second is the point where a seek stops feeling like a seek.
  */
 const SEEK_PREPARE_BUDGET_MS = 500
+/**
+ * How long the chrome may show a seek that has not landed, in ms.
+ *
+ * Only a backstop. The element firing `seeked` is what normally ends it, and a seek that never
+ * completes at all would otherwise leave the clock reading a time the picture never reached.
+ */
+const SEEK_DISPLAY_LIMIT_MS = 15_000
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
@@ -212,6 +219,26 @@ export const usePlayback = (
         console.warn(`[media-player] seek to ${time.toFixed(2)} moved after ${Math.round(performance.now() - startedAt)}ms via ${movedBecause}, runway ${runway.toFixed(1)}s${movedBecause === 'deadline' ? ' (EXPOSED: moved before its data was ready)' : ''}`)
       }
     }
+    /*
+     * Say where the seek is going before anything has gone there.
+     *
+     * Everything below this line takes time the viewer is watching: the prepare, the element's own
+     * seek, and the decode from the preceding keyframe. Until all of it lands the element still
+     * reports the OLD position, so a chrome reading it directly sits still and looks broken. This is
+     * cleared by the element arriving, not by the prepare finishing, because the frame is what the
+     * viewer is actually waiting for.
+     */
+    player.setSourceState({ seekingTo: time })
+    const video = controller.videoElement
+    const settled = () => {
+      video?.removeEventListener('seeked', settled)
+      clearTimeout(giveUp)
+      player.setSourceState({ seekingTo: undefined })
+    }
+    // a seek the element never completes must not leave the clock stuck on a time it never reached
+    const giveUp = setTimeout(settled, SEEK_DISPLAY_LIMIT_MS)
+    video?.addEventListener('seeked', settled)
+
     const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)
     void controller
       .prepareSeek(time)

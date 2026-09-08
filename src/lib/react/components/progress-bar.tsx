@@ -246,6 +246,7 @@ export const ProgressBar = () => {
   const thumbnailAt = usePlayer((state) => state.thumbnailAt)
   const requestThumbnail = usePlayer((state) => state.requestThumbnail)
   const chapters = usePlayer((state) => state.chapters)
+  const seekingTo = usePlayer((state) => state.seekingTo)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
@@ -393,11 +394,22 @@ export const ProgressBar = () => {
     player.seek(seekFraction * duration)
   }, [player, dragging, seekFraction, duration])
 
+  /*
+   * Where the bar is drawn, which is not always where the element is.
+   *
+   * Three sources, in the order they beat each other. A drag is the pointer's own position, so the
+   * bar tracks the finger exactly rather than trailing the element through a seek per move. A
+   * settled seek is its target, held until the element gets there. Everything else is the element.
+   *
+   * The point of the first two is that a seek takes a few hundred milliseconds to present a frame,
+   * and a bar that waits for it looks like it ignored the click.
+   */
   const scaleX = useMemo(() => {
-    return !duration || typeof currentTime !== 'number'
-      ? 0
-      : currentTime / duration
-  }, [duration, currentTime])
+    if (!duration) return 0
+    if (dragging && seekFraction !== undefined) return seekFraction
+    const at = seekingTo ?? currentTime
+    return typeof at === 'number' ? at / duration : 0
+  }, [duration, currentTime, dragging, seekFraction, seekingTo])
 
   const bounds = useMemo(() => segmentBounds(chapters, duration), [chapters, duration])
   const segmented = bounds.length > 0

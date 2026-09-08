@@ -172,6 +172,8 @@ export const ControlBar = () => {
   const paused = usePlayer((state) => state.paused)
   const currentTime = usePlayer((state) => state.currentTime)
   const duration = usePlayer((state) => state.duration)
+  // a seek in flight reads as its destination, so the clock answers the click at once
+  const seekingTo = usePlayer((state) => state.seekingTo)
   const fullscreen = usePlayer((state) => state.fullscreen)
   const hideUI = usePlayer((state) => state.hideUI)
   const togglePictureInPicture = usePlayer((state) => state.togglePictureInPicture)
@@ -296,7 +298,7 @@ export const ControlBar = () => {
           />
           <Sound ref={setVolumeElement}/>
           <div className='time'>
-            {formatMediaTime(currentTime, duration)}
+            {formatMediaTime(seekingTo ?? currentTime, duration)}
           </div>
         </div>
         <div className='right'>
