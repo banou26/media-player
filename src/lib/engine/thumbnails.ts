@@ -36,6 +36,15 @@ const KEYFRAME_TIMEOUT = 10_000
 const REINDEX_GROWTH = 1.5
 /** And never re-walk for a trickle, however early. */
 const REINDEX_MIN_BYTES = 4_000_000
+/**
+ * A bound on the re-walk, because this one holds the worker.
+ *
+ * The walk at boot can hang without costing anything that was working: there are no previews yet. A
+ * re-walk is different, since the pump waits for it, so a reader that stops answering would take
+ * the previews the current index CAN still produce down with it. Longer than a keyframe decode
+ * because a walk reads far more of the file.
+ */
+const REINDEX_TIMEOUT = 30_000
 
 export type ThumbnailGenerator = {
   /** Report which byte ranges are readable. Called with no argument when the whole file is. */
@@ -236,7 +245,10 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
     const reindex = async (readable: number) => {
       reindexing = true
       try {
-        const next = await remuxer.init()
+        const next = await Promise.race([
+          remuxer.init(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timed out')), REINDEX_TIMEOUT)),
+        ])
         if (destroyed) return
         indexedBytes = readable
         const rebuilt = buildSlots(next.indexes)
