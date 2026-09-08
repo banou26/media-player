@@ -69,8 +69,7 @@ describe('the offer to skip an opening', () => {
     video().currentTime = OPENING.start + 5
     await expect.poll(() => offered(screen.container), { timeout: 20_000 }).toBe(true)
     expect(skipButton(screen.container)!.textContent).toBe('Skip Opening')
-
-    // the offer runs to about seven seconds all in, so this measurement cannot outlive it
+    // the offer runs six seconds, so this measurement cannot outlive it
     expect(video().paused, 'the offer could close on its own before it is pressed').toBe(true)
 
     skipButton(screen.container)!.click()
@@ -80,7 +79,7 @@ describe('the offer to skip an opening', () => {
     await expect.poll(() => offered(screen.container), { timeout: 5_000 }).toBe(false)
   }, 180_000)
 
-  it('waits for the picture to catch up before offering anything', async () => {
+  it('is already on screen when the opening arrives, not after it', async () => {
     const source = await httpSource()
     if (!source) return
 
@@ -92,16 +91,20 @@ describe('the offer to skip an opening', () => {
     await expect.poll(() => video().readyState > 0, { timeout: 60_000 }).toBe(true)
 
     /*
-     * A chapter mark runs ahead of the picture it marks, by two to three seconds on real files, so
-     * an offer made the instant the playhead crosses the boundary spends its opening seconds over
-     * the end of the previous scene. Nothing should be on screen immediately.
+     * The offer leads the chapter rather than following it.
+     *
+     * Turning up a beat into the theme is the fault this pins: by then the viewer has already seen
+     * the thing they wanted to skip. Half a second before the boundary is inside the lead and has to
+     * be offered, while five seconds before it is not.
      */
-    video().currentTime = OPENING.start
-    await new Promise((resolve) => setTimeout(resolve, 400))
-    expect(offered(screen.container), 'offered before the opening had started').toBe(false)
+    video().currentTime = OPENING.start - 5
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(offered(screen.container), 'offered five seconds before the opening').toBe(false)
 
-    // and it does arrive shortly after
-    await expect.poll(() => offered(screen.container), { timeout: 20_000 }).toBe(true)
+    video().currentTime = OPENING.start - 0.5
+    await expect.poll(() => offered(screen.container), { timeout: 10_000 }).toBe(true)
+    expect(video().currentTime, 'the playhead had already reached the opening').toBeLessThan(OPENING.start)
+    expect(skipButton(screen.container)!.textContent).toBe('Skip Opening')
   }, 180_000)
 
   it('takes itself away after a few seconds even if it is never pressed', async () => {

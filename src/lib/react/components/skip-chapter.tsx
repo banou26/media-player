@@ -6,23 +6,21 @@ import { classifyChapters } from '../../utils/chapters'
 import { usePlayer } from '../player'
 
 /**
- * How long to wait after entering the chapter before offering anything.
+ * How far AHEAD of the chapter the offer appears, in seconds.
  *
- * A chapter mark sits a beat ahead of the picture it marks: measured on real files the opening is
- * still two to three seconds away when the playhead crosses into its chapter, so an offer made at
- * the boundary spends its first seconds over the end of the previous scene. Waiting hands those
- * seconds back.
+ * It arrives just before the opening rather than during it, so the button is already on screen and
+ * readable at the moment the theme starts rather than turning up over it. Waiting until the boundary
+ * is crossed puts it a beat late, which is what this exists to fix.
  */
-const OFFER_DELAY_MS = 1_000
+const OFFER_LEAD_S = 1
 /**
  * How long the offer then stays on screen.
  *
- * Six rather than five so that, with the delay above, about five of them land over the opening
- * itself rather than over the shot before it.
+ * Six, so that with the second of lead above about five of them fall inside the opening itself.
  *
- * Short on purpose either way. The button is a suggestion drawn from a chapter title, and a title
- * can be wrong, so the cost of a mistake is capped at a few seconds of a button nobody wanted rather
- * than a jump out of the episode. Nothing is ever skipped without a press.
+ * Short on purpose. The button is a suggestion drawn from a chapter title, and a title can be wrong,
+ * so the cost of a mistake is capped at a few seconds of a button nobody wanted rather than a jump
+ * out of the episode. Nothing is ever skipped without a press.
  */
 const OFFER_MS = 6_000
 /** A jump back by more than this is a seek rather than playback, and re-opens the offer. */
@@ -99,10 +97,18 @@ export const SkipChapter = () => {
 
   const kinds = useMemo(() => classifyChapters(chapters), [chapters])
 
-  /** The chapter under the playhead, when it is one worth offering to skip. */
+  /**
+   * The chapter worth offering to skip, from a second before it starts until it ends.
+   *
+   * The window opens EARLY rather than on the boundary, which is the whole difference between the
+   * button being on screen when the theme arrives and turning up on top of it.
+   */
   const skippable = useMemo(() => {
     if (typeof currentTime !== 'number') return undefined
-    const index = chapters.findIndex(({ start, end }) => start <= currentTime && currentTime < end)
+    // only skippable chapters are searched: a second before one starts the playhead is still inside
+    // its neighbour, so looking for "the chapter containing the playhead" would find the wrong one
+    const index = chapters.findIndex((chapter, i) =>
+      kinds[i] !== undefined && chapter.start - OFFER_LEAD_S <= currentTime && currentTime < chapter.end)
     const kind = index >= 0 ? kinds[index] : undefined
     return kind ? { kind, end: chapters[index]!.end } : undefined
   }, [chapters, kinds, currentTime])
@@ -130,12 +136,9 @@ export const SkipChapter = () => {
       setShow(false)
       return
     }
-    const open = setTimeout(() => setShow(true), OFFER_DELAY_MS)
-    const close = setTimeout(() => setShow(false), OFFER_DELAY_MS + OFFER_MS)
-    return () => {
-      clearTimeout(open)
-      clearTimeout(close)
-    }
+    setShow(true)
+    const close = setTimeout(() => setShow(false), OFFER_MS)
+    return () => clearTimeout(close)
   }, [at, seekEpoch])
 
   // the offer closes the moment the playhead leaves, however it left
