@@ -119,6 +119,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
+  const hasMedia = usePlayer((state) => state.hasMedia)
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
   // a tap and a click mean different things, so the last pointer kind is remembered
   const lastPointerType = useRef<string>('mouse')
@@ -127,6 +128,27 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
   const root = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
+
+  /*
+   * With nothing loaded the chrome never hides, and anything already hidden comes back.
+   *
+   * Hiding is only ever reversed by a pointer move over the player, which is a fair bet while a video
+   * is playing and a bad one when the box is empty: three seconds after mount the controls, the title
+   * and the cursor all go, leaving a black rectangle that gives the viewer no reason to think there is
+   * a player there to wave at. The effect covers the media going AWAY, which the guard below cannot:
+   * its timer may already be in flight, holding a `hasMedia` that was true when it was scheduled.
+   */
+  useEffect(() => {
+    if (hasMedia) return
+    clearTimeout(autoHide.current)
+    setHideUI(false)
+  }, [hasMedia, setHideUI])
+
+  /** The single door to hiding, so no path can bypass the empty-player case. */
+  const hide = () => {
+    if (!hasMedia) return
+    setHideUI(true)
+  }
 
   // The caller's ref still gets the element: video.js attaches the fullscreen container through it,
   // and this needs the same node to hit test against.
@@ -165,7 +187,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
       autoHide.current = setTimeout(hideUnlessTheMouseIsOnAControl, AUTO_HIDE_DELAY)
       return
     }
-    setHideUI(true)
+    hide()
   }
 
   const reveal = () => {
@@ -196,7 +218,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
     if (hideUI) reveal()
     else {
       clearTimeout(autoHide.current)
-      setHideUI(true)
+      hide()
     }
   }
 
@@ -209,7 +231,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
     const inside = ev.clientX >= left && ev.clientX < right && ev.clientY >= top && ev.clientY < bottom
     if (inside) return
     clearTimeout(autoHide.current)
-    setHideUI(true)
+    hide()
   }
 
   return (

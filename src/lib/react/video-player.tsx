@@ -269,9 +269,16 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // attaches: when attach swaps in the real setter the identity changes and these publish again.
   const setSourceState = usePlayer((state) => state.setSourceState)
 
+  /*
+   * Read here because this is the only place both arms are in scope: a local source is bytes, and a
+   * remote one is an element somebody else owns. `size` alone cannot answer it, since the remote arm
+   * legitimately has none, and the chrome would then treat every remote player as having no media.
+   */
+  const hasMedia = remote ? !!remote.media : size !== undefined
+
   useEffect(() => {
-    setSourceState({ title, size, downloadedRanges })
-  }, [setSourceState, title, size, downloadedRanges])
+    setSourceState({ title, size, downloadedRanges, hasMedia })
+  }, [setSourceState, title, size, downloadedRanges, hasMedia])
 
   const thumbnailAt = remote?.thumbnails?.at
   useEffect(() => {

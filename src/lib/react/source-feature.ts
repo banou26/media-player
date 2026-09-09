@@ -128,6 +128,20 @@ export type SourceState = {
   setHideUI: (hide: boolean) => void
 
   /**
+   * Whether there is anything loaded to play at all.
+   *
+   * Not the same question as `ready`, which is about a source that HAS been handed over and is still
+   * booting. This one separates that from having been given nothing, and the chrome needs the
+   * difference: idle-hiding with no media leaves a black rectangle with no controls, no title and no
+   * cursor, and no way back, since the only thing that reveals the chrome again is a pointer move over
+   * a player the viewer has no reason to think is there.
+   *
+   * Written by the React layer, which is the only place both arms are visible: bytes for a local
+   * source, an element for a media this player does not own.
+   */
+  hasMedia: boolean
+
+  /**
    * Owned here, not by `pip`: that watches the media element, and the window holds a mirror.
    *
    * null means the control is not offered at all. Locally that is "no element yet". For a media the
@@ -210,6 +224,7 @@ const initialState: SourceState = {
   selectAudioTrack: () => {},
   hideUI: false,
   setHideUI: () => {},
+  hasMedia: false,
   togglePictureInPicture: null,
   pictureInPictureMode: null,
   burnedInSubtitles: false,

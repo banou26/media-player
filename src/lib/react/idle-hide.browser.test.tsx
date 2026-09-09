@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from './video-player'
 import { createFakeRemoteMedia } from './remote-media.fixture'
+import { playerAssets } from '../../asset-urls'
 
 /**
  * The chrome does not hide itself out from under a pointer that is resting on a control.
@@ -49,6 +50,15 @@ const restPointerOn = (element: Element) => {
 
 const chromeOf = (container: HTMLElement) => container.querySelector('.video')!.parentElement!
 
+/**
+ * The control bar's own box, found through the row it wraps, since emotion leaves it no stable class.
+ *
+ * Worth the indirection because the `hide` class only carries `cursor: none`. What a viewer actually
+ * loses is this element's opacity, so a test about a black screen has to read the opacity rather than
+ * trust the class to stand in for it.
+ */
+const controlBarOf = (container: HTMLElement) => container.querySelector('.actions')!.parentElement!
+
 describe('the chrome going idle', () => {
   it('stays up while the mouse is resting on a control', async () => {
     const { container } = sized()
@@ -79,5 +89,37 @@ describe('the chrome going idle', () => {
 
     await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
     expect(chromeOf(container).className, 'the chrome never goes idle any more').toContain('hide')
+  }, 20_000)
+
+  /**
+   * With nothing loaded the chrome must stay up, whatever the pointer does.
+   *
+   * Hiding is only ever undone by a pointer move over the player. That is a fair bet while something is
+   * playing and a bad one when the box is empty: three seconds after mount the controls, the title and
+   * the cursor all went, leaving a big black rectangle giving the viewer no reason to think there was a
+   * player there to wave at.
+   *
+   * Deliberately the SAME gesture as the case above, resting on the picture, which is the one that must
+   * still hide when media is loaded. The two together are what separates this from having simply turned
+   * auto-hide off.
+   */
+  it('stays up when there is no media at all', async () => {
+    const { container } = sized()
+    // assets but no source, which is what an app mounts before the viewer has picked a file
+    const screen = await render(<MediaPlayer {...playerAssets} />, { container })
+    await expect.poll(() => !!screen.container.querySelector('button.full-screen'), { timeout: 5000 }).toBe(true)
+
+    const picture = screen.container.querySelector('.video')!
+    const { left, top, width } = picture.getBoundingClientRect()
+    picture.dispatchEvent(new PointerEvent('pointermove', {
+      clientX: left + width / 2, clientY: top + 40, bubbles: true, pointerId: 1, pointerType: 'mouse',
+    }))
+
+    await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
+    expect(chromeOf(container).className, 'an empty player hid its own controls, leaving a black screen')
+      .not.toContain('hide')
+    // what the viewer is actually left looking at
+    expect(getComputedStyle(controlBarOf(container)).opacity, 'the control bar faded out over an empty player')
+      .not.toBe('0')
   }, 20_000)
 })
