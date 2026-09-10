@@ -3,7 +3,7 @@
 # @banou/media-player
 
 A React video player for files the browser cannot open on its own. It takes a `read(offset, size)` and
-a byte length, remuxes into fragmented MP4 as it plays through [libav-wasm](https://github.com/Banou26/libav-wasm),
+a byte length, remuxes into fragmented MP4 as it plays through [libav-wasm](https://github.com/banou26/libav-wasm),
 and renders ASS/SSA subtitles with jassub. Nothing is downloaded up front, so it plays a 4 GB MKV over
 HTTP range requests, out of a torrent, off a local disk, or out of anything else that can answer for a
 byte range.
