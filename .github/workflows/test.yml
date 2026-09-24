@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # vite-plus 0.2.4 asks for ^20.19.0 || ^22.18.0 || >=24.11.0
+          # vite-plus 0.3.3 asks for ^20.19.0 || ^22.18.0 || >=24.11.0
           node-version: 22
           cache: npm
 
