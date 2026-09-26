@@ -139,6 +139,13 @@ export type SourceState = {
    * A no-op on a source that brings its own storyboard, and until the generator has booted.
    */
   requestThumbnail: (time: number | undefined) => void
+  /**
+   * True while the seekbar shows what is under the pointer: the time, the chapter and the thumbnail.
+   *
+   * Written by the seekbar when that opens and closes, never per move, for the reason above. Read by
+   * whatever else the chrome draws in the space above the bar, which steps aside meanwhile.
+   */
+  seekPreview: boolean
 
   /**
    * Both selectors may answer with a promise, and the menu waits on it.
@@ -258,6 +265,7 @@ const initialState: SourceState = {
   chapters: [],
   thumbnails: [],
   requestThumbnail: () => {},
+  seekPreview: false,
   subtitleTracks: [],
   selectedSubtitleTrack: undefined,
   selectSubtitleTrack: () => {},

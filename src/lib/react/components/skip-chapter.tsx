@@ -93,6 +93,12 @@ export const SkipChapter = () => {
   const chapters = usePlayer((state) => state.chapters)
   const currentTime = usePlayer((state) => state.currentTime)
   const requestSeek = usePlayer((state) => state.requestSeek)
+  /*
+   * The seekbar's readout rises into this corner when the pointer nears the end of the bar, and this
+   * layer is drawn over the control bar, so the offer steps aside while it is up rather than cover
+   * the chapter name. The timer below keeps running: a look at the bar does not extend the offer.
+   */
+  const seekPreview = usePlayer((state) => state.seekPreview)
   const player = usePlayer()
 
   const kinds = useMemo(() => classifyChapters(chapters), [chapters])
@@ -155,7 +161,7 @@ export const SkipChapter = () => {
   }
 
   return (
-    <div css={style} className={show ? 'show' : ''}>
+    <div css={style} className={show && !seekPreview ? 'show' : ''}>
       <button type='button' className='skip-chapter' onClick={skip}>
         {LABELS[skippable.kind]}
       </button>
