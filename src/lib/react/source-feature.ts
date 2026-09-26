@@ -61,6 +61,33 @@ export type DownloadedRange = {
   endByteOffset: number
 }
 
+/** A box in viewport coordinates, as `getBoundingClientRect` reports it. */
+export type ViewportBox = {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/**
+ * The picture in picture control of a media the player does not own, which the host enters from its
+ * own document (see `PassThroughPictureInPicture`).
+ *
+ * Armed means a click on the control goes through it to whatever the host renders below, so the
+ * chrome lays a layer over everything else with a hole at `armed`: inside the hole every pointer event
+ * belongs to the host's document, and the layer is how this one learns the pointer has left it.
+ */
+export type PassThroughControl = {
+  /** Between the media's `enterpictureinpicture` and `leavepictureinpicture`. */
+  active: boolean
+  /** The control's box while a click on it is let through, undefined otherwise. */
+  armed?: ViewportBox
+  arm: (box: ViewportBox) => void
+  disarm: () => void
+  /** Leaves picture in picture through the media. */
+  exit: () => void
+}
+
 /**
  * Everything about the source that the chrome reads, carried on the player store next to the built-in
  * playback state so a component never has to know which of two channels owns a field.
@@ -145,12 +172,16 @@ export type SourceState = {
    * Owned here, not by `pip`: that watches the media element, and the window holds a mirror.
    *
    * null means the control is not offered at all. Locally that is "no element yet". For a media the
-   * player does not own it means the source cannot do it, and the difference matters: the compositing
-   * this does needs a local element to draw, and even a source that forwards the request cannot
-   * report the resulting STATE back, since `document.pictureInPictureElement` is never a proxy. A
-   * button that toggles nothing and never lights up is worse than no button.
+   * player does not own it is always null, because a request made from this document is refused: the
+   * compositing this does needs a local element to draw, and the browser wants a gesture in the
+   * media's own document. `passThroughPictureInPicture` is that arm's control instead.
    */
   togglePictureInPicture: (() => void) | null
+  /**
+   * The picture in picture control for a media the player does not own, when the host opted in with
+   * `pictureInPicture`. null otherwise, which is always the case for a local source.
+   */
+  passThroughPictureInPicture: PassThroughControl | null
 
   /**
    * Which shape the control takes. `window` opens one. `burn-in` cannot, and instead paints the
@@ -226,6 +257,7 @@ const initialState: SourceState = {
   setHideUI: () => {},
   hasMedia: false,
   togglePictureInPicture: null,
+  passThroughPictureInPicture: null,
   pictureInPictureMode: null,
   burnedInSubtitles: false,
   playbackError: null,

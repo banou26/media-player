@@ -1,5 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode, Ref } from 'react'
+import type { ViewportBox } from '../source-feature'
 
 import { Children, Fragment, isValidElement, useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
@@ -36,6 +37,13 @@ const overlayItemStyle = css`
   transition: opacity 0.1s cubic-bezier(.4,0,1,1), visibility 0.1s;
 `
 
+/** The layer minus the control's box, both measured against the viewport. */
+const holeAt = (hole: ViewportBox, layer: DOMRect) => {
+  const left = hole.left - layer.left
+  const top = hole.top - layer.top
+  return `path(evenodd, 'M0 0H${layer.width}V${layer.height}H0Z M${left} ${top}H${left + hole.width}V${top + hole.height}H${left}Z')`
+}
+
 const style = css`
   position: relative;
   background-color: black;
@@ -61,6 +69,15 @@ const style = css`
     inset: 0;
     z-index: 1;
     pointer-events: none;
+  }
+
+  /* Over everything, the control bar included, while a click on the picture in picture control is let
+     through, with a hole at the control. Inside the hole every pointer event goes to the host's
+     document and this one hears nothing, so the pointer arriving on this layer is the only sign here
+     that it left the control. Named with its type for the specificity reason just above. */
+  & > div.pass-through {
+    inset: 0;
+    z-index: 5;
   }
 
   canvas {
@@ -120,6 +137,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
   const hasMedia = usePlayer((state) => state.hasMedia)
+  const passThrough = usePlayer((state) => state.passThroughPictureInPicture)
   const autoHide = useRef<ReturnType<typeof setTimeout>>(undefined)
   // a tap and a click mean different things, so the last pointer kind is remembered
   const lastPointerType = useRef<string>('mouse')
@@ -173,8 +191,12 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
    *
    * The mouse only. A finger has no resting position, and `elementFromPoint` on the last tap would
    * keep the controls up forever after one press.
+   *
+   * Armed, the pointer is on the picture in picture control by definition, and `elementFromPoint`
+   * answers with whatever the host put under it, since that is what takes the pointer meanwhile.
    */
   const pointerRestsOnAControl = () => {
+    if (player.passThroughPictureInPicture?.armed) return true
     if (lastPointerType.current !== 'mouse') return false
     const { x, y } = pointer.current
     if (!root.current || x < 0) return false
@@ -257,6 +279,15 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
       <SkipChapter />
+      {passThrough?.armed && root.current
+        ? (
+          <div
+            className='pass-through'
+            style={{ clipPath: holeAt(passThrough.armed, root.current.getBoundingClientRect()) }}
+            onPointerOver={passThrough.disarm}
+          />
+        )
+        : null}
       <div className="video" onClick={onVideoClick}>
         {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}

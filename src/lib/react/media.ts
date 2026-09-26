@@ -63,7 +63,47 @@ export type PlayerMedia = EventTarget & {
   videoHeight?: number
 
   requestPictureInPicture?: () => Promise<unknown>
+  /** What the control calls while the media is in picture in picture: see `PassThroughPictureInPicture`. */
+  exitPictureInPicture?: () => Promise<unknown>
   requestFullscreen?: () => Promise<unknown>
+}
+
+/**
+ * Picture in picture for a media whose own document has to ask for it, opted into by the host.
+ *
+ * A browser opens picture in picture only for a request made while the document that OWNS the
+ * `<video>` is handling a user gesture, and a click in this document never counts for another one:
+ * Chrome 153 refused a request relayed on the click with `NotAllowedError`, and refused delegating
+ * the activation with `NotSupportedError` (measured 2026-09-26). So the click itself has to land in
+ * the media's document. While the pointer is over the control, the chrome lets a click through at the
+ * control's box, and the host makes whatever renders the media take that click and enter picture in
+ * picture from inside, where the click counts.
+ *
+ * Passing this is the host's promise that it does both. Without it the control is not offered at all
+ * for a media the player does not own, since a button whose click lands nowhere is worse than none.
+ *
+ * What the player promises in return:
+ * - The control follows the media's `enterpictureinpicture` and `leavepictureinpicture` events,
+ *   which is the only state it reads.
+ * - While the media is in picture in picture a click on the control is an ordinary click here and
+ *   calls the media's `exitPictureInPicture`, since leaving needs no gesture. Nothing is let through.
+ * - Once a click has gone through, the control takes focus back, so the chrome's keyboard shortcuts
+ *   keep working in this document rather than in the host's.
+ *
+ * What it refuses: a keyboard press on the control, which cannot reach the host's document, does
+ * nothing until the media is in picture in picture.
+ */
+export type PassThroughPictureInPicture = {
+  /**
+   * True while the pointer is over the control, and a click there goes to whatever the host renders
+   * under it. False once the pointer is back over the rest of the player, the media enters picture in
+   * picture, the host withdraws this option or the player unmounts. Called on a change only, and
+   * synchronously, so the host is ready before the next pointer event.
+   *
+   * The host makes its own element take pointer events while this is true (an iframe with
+   * `pointer-events: none` gets `auto`) and gives them back when it is false.
+   */
+  onArmedChange: (armed: boolean) => void
 }
 
 /**

@@ -57,9 +57,10 @@ describe('a player driving a media it does not own', () => {
   })
 
   it('offers no picture-in-picture button it cannot honour', async () => {
-    // Compositing needs a local element to draw, and a proxy can never report the resulting state
-    // back either, since `document.pictureInPictureElement` is never one. A button that toggles
-    // nothing and never lights up is worse than no button, so the control is not offered at all.
+    // Compositing needs a local element to draw, and a request from this document is refused for a
+    // media in another one. Only a host that takes the click itself can do it, and this one did not
+    // opt in (see pass-through-picture-in-picture.browser.test.tsx for one that did). A button whose
+    // click lands nowhere is worse than no button, so the control is not offered at all.
     const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, sized())
 
     // Was `getByRole(...).or(getByText(/./))`, because at the time NO button carried an accessible
