@@ -179,7 +179,8 @@ export type SourceState = {
   togglePictureInPicture: (() => void) | null
   /**
    * The picture in picture control for a media the player does not own, when the host opted in with
-   * `pictureInPicture`. null otherwise, which is always the case for a local source.
+   * `pictureInPicture` and the viewer points with something that hovers. null otherwise, which is
+   * always the case for a local source.
    */
   passThroughPictureInPicture: PassThroughControl | null
 

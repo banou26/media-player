@@ -228,6 +228,10 @@ host is told it is armed, so its frame takes that click and enters picture in pi
 The control follows the media's `enterpictureinpicture` and `leavepictureinpicture` events, and in
 picture in picture a click on it calls the media's `exitPictureInPicture`.
 
+A finger never rests on the control before it presses, so a tap cannot arm it. The control is offered
+only where the primary pointer hovers (`(hover: hover) and (pointer: fine)`), and a touch hides it
+until a pointer that hovers moves again.
+
 ## Layout
 
 One package. `src/` is the demo app, `src/lib` is the library it publishes, and the app imports it by

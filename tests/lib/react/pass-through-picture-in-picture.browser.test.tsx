@@ -1,8 +1,10 @@
+// `cdp().send` is typed by the provider's augmentation, which nothing else in tests/ loads
+/// <reference types="@vitest/browser-playwright" />
 import type { PassThroughPictureInPicture } from '../../../src/lib/react/media'
 import type { FakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
 
 import { describe, expect, it } from 'vitest'
-import { userEvent } from 'vitest/browser'
+import { cdp, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
@@ -87,6 +89,33 @@ const layer = () => document.querySelector(`.${MOUNTED} .pass-through`)
 // `force`: armed, the control takes no pointer events by design, which playwright would otherwise
 // wait out as an obstruction
 const pointAt = (element: Element) => userEvent.hover(element, { force: true })
+
+// What a phone or a tablet reports, and what Chrome 153's touch emulation switches to (measured
+// 2026-09-26). Stubbed, because switching CDP's touch emulation back off does not restore the query.
+const HOVERING_POINTER = '(hover: hover) and (pointer: fine)'
+const primaryPointer = (hovers: boolean) => {
+  const real = window.matchMedia
+  const query = Object.assign(new EventTarget(), { matches: hovers, media: HOVERING_POINTER })
+  window.matchMedia = (media) => (media === HOVERING_POINTER ? query as unknown as MediaQueryList : real.call(window, media))
+  return {
+    change: (next: boolean) => {
+      query.matches = next
+      query.dispatchEvent(new Event('change'))
+    },
+    restore: () => { window.matchMedia = real },
+  }
+}
+
+// A real finger, through the browser's own input pipeline, at a point in this viewport (the tester
+// frame sits at the page's origin, unscaled, at 1280x720)
+const tap = async (x: number, y: number) => {
+  await cdp().send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  await cdp().send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+}
+const centre = (element: Element) => {
+  const { left, top, width, height } = element.getBoundingClientRect()
+  return [left + width / 2, top + height / 2] as const
+}
 
 describe('picture in picture for a media the player does not own', () => {
   it('is offered only when the host opts in', async () => {
@@ -181,5 +210,63 @@ describe('picture in picture for a media the player does not own', () => {
     window.dispatchEvent(new Event('blur'))
 
     await expect.poll(() => document.activeElement).toBe(control())
+  })
+
+  it('is not offered to a pointer that cannot hover, and comes back when one can', async () => {
+    const pointer = primaryPointer(false)
+    try {
+      const media = pictureInPictureMedia()
+      await mount(media, host())
+      expect(control(), 'a control a tap can never arm').toBeNull()
+
+      // followed while hidden, so the control comes back showing the truth
+      media.dispatchEvent(new Event('enterpictureinpicture'))
+      // settled first, so the render that brings it back can only be the query's own change
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      expect(control()).toBeNull()
+      pointer.change(true)
+      await expect.poll(() => control()?.getAttribute('aria-pressed')).toBe('true')
+    } finally {
+      pointer.restore()
+    }
+  })
+
+  it('renders with no matchMedia at all, as in a host\'s jsdom suite, and offers nothing there', async () => {
+    const real = window.matchMedia
+    // stub's unit suite renders this player in jsdom, which leaves matchMedia out
+    window.matchMedia = undefined as unknown as typeof window.matchMedia
+    try {
+      await mount(pictureInPictureMedia(), host())
+      expect(control()).toBeNull()
+    } finally {
+      window.matchMedia = real
+    }
+  })
+
+  // a touch screen laptop: the primary pointer hovers, and the screen takes taps as well
+  it('never arms for a finger, and hides from a touch until a pointer that hovers moves', async () => {
+    // outside any player first: the case before leaves the mouse where the new control appears
+    await cdp().send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1200, y: 680 })
+    const state = host()
+    await mount(pictureInPictureMedia(), state)
+    // over, not down: before arming was refused to a finger, the bar let go of the down it caused
+    const reached: string[] = []
+    control()!.addEventListener('pointerover', (event) => reached.push(event.pointerType))
+
+    await tap(...centre(control()!))
+    expect(reached, 'the tap missed the control, so it proves nothing').toEqual(['touch'])
+    await expect.poll(() => control()).toBeNull()
+    expect(state.armed, 'the host flipped its frame for a click that never comes').toEqual([])
+
+    await pointAt(document.querySelector(`.${MOUNTED} button.play`)!)
+    await expect.poll(() => control()).not.toBeNull()
+
+    // armed by the mouse, then a touch outside the player: the control goes and the host hears it
+    await pointAt(control()!)
+    await expect.poll(() => state.armed).toEqual([true])
+    await tap(1200, 680)
+    await expect.poll(() => control()).toBeNull()
+    expect(state.armed).toEqual([true, false])
+    expect(state.element!.style.pointerEvents).toBe('none')
   })
 })
