@@ -248,6 +248,7 @@ export const ProgressBar = () => {
   const requestThumbnail = usePlayer((state) => state.requestThumbnail)
   const chapters = usePlayer((state) => state.chapters)
   const seekingTo = usePlayer((state) => state.seekingTo)
+  const setSourceState = usePlayer((state) => state.setSourceState)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
@@ -265,6 +266,14 @@ export const ProgressBar = () => {
     setProgressBarOverTime(time)
     requestThumbnail(time)
   }
+
+  // the same truthiness the readout and the thumbnail below are drawn on
+  const previewing = !!progressBarHoverTime
+  useEffect(() => {
+    if (!previewing) return
+    setSourceState({ seekPreview: true })
+    return () => setSourceState({ seekPreview: false })
+  }, [setSourceState, previewing])
 
   // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
   const dragPointerType = useRef<string | undefined>(undefined)
