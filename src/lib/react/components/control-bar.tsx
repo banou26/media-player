@@ -1,5 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
 
@@ -19,6 +19,9 @@ import Sound from './sound'
 
 const VOLUME_STEP = 0.05
 const SEEK_STEP = 5
+// after the window's blur, which is when the click has moved focus into the host's document: taken
+// back at 50 ms, the delay measured to hold on Chrome 153 (2026-09-26)
+const REFOCUS_DELAY = 50
 
 /**
  * Two stacked lines inside a tooltip.
@@ -126,7 +129,9 @@ const style = css`
 
         cursor: pointer;
 
-        :hover {
+        /* .armed is the hover of a control letting its click through, which takes no pointer events
+           of its own and so is never :hover */
+        :hover, &.armed {
           background-color: ${colors.hover};
         }
 
@@ -179,11 +184,14 @@ export const ControlBar = () => {
   const togglePictureInPicture = usePlayer((state) => state.togglePictureInPicture)
   const pictureInPictureMode = usePlayer((state) => state.pictureInPictureMode)
   const burnedInSubtitles = usePlayer((state) => state.burnedInSubtitles)
+  const passThrough = usePlayer((state) => state.passThroughPictureInPicture)
   const subtitleTracks = usePlayer((state) => state.subtitleTracks)
   // Keyboard seeks go through the same door as the seek bar: data first, then the playhead. See
   // `requestSeek` on the source state for why an element that seeks into a hole is the problem.
   const requestSeek = usePlayer((state) => state.requestSeek)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
+  const passThroughButton = useRef<HTMLButtonElement>(null)
+  const refocus = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const burnIn = pictureInPictureMode === 'burn-in'
   // Burning nothing in is a mode with no effect, so the control stays visible and goes dead rather
@@ -258,8 +266,35 @@ export const ControlBar = () => {
     return () => volumeElement.removeEventListener('wheel', handleWheel)
   }, [volumeElement, handleWheel])
 
+  // Moving too (not only entering): after leaving picture in picture the pointer is often still on
+  // the control, and entering fired long ago.
+  const armPassThrough = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!passThrough || passThrough.active || passThrough.armed) return
+    const { left, top, width, height } = event.currentTarget.getBoundingClientRect()
+    passThrough.arm({ left, top, width, height })
+  }
+
+  // The click that went through took focus into the host's document with it, and the shortcuts
+  // above listen on this window.
+  const armed = !!passThrough?.armed
+  useEffect(() => {
+    if (!armed) return
+    const takeFocusBack = () => {
+      clearTimeout(refocus.current)
+      refocus.current = setTimeout(() => passThroughButton.current?.focus({ preventScroll: true }), REFOCUS_DELAY)
+    }
+    window.addEventListener('blur', takeFocusBack)
+    return () => window.removeEventListener('blur', takeFocusBack)
+  }, [armed])
+  useEffect(() => () => clearTimeout(refocus.current), [])
+
   return (
-    <div css={style} style={{ ...hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}>
+    // Armed, the whole bar takes no pointer events, or the rows around the control would still catch
+    // the click at its box. The chrome's layer covers everything but the control meanwhile.
+    <div
+      css={style}
+      style={{ ...hideUI ? { opacity: '0', pointerEvents: 'none' } : armed ? { pointerEvents: 'none' } : {} }}
+    >
       <ProgressBar />
       <div className='actions'>
         <div className='left'>
@@ -305,7 +340,33 @@ export const ControlBar = () => {
           <ErrorsAction />
           <SubtitlesAction />
           <SettingsAction />
-          {togglePictureInPicture
+          {passThrough
+            ? (
+              <TooltipDisplay
+                id='picture-in-picture'
+                tooltipPlace='top-end'
+                text={
+                  <button
+                    ref={passThroughButton}
+                    className={passThrough.armed ? 'picture-in-picture armed' : 'picture-in-picture'}
+                    type='button'
+                    onPointerEnter={armPassThrough}
+                    onPointerMove={armPassThrough}
+                    // Out of picture in picture the click was meant for the host's document, so one
+                    // that lands here instead (a key press) has nothing it could do.
+                    onClick={passThrough.active ? passThrough.exit : undefined}
+                    aria-label='Picture in picture'
+                    aria-pressed={passThrough.active}
+                  >
+                    <img src={pictureInPicture} alt='' />
+                  </button>
+                }
+                toolTipText={
+                  <span>{passThrough.active ? 'Exit picture in picture' : 'Picture in picture'}</span>
+                }
+              />
+            )
+            : togglePictureInPicture
             ? (
               <TooltipDisplay
                 id='picture-in-picture'

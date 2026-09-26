@@ -208,6 +208,26 @@ play/pause button.
 If anything in that path is unavailable the player falls back to handing the browser the bare video,
 which plays without subtitles rather than not at all.
 
+### Picture in picture for a media you do not own
+
+A browser opens picture in picture only for a click in the document that owns the `<video>`, so a
+remote media gets the control only when the host opts in to taking that click:
+
+```tsx
+// `.frame` sets `pointer-events: none`, so clicks reach the chrome everywhere else
+<MediaPlayer
+  media={media}
+  pictureInPicture={{ onArmedChange: (armed) => { frame.current!.style.pointerEvents = armed ? 'auto' : '' } }}
+>
+  <iframe ref={frame} className='frame' />
+</MediaPlayer>
+```
+
+While the pointer is over the control, the chrome lets a click through at the control's box and the
+host is told it is armed, so its frame takes that click and enters picture in picture from inside.
+The control follows the media's `enterpictureinpicture` and `leavepictureinpicture` events, and in
+picture in picture a click on it calls the media's `exitPictureInPicture`.
+
 ## Layout
 
 One package. `src/` is the demo app, `src/lib` is the library it publishes, and the app imports it by

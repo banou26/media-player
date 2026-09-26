@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import type { MediaChapter } from '../engine'
 import type { DownloadedRange } from './source-feature'
-import type { DelegatedTracks, ExternalThumbnails, PlayerMedia } from './media'
+import type { DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
 import type { ExposePlayerOptions } from '../remote'
 
 import { useEffect, useRef, useState } from 'react'
@@ -13,6 +13,7 @@ import { Player, usePlayer } from './player'
 import { usePlayback } from './hooks/use-playback'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { usePictureInPicture } from './hooks/use-picture-in-picture'
+import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture-in-picture'
 import Chrome from './components/chrome'
 
 /**
@@ -185,6 +186,12 @@ export type MediaPlayerRemoteOptions =
     /** The source renders these; the player draws the menu and reports the pick. */
     subtitles?: DelegatedTracks
     audioTracks?: DelegatedTracks
+    /**
+     * Offer picture in picture, entered by the host from inside the media's own document. Off by
+     * default, and then there is no control at all. See `PassThroughPictureInPicture` for what the
+     * host takes on by passing it. Read by value, so it may be written inline.
+     */
+    pictureInPicture?: PassThroughPictureInPicture
   }
 
 export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
@@ -264,6 +271,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     mode: pictureInPictureMode,
     burnedIn: burnedInSubtitles,
   } = usePictureInPicture(video, subtitleLayer)
+  const passThroughPictureInPicture = usePassThroughPictureInPicture(
+    remote?.media ?? null,
+    remote?.pictureInPicture,
+  )
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
   // attaches: when attach swaps in the real setter the identity changes and these publish again.
@@ -294,6 +305,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState, thumbnails, thumbnailAt, requestThumbnail, togglePictureInPicture, pictureInPictureMode,
     burnedInSubtitles,
   ])
+
+  // its own effect: it changes on every hover of the control, and nothing else here does
+  useEffect(() => {
+    setSourceState({ passThroughPictureInPicture })
+  }, [setSourceState, passThroughPictureInPicture])
 
   // A delegated track list writes the same store fields the engine writes, so the menus never learn
   // which arm they are showing. Only the writer differs: here the pick is forwarded to whoever owns
