@@ -267,9 +267,10 @@ export const ControlBar = () => {
   }, [volumeElement, handleWheel])
 
   // Moving too (not only entering): after leaving picture in picture the pointer is often still on
-  // the control, and entering fired long ago.
+  // the control, and entering fired long ago. Never for a finger, whose tap is already on its way to
+  // this button when it arrives, so arming would only flip the host's frame for nothing.
   const armPassThrough = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (!passThrough || passThrough.active || passThrough.armed) return
+    if (!passThrough || passThrough.active || passThrough.armed || event.pointerType === 'touch') return
     const { left, top, width, height } = event.currentTarget.getBoundingClientRect()
     passThrough.arm({ left, top, width, height })
   }
