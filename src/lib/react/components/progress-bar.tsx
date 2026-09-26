@@ -241,6 +241,7 @@ export const ProgressBar = () => {
   const duration = usePlayer((state) => state.duration)
   const size = usePlayer((state) => state.size)
   const downloadedRanges = usePlayer((state) => state.downloadedRanges)
+  const buffered = usePlayer((state) => state.buffered)
   const indexes = usePlayer((state) => state.indexes)
   const thumbnails = usePlayer((state) => state.thumbnails)
   const thumbnailAt = usePlayer((state) => state.thumbnailAt)
@@ -357,25 +358,30 @@ export const ProgressBar = () => {
   // duration is 0 until metadata lands, which is never a divisor
   const timePercentage = (time: number) => duration ? (time / duration) * 100 : 0
 
+  const loadedPart = (key: number, start: number, end: number) => {
+    const rangeDuration = Number((end - start).toFixed(4)) // to prevent cases like `0.9995140832939585`
+    const left = start * 100
+    return (
+      <div key={key} className="loaded-part" style={{ transform: `scaleX(${rangeDuration})`, marginLeft: `${left}%` }}></div>
+    )
+  }
+
   // download percentage is not time percentage: headers and fonts can run to tens of megabytes
   const loadedParts = useMemo(() =>
-    downloadedRanges
-      ?.map((range, i) => {
-        if (!size || !duration) return null
-        const matchingIndexes = indexes.filter(index => range.startByteOffset <= index.pos && index.pos <= range.endByteOffset)
-        const firstIndex = matchingIndexes.at(0)
-        const lastIndex = matchingIndexes.at(-1)
-        if (!firstIndex || !lastIndex) return null
-        const start = firstIndex.timestamp / duration
-        const end = lastIndex.timestamp  / duration
-        const rangeDuration = Number((end - start).toFixed(2)) // to prevent cases like `0.9995140832939585`
-        const left = start * 100
-        return (
-          <div key={i} className="loaded-part" style={{ transform: `scaleX(${rangeDuration})`, marginLeft: `${left}%` }}></div>
-        )
-      })
-    ?? [],
-    [duration, indexes.length, downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
+    // a media the player does not own brings no bytes, so the element's own buffered time is all there is
+    size === undefined
+      ? (duration ? buffered.map(([start, end], i) => loadedPart(i, start / duration, end / duration)) : [])
+      : downloadedRanges
+        ?.map((range, i) => {
+          if (!size || !duration) return null
+          const matchingIndexes = indexes.filter(index => range.startByteOffset <= index.pos && index.pos <= range.endByteOffset)
+          const firstIndex = matchingIndexes.at(0)
+          const lastIndex = matchingIndexes.at(-1)
+          if (!firstIndex || !lastIndex) return null
+          return loadedPart(i, firstIndex.timestamp / duration, lastIndex.timestamp / duration)
+        })
+      ?? [],
+    [duration, size, size === undefined ? buffered : undefined, indexes.length, downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}/${endByteOffset}`).join(',')]
   )
 
 
