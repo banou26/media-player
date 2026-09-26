@@ -82,7 +82,17 @@ export type PassThroughControl = {
   active: boolean
   /** The control's box while a click on it is let through, undefined otherwise. */
   armed?: ViewportBox
+  /**
+   * Lets a click at `box` through to the host, and tells the host it is armed. For the pointer
+   * arriving on the control. Does nothing while the media has no metadata yet (`readyState` below 1)
+   * or has an `error`, since the host's request would be refused and the click lost with it.
+   */
   arm: (box: ViewportBox) => void
+  /**
+   * Takes the click back, and tells the host it is disarmed if it had been told it was armed. For the
+   * pointer leaving the control; also done here on entering picture in picture, on a touch, and when
+   * the control stops being offered.
+   */
   disarm: () => void
   /** Leaves picture in picture through the media. */
   exit: () => void

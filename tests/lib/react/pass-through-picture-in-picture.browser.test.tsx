@@ -251,6 +251,30 @@ describe('picture in picture for a media the player does not own', () => {
     }
   })
 
+  // the host's request would be refused, and the click would be lost with it
+  it('does not arm while the media has no metadata, or has failed', async () => {
+    const media = pictureInPictureMedia()
+    const state = host()
+    media.readyState = 0
+    await mount(media, state)
+
+    await pointAt(control()!)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(state.armed).toEqual([])
+
+    media.readyState = 4
+    media.error = { code: 4, message: 'MEDIA_ERR_SRC_NOT_SUPPORTED' }
+    await pointAt(document.querySelector(`.${MOUNTED} button.play`)!)
+    await pointAt(control()!)
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(state.armed).toEqual([])
+
+    media.error = null
+    await pointAt(document.querySelector(`.${MOUNTED} button.play`)!)
+    await pointAt(control()!)
+    await expect.poll(() => state.armed).toEqual([true])
+  })
+
   it('is not offered to a pointer that cannot hover, and comes back when one can', async () => {
     const pointer = primaryPointer(false)
     try {

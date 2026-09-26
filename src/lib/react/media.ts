@@ -95,6 +95,8 @@ export type PlayerMedia = EventTarget & {
  * What it refuses:
  * - A keyboard press on the control, which cannot reach the host's document, does nothing until the
  *   media is in picture in picture.
+ * - A media with no metadata yet (`readyState` below 1) or with an `error`: the control does not arm,
+ *   so its click lands on the control and does nothing.
  * - A finger. Only a pointer resting on the control arms it, and a tap presses as it arrives, so its
  *   click lands on the control and goes nowhere. No control is offered where the primary pointer
  *   cannot hover (`(hover: hover) and (pointer: fine)` fails: phones, tablets), and on a device that
