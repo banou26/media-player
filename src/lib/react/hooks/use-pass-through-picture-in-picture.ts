@@ -44,10 +44,13 @@ export const usePassThroughPictureInPicture = (
     host.current?.onArmedChange(on)
   }, [])
 
+  // Nothing to show yet, or a media that failed: the host's request would be refused, and the click
+  // lost with it, so it lands on the control instead.
   const arm = useCallback((box: ViewportBox) => {
+    if (!media || media.readyState < 1 || media.error) return
     setArmed(box)
     tell(true)
-  }, [tell])
+  }, [media, tell])
   const disarm = useCallback(() => {
     setArmed(undefined)
     tell(false)
