@@ -151,7 +151,7 @@ const LABEL_SEPARATORS = /[-:|~/\\[\]()「」『』【】,.!?"'’]|\s+by\s+/u
 /** Titles a container writes when it has nothing to say, which must never look like a marker. */
 const isPlaceholder = (title: string): boolean =>
   // "Chapter 07", and the timestamps one muxer writes as titles, which are 300 markers in the sample
-  /^chapter\s*\d+$/i.test(title.trim()) || /^\d{1,2}:\d{2}:\d{2}([.,]\d+)?$/.test(title.trim())
+  !title.trim() || /^chapter\s*\d+$/i.test(title.trim()) || /^\d{1,2}:\d{2}:\d{2}([.,]\d+)?$/.test(title.trim())
 
 const normalise = (title: string): string =>
   (title.trim().toLowerCase().split(LABEL_SEPARATORS)[0] ?? '').trim().replace(/\s+/gu, ' ')
@@ -297,6 +297,10 @@ export const classifyChapters = (chapters: MediaChapter[]): (ChapterKind | undef
     return guess && !plain.includes(guess) ? guess : undefined
   })
 
-  // shape is the last resort, and only for a file whose titles said nothing whatsoever
-  return named.some(Boolean) ? named : guessFromShape(chapters)
+  /*
+   * Shape is the last resort, and only for a file where no person named anything. A name that is not
+   * a theme still answers for its chapter: a theme-length Recap in the first half would otherwise be
+   * offered as the opening, and a Preview in the second as the ending.
+   */
+  return chapters.every(({ title }) => isPlaceholder(title)) ? guessFromShape(chapters) : named
 }

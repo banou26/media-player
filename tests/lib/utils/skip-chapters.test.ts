@@ -174,6 +174,19 @@ describe('a file whose chapters were named by a muxer, not a person', () => {
     expect(kinds[3], 'the single candidate in the second half is still offered').toBe('ending')
   })
 
+  it('does not guess where a person named the chapters, even when no name is a theme', () => {
+    // Crunchyroll's own names as stub hands them over: a recap in the first half and a preview in the
+    // second are both theme-length, and neither is the theme
+    expect(classifyChapters(chapters(['Recap', 0, 90], ['Episode', 90, 1440]))).toEqual([undefined, undefined])
+    expect(classifyChapters(chapters(['Episode', 0, 1350], ['Preview', 1350, 1440]))).toEqual([undefined, undefined])
+  })
+
+  it('still guesses where every title is a muxer\'s, blank ones included', () => {
+    // the control for the case above: the same two layouts, with nothing a person wrote
+    expect(classifyChapters(chapters(['00:00:00.000', 0, 90], ['00:01:30.000', 90, 1440]))).toEqual(['opening', undefined])
+    expect(classifyChapters(chapters(['Chapter 1', 0, 1350], ['', 1350, 1440]))).toEqual([undefined, 'ending'])
+  })
+
   it('never overrides a title, only fills in for one that says nothing', () => {
     // the Prologue here is theme-length, so shape alone would call it the opening. The title has
     // already answered, so shape is never consulted.
