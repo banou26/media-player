@@ -87,8 +87,10 @@ export type PlayerMedia = EventTarget & {
  *   which is the only state it reads.
  * - While the media is in picture in picture a click on the control is an ordinary click here and
  *   calls the media's `exitPictureInPicture`, since leaving needs no gesture. Nothing is let through.
- * - Once a click has gone through, the control takes focus back, so the chrome's keyboard shortcuts
- *   keep working in this document rather than in the host's.
+ * - Once a click has gone through and taken focus into a frame inside the player, the control takes
+ *   focus back, so the chrome's keyboard shortcuts keep working in this document rather than in the
+ *   host's. This holds with the player itself nested in another page. Focus anywhere else is left
+ *   alone.
  *
  * What it refuses:
  * - A keyboard press on the control, which cannot reach the host's document, does nothing until the

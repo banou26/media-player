@@ -200,16 +200,55 @@ describe('picture in picture for a media the player does not own', () => {
     expect(chrome.className, 'the control vanished from under the pointer').not.toContain('hide')
   }, 20_000)
 
-  it('takes focus back once the click has taken it into the host\'s document', async () => {
+  // Stub's layout: its watch page, the player in an embed, Crunchyroll's frame in the player. This
+  // tester frame sits in vitest's page the same way, so with focus moved up to that page first, focus
+  // going into a frame in the player fires nothing in this window, as it fired nothing in the embed.
+  it('takes focus back once the click has taken it into the host\'s frame, with the player nested', async () => {
+    // outside any player first: the case before leaves the mouse where the new control appears, which
+    // arms it at once, and moving focus up would then blur an armed player
+    await cdp().send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1200, y: 680 })
     const state = host()
     await mount(pictureInPictureMedia(), state)
+    const frame = document.createElement('iframe')
+    frame.srcdoc = '<input>'
+    frame.style.cssText = 'position: absolute; inset: 0; width: 100%; height: 100%; border: 0;'
+    await new Promise((resolve) => {
+      frame.addEventListener('load', resolve, { once: true })
+      state.element!.append(frame)
+    })
+    expect(state.armed).toEqual([])
+    window.parent.focus()
+    expect(document.hasFocus(), 'focus never left this document, so nothing here is nested').toBe(false)
+    const heard: string[] = []
+    window.addEventListener('blur', () => heard.push('blur'), { once: true })
 
     await pointAt(control()!)
     await expect.poll(() => state.armed).toEqual([true])
-    // what the window hears when a click lands in a frame, which a same-document stand-in cannot do
-    window.dispatchEvent(new Event('blur'))
+    // where the click in the host's frame puts focus
+    frame.contentDocument!.querySelector('input')!.focus()
+    expect(document.activeElement, 'focus did not reach the frame').toBe(frame)
 
     await expect.poll(() => document.activeElement).toBe(control())
+    expect(heard, 'this window heard the focus leave, so this is not the nested case').toEqual([])
+  })
+
+  // Alt+Tab while the pointer rests on the control blurs the window and moves focus nowhere here
+  it('leaves focus where it was when the window blurs while armed', async () => {
+    const state = host()
+    await mount(pictureInPictureMedia(), state)
+    const chat = document.createElement('input')
+    document.body.append(chat)
+    try {
+      chat.focus()
+      await pointAt(control()!)
+      await expect.poll(() => state.armed).toEqual([true])
+
+      window.dispatchEvent(new Event('blur'))
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(document.activeElement).toBe(chat)
+    } finally {
+      chat.remove()
+    }
   })
 
   it('is not offered to a pointer that cannot hover, and comes back when one can', async () => {
