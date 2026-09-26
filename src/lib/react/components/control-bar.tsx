@@ -19,9 +19,11 @@ import Sound from './sound'
 
 const VOLUME_STEP = 0.05
 const SEEK_STEP = 5
-// after the window's blur, which is when the click has moved focus into the host's document: taken
-// back at 50 ms, the delay measured to hold on Chrome 153 (2026-09-26)
-const REFOCUS_DELAY = 50
+// Whether the click let through took focus into the host's frame is asked, not heard: nested in
+// another page (stub's embed), this window never had focus, and the click fired neither a blur nor a
+// focusin here (Chrome 153, 2026-09-26). So while armed, and for a second after, it is polled.
+const REFOCUS_POLL = 50
+const REFOCUS_AFTER = 1_000
 
 /**
  * Two stacked lines inside a tooltip.
@@ -191,7 +193,7 @@ export const ControlBar = () => {
   const requestSeek = usePlayer((state) => state.requestSeek)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
   const passThroughButton = useRef<HTMLButtonElement>(null)
-  const refocus = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const refocus = useRef<ReturnType<typeof setInterval>>(undefined)
 
   const burnIn = pictureInPictureMode === 'burn-in'
   // Burning nothing in is a mode with no effect, so the control stays visible and goes dead rather
@@ -275,19 +277,30 @@ export const ControlBar = () => {
     passThrough.arm({ left, top, width, height })
   }
 
-  // The click that went through took focus into the host's document with it, and the shortcuts
-  // above listen on this window.
+  // The click that went through took focus into the host's frame with it, and the shortcuts above
+  // listen on this window. Only a frame inside this player's picture counts, so a window blur while
+  // armed (Alt+Tab) or focus the viewer put elsewhere, a chat input say, is left where it is.
   const armed = !!passThrough?.armed
   useEffect(() => {
     if (!armed) return
-    const takeFocusBack = () => {
-      clearTimeout(refocus.current)
-      refocus.current = setTimeout(() => passThroughButton.current?.focus({ preventScroll: true }), REFOCUS_DELAY)
-    }
-    window.addEventListener('blur', takeFocusBack)
-    return () => window.removeEventListener('blur', takeFocusBack)
+    clearInterval(refocus.current)
+    let until = Infinity
+    const poll = setInterval(() => {
+      if (Date.now() > until) {
+        clearInterval(poll)
+        return
+      }
+      const button = passThroughButton.current
+      const focused = document.activeElement
+      if (button && focused?.tagName === 'IFRAME' && focused.closest('.video')?.parentElement?.contains(button)) {
+        button.focus({ preventScroll: true })
+      }
+    }, REFOCUS_POLL)
+    refocus.current = poll
+    // entering picture in picture disarms, which can come before the next tick
+    return () => { until = Date.now() + REFOCUS_AFTER }
   }, [armed])
-  useEffect(() => () => clearTimeout(refocus.current), [])
+  useEffect(() => () => clearInterval(refocus.current), [])
 
   return (
     // Armed, the whole bar takes no pointer events, or the rows around the control would still catch
