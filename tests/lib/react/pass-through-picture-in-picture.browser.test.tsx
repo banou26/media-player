@@ -9,6 +9,7 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { createFakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
+import { tap } from './cdp-input'
 
 /**
  * Picture in picture for a media in a document the player cannot give a gesture to.
@@ -106,12 +107,6 @@ const primaryPointer = (hovers: boolean) => {
   }
 }
 
-// A real finger, through the browser's own input pipeline, at a point in this viewport (the tester
-// frame sits at the page's origin, unscaled, at 1280x720)
-const tap = async (x: number, y: number) => {
-  await cdp().send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
-  await cdp().send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
-}
 const centre = (element: Element) => {
   const { left, top, width, height } = element.getBoundingClientRect()
   return [left + width / 2, top + height / 2] as const

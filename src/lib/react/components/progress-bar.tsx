@@ -249,6 +249,7 @@ export const ProgressBar = () => {
   const chapters = usePlayer((state) => state.chapters)
   const seekingTo = usePlayer((state) => state.seekingTo)
   const setSourceState = usePlayer((state) => state.setSourceState)
+  const hideUI = usePlayer((state) => state.hideUI)
 
   const progressBarRef = useRef<HTMLDivElement>(null)
 
@@ -274,6 +275,11 @@ export const ProgressBar = () => {
     setSourceState({ seekPreview: true })
     return () => setSourceState({ seekPreview: false })
   }, [setSourceState, previewing])
+
+  // faded out with the chrome, the readout is off screen while it would still hold the offer back
+  useEffect(() => {
+    if (hideUI) showPreviewAt(undefined)
+  }, [hideUI])
 
   // onChange reports a bare fraction, so the device that opened the gesture is recorded on press
   const dragPointerType = useRef<string | undefined>(undefined)
@@ -355,7 +361,20 @@ export const ProgressBar = () => {
     return fraction * duration
   }
 
+  /*
+   * A browser follows a tap with a mouseover and a mousemove at the tap, after the lift has closed
+   * the preview, and on a phone no mouse ever moves away to close it again: the readout stays up and
+   * the skip offer stays hidden behind it. Those are the only mouse events here with no pointer event
+   * of type mouse before them. Mouse events stay the trigger, since a host's jsdom suite hovers with
+   * them.
+   */
+  const lastPointerType = useRef('mouse')
+  const onPointer: DOMAttributes<HTMLDivElement>['onPointerMove'] = (ev) => {
+    lastPointerType.current = ev.pointerType
+  }
+
   const onProgressBarOver: DOMAttributes<HTMLDivElement>['onMouseMove'] = (ev) => {
+    if (lastPointerType.current === 'touch') return
     showPreviewAt(timeAtClientX(ev.clientX))
   }
 
@@ -504,6 +523,8 @@ export const ProgressBar = () => {
         dragging ? 'dragging' : '',
         segmented ? 'segmented' : '',
       ].filter(Boolean).join(' ')}
+      onPointerDown={onPointer}
+      onPointerMove={onPointer}
       onMouseMove={onProgressBarOver}
       onMouseOut={hideProgressBarTime}
     >
