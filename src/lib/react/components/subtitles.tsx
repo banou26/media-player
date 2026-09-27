@@ -1,9 +1,9 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import { css } from '@emotion/react'
+import { Captions, CaptionsOff } from 'lucide-react'
 
 import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'
-import { Captions, CaptionsOff } from './icons'
 import { TrackMenu, popoverStyle, useTrackMenu } from './track-menu'
 
 const style = css`

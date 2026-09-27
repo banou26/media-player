@@ -46,8 +46,8 @@
     "ass-compiler": "^0.1.16",
     "jassub": "^2.5.16",
     "libav-wasm": "^0.8.7",
+    "lucide-react": "^0.536.0",
     "osra": "^0.6.12",
-    "react-feather": "^2.0.10",
     "react-tooltip": "^5.28.0"
   },
   "peerDependencies": {
