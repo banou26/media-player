@@ -3,7 +3,7 @@ import type { PlaybackErrorEntry } from '../source-feature'
 
 import { useState } from 'react'
 import { css } from '@emotion/react'
-import { AlertTriangle, Check, Copy } from 'react-feather'
+import { Check, Copy, TriangleAlert } from 'lucide-react'
 
 import { fonts } from '../../utils/fonts'
 import { formatTime } from '../../utils/time'
@@ -173,7 +173,7 @@ export const ErrorsAction = () => {
             aria-label={label}
             aria-expanded={open}
           >
-            <AlertTriangle className='alert-triangle' />
+            <TriangleAlert className='alert-triangle' />
           </button>
         }
         toolTipText={<span>{label}</span>}

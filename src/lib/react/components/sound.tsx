@@ -3,7 +3,7 @@ import type { Ref } from 'react'
 
 import { useMemo } from 'react'
 import { css } from '@emotion/react'
-import { Volume1, Volume2, VolumeX } from 'react-feather'
+import { Volume1, Volume2, VolumeX } from 'lucide-react'
 
 import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'

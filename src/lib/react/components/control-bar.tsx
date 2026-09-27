@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, RotateCcw } from 'react-feather'
+import { Maximize, Minimize, Pause, Play, RotateCcw } from 'lucide-react'
 
 import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 import { formatMediaTime } from '../../utils/time'

@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import { useState } from 'react'
 import { css } from '@emotion/react'
-import { ChevronLeft, ChevronRight, Settings } from 'react-feather'
+import { ChevronLeft, ChevronRight, Settings } from 'lucide-react'
 
 import { usePlayer } from '../player'
 import { TooltipDisplay } from './tooltip-display'

@@ -3,7 +3,7 @@ import type { TrackChoice } from '../source-feature'
 
 import { useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { ChevronLeft } from 'react-feather'
+import { ChevronLeft } from 'lucide-react'
 
 import { fonts } from '../../utils/fonts'
 
