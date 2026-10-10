@@ -174,7 +174,7 @@ export type MediaPlayerLocalOptions =
      * passes it back.
      *
      * The first time it is on, the element is routed through Web Audio for the rest of its life (off then
-     * bypasses). If autoplay rules hold the audio back, that waits for the page's next pointerdown or keydown, and
+     * bypasses). If autoplay rules hold the audio back, that waits for the page's next click, tap or key press, and
      * the video plays as before meanwhile. Where the engine refuses the routing (WebKit) the switch reads
      * Unavailable and playback is untouched.
      */

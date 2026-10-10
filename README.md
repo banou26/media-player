@@ -263,7 +263,7 @@ or `data:` url, and `build.lib` inlines assets as `data:` without `?no-inline`.
 
 The first time it is on, the `<video>` is routed through Web Audio for the rest of its life, because an
 element cannot be handed back; off is a bypass. Routing waits until the AudioContext runs: one that
-autoplay rules hold back resumes on the page's next pointerdown or keydown, and the video plays as it
+autoplay rules hold back resumes on the page's next click, tap or key press, and the video plays as it
 always did until then. WebKit is refused (`createMediaElementSource` in `@banou/ponyfill`), since a
 routed element loses its volume and mute there, and the switch reads Unavailable with playback
 untouched.

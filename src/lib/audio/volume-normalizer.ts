@@ -57,7 +57,7 @@ const running = (context: AudioContext) => new Promise<void>((resolve, reject) =
  *
  * - An element routed into a context that autoplay rules hold suspended goes silent (Firefox, WebKit) or stops
  *   advancing (Chrome). So nothing is routed until the context runs; until then the element plays as it always did,
- *   and the next pointerdown or keydown resumes the context.
+ *   and the next pointerdown, pointerup or keydown resumes the context.
  * - Chrome and WebKit refuse a second source for one element, and Chrome stops a playing element whose context is
  *   closed, so the context is closed only once the element has left the document, and off is a bypass in the same
  *   graph.
@@ -86,7 +86,8 @@ export const attachVolumeNormalizer = (
   const document = element.ownerDocument
   const resume = () => { if (context.state === 'suspended') context.resume().catch(() => {}) }
   const listen = (on: boolean) => {
-    for (const type of ['pointerdown', 'keydown']) {
+    // a mouse activates on pointerdown, a touch or a pen only on pointerup
+    for (const type of ['pointerdown', 'pointerup', 'keydown']) {
       if (on) document.addEventListener(type, resume, true)
       else document.removeEventListener(type, resume, true)
     }
