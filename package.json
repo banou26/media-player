@@ -42,7 +42,7 @@
   },
   "author": "Banou26",
   "dependencies": {
-    "@banou/ponyfill": "^0.0.9",
+    "@banou/ponyfill": "^0.0.10",
     "@videojs/core": "10.0.0-beta.26",
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",
