@@ -52,6 +52,20 @@ describe('the vite-plus toolchain is pinned as one release', () => {
   })
 })
 
+// `npm ci` refuses a lock that disagrees with the manifest, and Test and Publish both run it. A dependency added to
+// package.json alone passed every local check on 2026-10-11, because node_modules had been filled by hand.
+describe('the lock agrees with the manifest', () => {
+  it('records every range the manifest declares, and an installed entry for each', () => {
+    const root = lock.packages[''] as Record<string, Record<string, string> | undefined>
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies']) {
+      expect(root[field] ?? {}, field).toEqual(manifest[field] ?? {})
+    }
+    const missing = Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })
+      .filter((name) => !lock.packages[`node_modules/${name}`])
+    expect(missing).toEqual([])
+  })
+})
+
 // Cloudflare Pages builds player.fkn.app on whatever .node-version names, and on node 22.16.0 without
 // one, which is below vite-plus's own floor: every deploy logged EBADENGINE for vite-plus and its core
 // until 2026-09-24. npm only warns for a regular dependency, but drops an OPTIONAL native binding that
