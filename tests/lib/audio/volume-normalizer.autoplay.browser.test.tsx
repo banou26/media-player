@@ -56,6 +56,13 @@ describe('normalizeVolume under an autoplay hold', () => {
     expect(routed).not.toHaveBeenCalled()
     expect(await advancing(video)).toBeGreaterThan(0.3)
 
+    // A tap's pointerdown is not an activation and its pointerup is, so a touch engages on the first tap only through
+    // pointerup. A synthetic event activates nothing, but it shows the resume is asked for.
+    const resumes = vi.spyOn(AudioContext.prototype, 'resume')
+    document.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+    expect(resumes).toHaveBeenCalled()
+    resumes.mockRestore()
+
     // anywhere but the player, whose picture toggles playback
     const elsewhere = document.createElement('button')
     elsewhere.textContent = 'elsewhere'
