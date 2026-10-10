@@ -4,11 +4,7 @@
  * turning the gain down, never up, so it needs no limiter and adds no delay.
  *
  * processorOptions, every one optional:
- *   targetLufs      -24   short-term loudness held, typical anime dialogue (HOR-291)
- *   maxCutDb        20    deepest cut
- *   attackSeconds   0.25  time constant of a cut
- *   releaseSeconds  1     time constant of a recovery
- *   gateLufs        -50   100 ms blocks quieter than this are left out, so a pause holds the gain
+ *   targetLufs      -24   short-term loudness held, typical anime dialogue
  *   enabled         true  false starts it bypassed
  *   inputGainDb     0     gain already applied upstream (the element's volume), judged without
  *
@@ -20,6 +16,12 @@
 
 const BLOCK_SECONDS = 0.1
 const WINDOW_SECONDS = 3
+const MAX_CUT_DB = 20
+// time constants of a cut and of a recovery
+const ATTACK_SECONDS = 0.25
+const RELEASE_SECONDS = 1
+// 100 ms blocks quieter than this are left out, so a pause holds the gain
+const GATE_LUFS = -50
 
 // ITU-R BS.1770 K-weighting at any sample rate, in the bilinear form libebur128 uses
 const kWeighting = (rate) => {
@@ -50,10 +52,6 @@ class VolumeNormalizer extends AudioWorkletProcessor {
     super()
     const option = (key, fallback) => typeof processorOptions[key] === 'number' ? processorOptions[key] : fallback
     this.target = option('targetLufs', -24)
-    this.maxCut = option('maxCutDb', 20)
-    this.attack = option('attackSeconds', 0.25)
-    this.release = option('releaseSeconds', 1)
-    this.gate = option('gateLufs', -50)
     this.enabled = processorOptions.enabled !== false
     this.mix = this.enabled ? 1 : 0
     this.inputPower = Math.pow(10, option('inputGainDb', 0) / 10)
@@ -88,7 +86,7 @@ class VolumeNormalizer extends AudioWorkletProcessor {
 
   closeBlock() {
     const meanSquare = this.blockSum / this.blockLength / this.inputPower
-    this.blocks[this.blockIndex] = -0.691 + 10 * Math.log10(meanSquare) >= this.gate ? meanSquare : -1
+    this.blocks[this.blockIndex] = -0.691 + 10 * Math.log10(meanSquare) >= GATE_LUFS ? meanSquare : -1
     this.blockIndex = (this.blockIndex + 1) % this.blocks.length
     this.blockSum = 0
     this.blockFill = 0
@@ -101,7 +99,7 @@ class VolumeNormalizer extends AudioWorkletProcessor {
     // fewer than three blocks with anything in them is a pause, and the gain holds where it is
     if (active < 3) return
     const level = -0.691 + 10 * Math.log10(sum / active)
-    this.desiredDb = Math.max(-this.maxCut, Math.min(0, this.target - level))
+    this.desiredDb = Math.max(-MAX_CUT_DB, Math.min(0, this.target - level))
   }
 
   process(inputs, outputs) {
@@ -144,7 +142,7 @@ class VolumeNormalizer extends AudioWorkletProcessor {
     }
 
     const seconds = frames / sampleRate
-    const tau = this.desiredDb < this.gainDb ? this.attack : this.release
+    const tau = this.desiredDb < this.gainDb ? ATTACK_SECONDS : RELEASE_SECONDS
     this.gainDb += (this.desiredDb - this.gainDb) * (1 - Math.exp(-seconds / tau))
     const crossfade = seconds / 0.05
     this.mix += Math.max(-crossfade, Math.min(crossfade, (this.enabled ? 1 : 0) - this.mix))
