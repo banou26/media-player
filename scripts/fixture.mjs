@@ -381,8 +381,28 @@ export const ensureHeaderFixture = async () => {
   return HEADER_FIXTURE_PATH
 }
 
+export const LOUD_FIXTURE = 'loud-tone.mkv'
+export const LOUD_FIXTURE_PATH = PUBLIC_DIR + LOUD_FIXTURE
+
+/** Thirty seconds of a stereo 440 Hz tone at about -9.8 LUFS, long and loud enough for the volume normalizer to act on. */
+export const ensureLoudFixture = async () => {
+  if (await exists(LOUD_FIXTURE_PATH)) return LOUD_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=30',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+    '-af', 'volume=12dB',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac', '-ac', '2',
+    '-map', '0:v', '-map', '1:a',
+    LOUD_FIXTURE_PATH,
+  ])
+  return LOUD_FIXTURE_PATH
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureLoudFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

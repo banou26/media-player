@@ -98,6 +98,14 @@ export type PassThroughControl = {
   exit: () => void
 }
 
+/** The settings menu's volume normalizer switch, for a player that offers one (see `normalizeVolume`). */
+export type VolumeNormalizerControl = {
+  enabled: boolean
+  /** False once the engine refused to route the element, which then plays exactly as it did. */
+  available: boolean
+  setEnabled: (enabled: boolean) => void
+}
+
 /**
  * Everything about the source that the chrome reads, carried on the player store next to the built-in
  * playback state so a component never has to know which of two channels owns a field.
@@ -210,6 +218,9 @@ export type SourceState = {
   /** Burn-in only. True while the composite is the picture on screen. */
   burnedInSubtitles: boolean
 
+  /** null when the player offers no volume normalizer: a media it does not own, or no `normalizerWorkletUrl`. */
+  volumeNormalizer: VolumeNormalizerControl | null
+
   /**
    * Move the playhead, letting the pipeline get the data there first.
    *
@@ -279,6 +290,7 @@ const initialState: SourceState = {
   passThroughPictureInPicture: null,
   pictureInPictureMode: null,
   burnedInSubtitles: false,
+  volumeNormalizer: null,
   playbackError: null,
   playbackErrors: [],
   ready: false,
