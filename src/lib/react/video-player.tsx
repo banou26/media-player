@@ -175,8 +175,9 @@ export type MediaPlayerLocalOptions =
      *
      * The first time it is on, the element is routed through Web Audio for the rest of its life (off then
      * bypasses). If autoplay rules hold the audio back, that waits for the page's next click, tap or key press, and
-     * the video plays as before meanwhile. Where the engine refuses the routing (WebKit) the switch reads
-     * Unavailable and playback is untouched.
+     * the video plays as before meanwhile. Where the engine refuses the routing (WebKit), it does so when routing
+     * would happen, once the switch is on and the context runs: the switch reads Unavailable from then on, and
+     * the element is never routed.
      */
     normalizeVolume?: boolean
     /** The viewer flipped the switch. */

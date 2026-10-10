@@ -1,12 +1,8 @@
 import { createMediaElementSource } from '@banou/ponyfill/web-audio'
 
-/** Read once, when the node is made. Every field defaults to the value the HOR-291 measurements chose. */
+/** The worklet's processorOptions, read once when the node is made; its header has the defaults. */
 export type VolumeNormalizerOptions = {
   targetLufs?: number
-  maxCutDb?: number
-  attackSeconds?: number
-  releaseSeconds?: number
-  gateLufs?: number
   enabled?: boolean
   inputGainDb?: number
 }
@@ -53,7 +49,7 @@ const running = (context: AudioContext) => new Promise<void>((resolve, reject) =
 
 /**
  * Routes `element` through the normalizer, once for its whole life, and returns the same handle on every later
- * call. Measured in Chrome 153, Firefox 151 and WebKit 26.5 (HOR-291):
+ * call. Measured 2026-10-11 in Chrome 153, Firefox 151 and WebKit 26.5:
  *
  * - An element routed into a context that autoplay rules hold suspended goes silent (Firefox, WebKit) or stops
  *   advancing (Chrome). So nothing is routed until the context runs; until then the element plays as it always did,
@@ -64,7 +60,8 @@ const running = (context: AudioContext) => new Promise<void>((resolve, reject) =
  * - Chrome and Firefox apply the element's volume before the graph, so the worklet is told the volume and judges
  *   loudness without it: otherwise a viewer at 25% would read as a quiet episode and nothing would be cut.
  * - WebKit loses the volume and mute once routed, so `@banou/ponyfill` refuses it and `routed` rejects with a
- *   `NotSupportedError` before the element is touched.
+ *   `NotSupportedError` before the element is touched. That refusal comes once the context runs, the moment routing
+ *   would happen: telling WebKit apart any earlier would take sniffing here.
  */
 export const attachVolumeNormalizer = (
   element: HTMLMediaElement,

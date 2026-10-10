@@ -18,7 +18,7 @@ const advancing = async (video: HTMLVideoElement) => {
 
 /**
  * Runs in the `autoplay` project, a browser nobody has clicked in, so the page has no activation and an
- * AudioContext starts suspended. Measured in HOR-291: an element routed into such a context goes silent in Firefox
+ * AudioContext starts suspended. Measured 2026-10-11: an element routed into such a context goes silent in Firefox
  * and WebKit and stops advancing in Chrome, so the normalizer must leave it alone until the context runs.
  */
 describe('normalizeVolume under an autoplay hold', () => {
