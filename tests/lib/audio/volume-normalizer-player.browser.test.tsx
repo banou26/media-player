@@ -219,6 +219,17 @@ describe('normalizeVolume', () => {
     expect(quiet - await level(3)).toBeLessThan(6)
   }, 90_000)
 
+  // Measured before this was pinned: Chrome froze the routed element (0.00 s in 0.8 s) until the next click
+  it('resumes at once when something else suspends the context mid-play', async () => {
+    const { routed } = watchWebAudio()
+    const { video } = await mount({ normalizeVolume: true })
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const { context } = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
+    await context.suspend()
+    await expect.poll(() => context.state, { timeout: 3000 }).toBe('running')
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+  }, 60_000)
+
   it('offers no switch without the worklet url', async () => {
     const { openSettings, row, screen } = await mount({ normalizerWorkletUrl: undefined })
     openSettings()

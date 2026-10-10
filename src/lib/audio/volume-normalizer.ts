@@ -91,7 +91,13 @@ export const attachVolumeNormalizer = (
       else document.removeEventListener(type, resume, true)
     }
   }
-  const follow = () => listen(!released && context.state === 'suspended')
+  const follow = () => {
+    const suspended = !released && context.state === 'suspended'
+    listen(suspended)
+    // Suspended by something else once routed: Chrome freezes the element and Firefox plays it silent until the
+    // context runs, and the page's activation already allows a resume.
+    if (suspended && node) resume()
+  }
   context.addEventListener('statechange', follow)
   follow()
 
