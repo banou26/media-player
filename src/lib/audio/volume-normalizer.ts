@@ -31,17 +31,21 @@ export type VolumeNormalizer = {
   routed: Promise<AudioWorkletNode>
   /** Engage or bypass. A routed element stays routed: it cannot be handed back. */
   setEnabled: (enabled: boolean) => void
-  /** For an element going away: suspends the context. Attaching the same element again resumes it. */
+  /**
+   * For an element going away. One still in the document has its context suspended, and attaching it again resumes
+   * it. One out of the document is gone for good, so its context is closed.
+   */
   release: () => void
 }
 
 const attached = new WeakMap<HTMLMediaElement, VolumeNormalizer & { wake: () => void }>()
 
-const running = (context: AudioContext) => new Promise<void>((resolve) => {
+const running = (context: AudioContext) => new Promise<void>((resolve, reject) => {
   const check = () => {
-    if (context.state !== 'running') return
+    if (context.state !== 'running' && context.state !== 'closed') return
     context.removeEventListener('statechange', check)
-    resolve()
+    if (context.state === 'running') resolve()
+    else reject(new DOMException('The AudioContext closed before it ran', 'InvalidStateError'))
   }
   context.addEventListener('statechange', check)
   check()
@@ -55,7 +59,8 @@ const running = (context: AudioContext) => new Promise<void>((resolve) => {
  *   advancing (Chrome). So nothing is routed until the context runs; until then the element plays as it always did,
  *   and the next pointerdown or keydown resumes the context.
  * - Chrome and WebKit refuse a second source for one element, and Chrome stops a playing element whose context is
- *   closed, so the context is never closed once the element is routed, and off is a bypass in the same graph.
+ *   closed, so the context is closed only once the element has left the document, and off is a bypass in the same
+ *   graph.
  * - Chrome and Firefox apply the element's volume before the graph, so the worklet is told the volume and judges
  *   loudness without it: otherwise a viewer at 25% would read as a quiet episode and nothing would be cut.
  * - WebKit loses the volume and mute once routed, so `@banou/ponyfill` refuses it and `routed` rejects with a
@@ -117,7 +122,11 @@ export const attachVolumeNormalizer = (
     release: () => {
       released = true
       listen(false)
-      if (context.state === 'running') context.suspend().catch(() => {})
+      // Chrome keeps a context that is not closed alive, with its worklet node, for the life of the page
+      if (!element.isConnected) {
+        attached.delete(element)
+        context.close().catch(() => {})
+      } else if (context.state === 'running') context.suspend().catch(() => {})
     },
     wake: () => {
       if (context.state === 'closed') return

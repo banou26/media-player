@@ -151,6 +151,34 @@ describe('normalizeVolume', () => {
     expect(routed).not.toHaveBeenCalled()
   }, 60_000)
 
+  // Chrome keeps every AudioContext that is not closed alive, with its worklet node, for the life of the page
+  it('closes its AudioContext when the player unmounts, so remounting leaves none open', async () => {
+    const { contexts, routed } = watchWebAudio()
+    for (let mounts = 1; mounts <= 3; mounts++) {
+      const { screen } = await mount({ normalizeVolume: true })
+      await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(mounts)
+      await screen.unmount()
+    }
+    expect(contexts).toHaveBeenCalledTimes(3)
+    await expect.poll(() => contexts.mock.calls.map(([context]) => (context as AudioContext).state)).toEqual(['closed', 'closed', 'closed'])
+  }, 90_000)
+
+  // a closed context would stop the element in Chrome, and it cannot be routed again
+  it('suspends, never closes, for an element still in the document, and attaching it again resumes', async () => {
+    const { contexts, routed } = watchWebAudio()
+    const { video } = await mount({ normalizeVolume: true })
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const level = await meter(video)
+    const handle = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
+    handle.release()
+    await expect.poll(() => handle.context.state).toBe('suspended')
+    expect(attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)).toBe(handle)
+    await expect.poll(() => handle.context.state).toBe('running')
+    expect(contexts).toHaveBeenCalledTimes(1)
+    expect(await level()).toBeGreaterThan(-40)
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+  }, 60_000)
+
   it('offers no switch without the worklet url', async () => {
     const { openSettings, row, screen } = await mount({ normalizerWorkletUrl: undefined })
     openSettings()

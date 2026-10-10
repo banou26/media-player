@@ -19,8 +19,10 @@ export const useVolumeNormalizer = (video: HTMLVideoElement | null, workletUrl: 
       const attached = attachVolumeNormalizer(video, workletUrl, { enabled })
       handle.current = attached
       attached.routed.catch((error) => {
+        // released first, which closes a context that had not run yet: nothing was refused
+        if (handle.current !== attached) return
         console.warn('[media-player] the volume normalizer is unavailable:', error)
-        if (handle.current === attached) setRefused(true)
+        setRefused(true)
       })
     }
     handle.current?.setEnabled(enabled)
