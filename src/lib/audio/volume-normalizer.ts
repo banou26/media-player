@@ -102,6 +102,9 @@ export const attachVolumeNormalizer = (
     created.port.postMessage({ enabled, inputGainDb: inputGainDb() })
     source.connect(created).connect(context.destination)
     element.addEventListener('volumechange', () => created.port.postMessage({ inputGainDb: inputGainDb() }))
+    // the 3 s window describes where the playhead was, and a new file owes nothing to the last one's cut
+    element.addEventListener('seeking', () => created.port.postMessage({ reset: 'seek' }))
+    element.addEventListener('emptied', () => created.port.postMessage({ reset: 'source' }))
     node = created
     return created
   })()
