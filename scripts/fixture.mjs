@@ -401,8 +401,28 @@ export const ensureLoudFixture = async () => {
   return LOUD_FIXTURE_PATH
 }
 
+export const CUE_FIXTURE = 'cue-tone.mkv'
+export const CUE_FIXTURE_PATH = PUBLIC_DIR + CUE_FIXTURE
+
+/** The loud tone's thirty seconds, with the first twelve 20 dB quieter (about -29.8 LUFS), which needs no cut. */
+export const ensureCueFixture = async () => {
+  if (await exists(CUE_FIXTURE_PATH)) return CUE_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=30',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+    '-af', "volume='if(lt(t,12),0.3981,3.981)':eval=frame:precision=float",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac', '-ac', '2',
+    '-map', '0:v', '-map', '1:a',
+    CUE_FIXTURE_PATH,
+  ])
+  return CUE_FIXTURE_PATH
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureLoudFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureLoudFixture, ensureCueFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

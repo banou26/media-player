@@ -7,17 +7,19 @@ import { attachVolumeNormalizer } from '../../../src/lib/audio/volume-normalizer
 import { playerAssets } from '../../../src/asset-urls'
 
 const FIXTURE = '/loud-tone.mkv'
+// twelve seconds 20 dB under the loud tone, which need no cut, then the loud tone
+const CUE_FIXTURE = '/cue-tone.mkv'
 
-const httpSource = async () => {
-  const head = await fetch(FIXTURE, { method: 'HEAD' })
+const httpSource = async (url = FIXTURE) => {
+  const head = await fetch(url, { method: 'HEAD' })
   const size = Number(head.headers.get('content-length'))
-  if (!head.ok || !size) return null
+  if (!head.ok || !size) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
   return {
     size,
     read: async (offset: number, length: number) => {
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
-      return (await fetch(FIXTURE, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
+      return (await fetch(url, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
     },
   }
 }
@@ -35,27 +37,26 @@ const watchWebAudio = () => {
   return { contexts, routed }
 }
 
-/** The analyser's RMS in dBFS on the normalizer's output, the median of six reads 100 ms apart. */
+/** The analyser's RMS in dBFS on the normalizer's output, the median of `reads` reads 100 ms apart. */
 const meter = async (video: HTMLVideoElement) => {
   const normalizer = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
   const node = await normalizer.routed
   const analyser = new AnalyserNode(normalizer.context, { fftSize: 4096 })
   node.connect(analyser).connect(new GainNode(normalizer.context, { gain: 0 })).connect(normalizer.context.destination)
-  return async () => {
+  return async (reads = 6) => {
     const values: number[] = []
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < reads; i++) {
       await sleep(100)
       const data = new Float32Array(analyser.fftSize)
       analyser.getFloatTimeDomainData(data)
       values.push(10 * Math.log10(data.reduce((a, v) => a + v * v, 0) / data.length))
     }
-    return values.sort((a, b) => a - b)[3]
+    return values.sort((a, b) => a - b)[Math.floor(reads / 2)]!
   }
 }
 
 const mount = async (props: Record<string, unknown>) => {
   const source = await httpSource()
-  if (!source) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
   const container = document.createElement('div')
   container.style.cssText = 'width: 640px; height: 360px;'
   document.body.append(container)
@@ -178,6 +179,45 @@ describe('normalizeVolume', () => {
     expect(await level()).toBeGreaterThan(-40)
     expect(await advancing(video)).toBeGreaterThan(0.3)
   }, 60_000)
+
+  // Measured before this was pinned: -46 dB half a second into the quiet file against -32 steady, and 5 s to recover
+  it('starts the next file at its own level, not under the cut the last one needed', async () => {
+    const { routed } = watchWebAudio()
+    const { screen, video } = await mount({ normalizeVolume: true })
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const level = await meter(video)
+    await sleep(3000)
+    // the control: the loud tone is held down, by about 14 dB from the -12 it plays at bypassed
+    expect(await level()).toBeLessThan(-22)
+
+    await screen.rerender(<MediaPlayer {...await httpSource(CUE_FIXTURE)} {...playerAssets} autoplay normalizeVolume />)
+    await expect.poll(() => !video.paused && video.currentTime > 0.2 && video.currentTime < 2, { timeout: 30_000 }).toBe(true)
+    const start = await level(3)
+    await sleep(4000)
+    const steady = await level()
+    expect(steady - start).toBeLessThan(3)
+  }, 90_000)
+
+  // Skipping an opening is the common case: the 3 s window would otherwise hold the song's cut over the dialogue
+  it('judges a new position on its own after a seek, so leaving a loud part does not duck the next', async () => {
+    const { routed } = watchWebAudio()
+    const { video } = await mount({ ...await httpSource(CUE_FIXTURE), normalizeVolume: true })
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const level = await meter(video)
+    await sleep(1500)
+    const quiet = await level()
+
+    video.currentTime = 14
+    await expect.poll(() => video.currentTime > 14.2, { timeout: 30_000 }).toBe(true)
+    await sleep(3500)
+    // the control: 20 dB louder in the file, and held to within 10 dB of the quiet part
+    expect(await level() - quiet).toBeLessThan(10)
+
+    video.currentTime = 3
+    await expect.poll(() => video.currentTime > 3.05 && video.currentTime < 10, { timeout: 30_000 }).toBe(true)
+    await sleep(2000)
+    expect(quiet - await level(3)).toBeLessThan(6)
+  }, 90_000)
 
   it('offers no switch without the worklet url', async () => {
     const { openSettings, row, screen } = await mount({ normalizerWorkletUrl: undefined })

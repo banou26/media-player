@@ -12,7 +12,10 @@
  *   enabled         true  false starts it bypassed
  *   inputGainDb     0     gain already applied upstream (the element's volume), judged without
  *
- * Port messages: `{ enabled }` bypasses or engages with a 50 ms crossfade, `{ inputGainDb }` follows the volume.
+ * Port messages: `{ enabled }` bypasses or engages with a 50 ms crossfade, `{ inputGainDb }` follows the volume,
+ * `{ reset: 'seek' }` empties the loudness window, so the new position is judged on its own while the gain holds
+ * until three blocks have refilled it, and `{ reset: 'source' }` also returns the gain to 0 dB, because nothing
+ * heard so far says anything about a new file.
  */
 
 const BLOCK_SECONDS = 0.1
@@ -71,6 +74,15 @@ class VolumeNormalizer extends AudioWorkletProcessor {
     this.port.onmessage = ({ data }) => {
       if (typeof data?.enabled === 'boolean') this.enabled = data.enabled
       if (typeof data?.inputGainDb === 'number') this.inputPower = Math.pow(10, data.inputGainDb / 10)
+      if (data?.reset === 'seek' || data?.reset === 'source') {
+        this.blocks.fill(-1)
+        this.blockSum = 0
+        this.blockFill = 0
+      }
+      if (data?.reset === 'source') {
+        this.desiredDb = 0
+        this.gainDb = 0
+      }
     }
   }
 
