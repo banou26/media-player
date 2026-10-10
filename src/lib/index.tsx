@@ -26,7 +26,7 @@ export type { PlayerStore } from './react/player'
 // only hook the chrome needs.
 export { sourceFeature } from './react/source-feature'
 export type {
-  DownloadedRange, PassThroughControl, PlaybackErrorEntry, SourceState, ViewportBox,
+  DownloadedRange, PassThroughControl, PlaybackErrorEntry, SourceState, ViewportBox, VolumeNormalizerControl,
 } from './react/source-feature'
 
 export { useSeekThumbnails } from './react/hooks/use-thumbnails'

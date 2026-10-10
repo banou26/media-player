@@ -28,6 +28,41 @@ position: static;
 
 ${popoverStyle}
 
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 16px;
+  margin-right: 6px;
+  border-radius: 8px;
+  background-color: rgba(255,255,255,.3);
+  transition: background-color 0.15s ease-in-out;
+
+  ::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #fff;
+    transition: transform 0.15s ease-in-out;
+  }
+
+  &.on {
+    background-color: #fff;
+    ::after {
+      background-color: #1c1c1c;
+      transform: translateX(12px);
+    }
+  }
+}
+
+.unavailable {
+  opacity: 0.5;
+}
+
 .playback-rate {
   .slider {
     width: 100%;
@@ -81,6 +116,7 @@ export const SettingsAction = () => {
   const audioTracks = usePlayer((state) => state.audioTracks)
   const selectedAudioTrack = usePlayer((state) => state.selectedAudioTrack)
   const selectAudioTrack = usePlayer((state) => state.selectAudioTrack)
+  const volumeNormalizer = usePlayer((state) => state.volumeNormalizer)
 
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
   const { open, toggle, containerRef, pending, failed, runSelect } = useTrackMenu({
@@ -156,6 +192,26 @@ export const SettingsAction = () => {
                 <ChevronRight />
               </div>
             </div>
+            {volumeNormalizer
+              ? (
+                <div
+                  role='switch'
+                  aria-checked={volumeNormalizer.available && volumeNormalizer.enabled}
+                  aria-disabled={!volumeNormalizer.available}
+                  className={volumeNormalizer.available ? undefined : 'no-hover unavailable'}
+                  onClick={() => {
+                    if (volumeNormalizer.available) volumeNormalizer.setEnabled(!volumeNormalizer.enabled)
+                  }}
+                >
+                  <div>Normalize volume</div>
+                  <div>
+                    {volumeNormalizer.available
+                      ? <span className={volumeNormalizer.enabled ? 'switch on' : 'switch'} />
+                      : <span className='secondary'>Unavailable</span>}
+                  </div>
+                </div>
+              )
+              : null}
           </div>
         )
       }

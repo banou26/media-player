@@ -19,6 +19,39 @@ const findChrome = () => {
   return undefined
 }
 
+// a function, because vitest writes each project's name onto its instances
+const browser = () => ({
+  enabled: true,
+  // MEDIA_PLAYER_HEADFUL=1 to watch it, and to check whether a layout or a codec decision
+  // differs from the headless shell's
+  headless: !process.env.MEDIA_PLAYER_HEADFUL,
+  // `launchOptions`, not `launch`: a wrong key here is accepted in silence and playwright
+  // falls back to its own download, which on NixOS is a path that does not exist.
+  //
+  // `chromiumSandbox` is pinned ON because playwright defaults it OFF, and `--no-sandbox`
+  // makes Chrome offer its VA-API hardware H.264 decoder. On this host that decoder's GPU
+  // process crashes after one to four frames, so an MSE stream dies with
+  // `PIPELINE_ERROR_DISCONNECTED` and reads exactly like a player bug. Measured 2026-08-10:
+  // 4/4 played sandboxed against 0/4 unsandboxed, one variable, plus `exit_code=8704` in
+  // Chrome's stderr on every failing run and none of the passing ones. Chromium stops
+  // offering hardware decode after 3 GPU crashes PER PROCESS, which is why a reused browser
+  // appeared to "warm up" and pass from the fourth run on. No user hits this: a real browser
+  // is sandboxed. A test rig that is not will invent bugs that do not exist.
+  // `--mute-audio` is output only: currentTime, buffered and the decode path are identical
+  // muted, so it cannot change a result. Without it a suite that plays real media takes
+  // over the speakers of whatever machine runs it.
+  provider: playwright({
+    launchOptions: { executablePath: findChrome(), chromiumSandbox: true, args: ['--mute-audio'] },
+  }),
+  /**
+   * The viewport is set explicitly because the default is 414x896, a phone.
+   * The chrome branches on `min-width: 768px` and on `pointer: coarse`, so an unset
+   * viewport silently tests the mobile layout only, and a container wider than 414 is
+   * clipped out of any failure screenshot.
+   */
+  instances: [{ browser: 'chromium' as const, viewport: { width: 1280, height: 720 } }],
+})
+
 // player.fkn.app. The library it consumes lives at src/lib and is built separately by
 // vite.lib.config.ts, so this config never sees a library concern.
 export default defineConfig({
@@ -55,7 +88,7 @@ export default defineConfig({
     },
   },
   /**
-   * Two projects, because they prove different things.
+   * Two kinds of project, because they prove different things.
    *
    * `unit` covers the pure parts in node. `browser` mounts the chrome in a real engine, which is the
    * only place the interesting claim can be tested at all: that a plain object drives the whole UI.
@@ -77,37 +110,21 @@ export default defineConfig({
         test: {
           name: 'browser',
           include: ['src/**/*.browser.test.{ts,tsx}', 'tests/**/*.browser.test.{ts,tsx}'],
-          browser: {
-            enabled: true,
-            // MEDIA_PLAYER_HEADFUL=1 to watch it, and to check whether a layout or a codec decision
-            // differs from the headless shell's
-            headless: !process.env.MEDIA_PLAYER_HEADFUL,
-            // `launchOptions`, not `launch`: a wrong key here is accepted in silence and playwright
-            // falls back to its own download, which on NixOS is a path that does not exist.
-            //
-            // `chromiumSandbox` is pinned ON because playwright defaults it OFF, and `--no-sandbox`
-            // makes Chrome offer its VA-API hardware H.264 decoder. On this host that decoder's GPU
-            // process crashes after one to four frames, so an MSE stream dies with
-            // `PIPELINE_ERROR_DISCONNECTED` and reads exactly like a player bug. Measured 2026-08-10:
-            // 4/4 played sandboxed against 0/4 unsandboxed, one variable, plus `exit_code=8704` in
-            // Chrome's stderr on every failing run and none of the passing ones. Chromium stops
-            // offering hardware decode after 3 GPU crashes PER PROCESS, which is why a reused browser
-            // appeared to "warm up" and pass from the fourth run on. No user hits this: a real browser
-            // is sandboxed. A test rig that is not will invent bugs that do not exist.
-            // `--mute-audio` is output only: currentTime, buffered and the decode path are identical
-            // muted, so it cannot change a result. Without it a suite that plays real media takes
-            // over the speakers of whatever machine runs it.
-            provider: playwright({
-              launchOptions: { executablePath: findChrome(), chromiumSandbox: true, args: ['--mute-audio'] },
-            }),
-            /**
-             * The viewport is set explicitly because the default is 414x896, a phone.
-             * The chrome branches on `min-width: 768px` and on `pointer: coarse`, so an unset
-             * viewport silently tests the mobile layout only, and a container wider than 414 is
-             * clipped out of any failure screenshot.
-             */
-            instances: [{ browser: 'chromium', viewport: { width: 1280, height: 720 } }],
-          },
+          exclude: ['tests/**/*.autoplay.browser.test.{ts,tsx}'],
+          browser: browser(),
+        },
+      },
+      /**
+       * A browser of its own, because user activation leaks across files: once any test file has clicked,
+       * an AudioContext made in every later file starts running (measured 2026-10-11, Chrome 153), so an
+       * autoplay hold can only be met in a browser nobody has clicked in yet.
+       */
+      {
+        extends: true,
+        test: {
+          name: 'autoplay',
+          include: ['tests/**/*.autoplay.browser.test.{ts,tsx}'],
+          browser: browser(),
         },
       },
     ],

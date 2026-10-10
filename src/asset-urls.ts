@@ -16,13 +16,16 @@ import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url'
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?no-inline&url'
 import jassubLegacyWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?no-inline&url'
 import defaultFontUrl from 'jassub/dist/default.woff2?no-inline&url'
+// a consumer imports `@banou/media-player/volume-normalizer-worklet.js?no-inline&url`; the app resolves the
+// package name to its source, so it names the file directly
+import normalizerWorkletUrl from './lib/audio/volume-normalizer-worklet.js?no-inline&url'
 
 const origin = new URL(window.location.toString()).origin
 
 export const publicPath = new URL('/', origin).toString()
 export const libavWorkerUrl = new URL('/libav-worker.js', origin).toString()
 
-export { jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl }
+export { jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, normalizerWorkletUrl }
 
 export const playerAssets = {
   publicPath,
@@ -31,4 +34,5 @@ export const playerAssets = {
   jassubWasmUrl,
   jassubLegacyWasmUrl,
   defaultFontUrl,
+  normalizerWorkletUrl,
 }

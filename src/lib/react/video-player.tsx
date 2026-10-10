@@ -1,11 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
 import type { MediaChapter } from '../engine'
-import type { DownloadedRange } from './source-feature'
+import type { DownloadedRange, VolumeNormalizerControl } from './source-feature'
 import type { DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
 import type { ExposePlayerOptions } from '../remote'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { useContainerAttach, useMediaAttach } from '@videojs/react'
 
@@ -14,6 +14,7 @@ import { usePlayback } from './hooks/use-playback'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture-in-picture'
+import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
 import Chrome from './components/chrome'
 
 /**
@@ -156,6 +157,30 @@ export type MediaPlayerLocalOptions =
     thumbnailRead?: (offset: number, size: number) => Promise<ArrayBuffer>
     /** Off entirely. A second wasm worker during pipeline boot is worth avoiding on a slow source. */
     thumbnailsEnabled?: boolean
+
+    /**
+     * Where this package's `volume-normalizer-worklet.js` is served, a plain script to copy or import as a url
+     * (`@banou/media-player/volume-normalizer-worklet.js?no-inline&url` with vite). Without it the settings menu
+     * offers no volume normalizer.
+     *
+     * A url and not a blob, because a page whose CSP says `script-src 'self'` refuses a worklet module from a
+     * `blob:` or `data:` url, and `build.lib` inlines an asset as `data:` unless told otherwise.
+     */
+    normalizerWorkletUrl?: string
+    /**
+     * The settings menu's "Normalize volume" switch: holds the loudness steady, so a music cue is turned down to
+     * the dialogue around it. Off by default. The player keeps the switch's state from here and from the viewer's
+     * clicks; nothing is saved, so an app that wants it to stick saves what `onNormalizeVolumeChange` reports and
+     * passes it back.
+     *
+     * The first time it is on, the element is routed through Web Audio for the rest of its life (off then
+     * bypasses). If autoplay rules hold the audio back, that waits for the page's next pointerdown or keydown, and
+     * the video plays as before meanwhile. Where the engine refuses the routing (WebKit) the switch reads
+     * Unavailable and playback is untouched.
+     */
+    normalizeVolume?: boolean
+    /** The viewer flipped the switch. */
+    onNormalizeVolumeChange?: (normalizeVolume: boolean) => void
   }
 
 /**
@@ -258,6 +283,27 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // so there is nothing for them to attach to and nothing to guard at the call site.
   usePlayback(video, subtitleLayer, local)
 
+  const normalizeVolumeProp = local?.normalizeVolume
+  const [normalizeVolume, setNormalizeVolume] = useState(!!normalizeVolumeProp)
+  useEffect(() => { setNormalizeVolume(!!normalizeVolumeProp) }, [normalizeVolumeProp])
+  const onNormalizeVolumeChange = useRef(local?.onNormalizeVolumeChange)
+  onNormalizeVolumeChange.current = local?.onNormalizeVolumeChange
+  const normalizerWorkletUrl = local?.normalizerWorkletUrl
+  const { refused: normalizerRefused } = useVolumeNormalizer(video, normalizerWorkletUrl, normalizeVolume)
+  const volumeNormalizer = useMemo<VolumeNormalizerControl | null>(
+    () => normalizerWorkletUrl && typeof AudioWorkletNode === 'function'
+      ? {
+        enabled: normalizeVolume,
+        available: !normalizerRefused,
+        setEnabled: (enabled) => {
+          setNormalizeVolume(enabled)
+          onNormalizeVolumeChange.current?.(enabled)
+        },
+      }
+      : null,
+    [normalizerWorkletUrl, normalizeVolume, normalizerRefused],
+  )
+
   const { thumbnails: generatedThumbnails, requestThumbnail } = useSeekThumbnails({
     publicPath,
     workerUrl: libavWorkerUrl,
@@ -305,6 +351,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState, thumbnails, thumbnailAt, requestThumbnail, togglePictureInPicture, pictureInPictureMode,
     burnedInSubtitles,
   ])
+
+  useEffect(() => {
+    setSourceState({ volumeNormalizer })
+  }, [setSourceState, volumeNormalizer])
 
   // its own effect: it changes on every hover of the control, and nothing else here does
   useEffect(() => {

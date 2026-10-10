@@ -18,6 +18,7 @@
       "types": "./dist/remote/index.d.ts",
       "import": "./dist/remote/index.js"
     },
+    "./volume-normalizer-worklet.js": "./dist/volume-normalizer-worklet.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -31,7 +32,7 @@
     "dev": "npm run copy-assets && vp dev --port 4560",
     "build": "shx rm -rf build/ && npm run copy-assets && vp build",
     "preview": "vp preview",
-    "build-lib": "shx rm -rf dist/ && vp build -c vite.lib.config.ts && npm run types",
+    "build-lib": "shx rm -rf dist/ && vp build -c vite.lib.config.ts && shx cp src/lib/audio/volume-normalizer-worklet.js dist/ && npm run types",
     "prepublishOnly": "npm run build-lib",
     "types": "tsc -p tsconfig.lib.json",
     "copy-assets": "shx mkdir -p public && npm run copy-libav",
@@ -41,6 +42,7 @@
   },
   "author": "Banou26",
   "dependencies": {
+    "@banou/ponyfill": "^0.0.9",
     "@videojs/core": "10.0.0-beta.26",
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",

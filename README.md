@@ -89,6 +89,9 @@ reads as a browser bug rather than a missing asset. Serve both.
 
 `libavWorkerUrl` (`libav-wasm/build/worker.js`) is named individually and still copies fine.
 
+`normalizerWorkletUrl` is this package's own `dist/volume-normalizer-worklet.js`, a plain script that
+copies fine or imports as a url; see [the volume normalizer](#the-volume-normalizer).
+
 ### jassub's assets are imported, not copied
 
 jassub 2's worker is an ES module that imports `abslink` and `lfa-ponyfill` by bare specifier plus
@@ -231,6 +234,39 @@ picture in picture a click on it calls the media's `exitPictureInPicture`.
 A finger never rests on the control before it presses, so a tap cannot arm it. The control is offered
 only where the primary pointer hovers (`(hover: hover) and (pointer: fine)`), and a touch hides it
 until a pointer that hovers moves again.
+
+### The volume normalizer
+
+A "Normalize volume" switch in the settings menu holds the loudness steady, so a music cue comes out no
+louder than the dialogue around it. It is offered once you pass the worklet's url, and it is off until
+the viewer turns it on or you pass `normalizeVolume`:
+
+```tsx
+import normalizerWorkletUrl from '@banou/media-player/volume-normalizer-worklet.js?no-inline&url'
+
+<MediaPlayer
+  {...source}
+  normalizerWorkletUrl={normalizerWorkletUrl}
+  normalizeVolume={saved}
+  onNormalizeVolumeChange={save}
+/>
+```
+
+The player saves nothing, so an app that wants the choice to stick saves what
+`onNormalizeVolumeChange` reports and passes it back.
+
+It is an AudioWorklet that follows EBU short-term loudness (K-weighted, 3 s) and turns the gain down,
+never up, toward -24 LUFS: up to 20 dB, cutting with a 0.25 s time constant and recovering with 1 s. A
+cue is brought within a dialogue's level in about 3 s, and it adds no delay. The url has to be a
+script your origin serves: a page whose CSP says `script-src 'self'` refuses a worklet from a `blob:`
+or `data:` url, and `build.lib` inlines assets as `data:` without `?no-inline`.
+
+The first time it is on, the `<video>` is routed through Web Audio for the rest of its life, because an
+element cannot be handed back; off is a bypass. Routing waits until the AudioContext runs: one that
+autoplay rules hold back resumes on the page's next pointerdown or keydown, and the video plays as it
+always did until then. WebKit is refused (`createMediaElementSource` in `@banou/ponyfill`), since a
+routed element loses its volume and mute there, and the switch reads Unavailable with playback
+untouched.
 
 ## Layout
 
