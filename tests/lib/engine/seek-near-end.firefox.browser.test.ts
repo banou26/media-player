@@ -20,6 +20,12 @@ import { playerAssets } from '../../../src/asset-urls'
  * The file whose audio ends 1 s early is the one where the playhead passes the shorter track's end while
  * the MediaSource is open, so no range holds it: until the end was re-armed from the playhead's position
  * too, it never ended in either engine, 0 of 3 runs each (measured 2026-10-11).
+ *
+ * The same seek while the reader, sent back to the front, is still re-reading toward the end: the runway
+ * rule re-positioned the remuxer there because the reader had not reached the end since, and Firefox 151
+ * waited at the end for good, 3 runs of 3 on each file, the audio-short one at 29.707 (measured 2026-10-12).
+ * That end counts only while it is still buffered: counted from a flag alone, a move to the end of a file
+ * whose end had been removed went back to 20.005 of 30.08 in both engines, 2 runs of 2 (measured 2026-10-12).
  */
 const FIXTURES = ['/loud-tone.mkv', '/short-audio-tone.mkv', '/short-video-tone.mkv']
 
@@ -45,28 +51,36 @@ const buffered = async (fixture: string) => {
   document.body.append(video, subtitles)
   const addSourceBuffer = vi.spyOn(MediaSource.prototype, 'addSourceBuffer')
   const reads: number[] = []
+  // reads wait while `holding`, as a torrent holds pieces it lacks
+  let holding = false
+  const held: (() => void)[] = []
+  const hold = (on: boolean) => {
+    holding = on
+    if (!on) held.splice(0).forEach((done) => done())
+  }
   const controller = await startPlayback({
     videoElement: video,
     subtitleContainer: subtitles,
     length: size,
     read: async (offset, length) => {
       reads.push(offset)
+      if (holding) await new Promise<void>((done) => held.push(done))
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
       return (await fetch(fixture, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
     },
     ...playerAssets,
   })
-  cleanups.push(() => { controller.destroy(); video.remove(); subtitles.remove() })
+  cleanups.push(() => { controller.destroy(); hold(false); video.remove(); subtitles.remove() })
   const mediaSource = addSourceBuffer.mock.contexts[0] as MediaSource
   const sourceBuffer = addSourceBuffer.mock.results[0].value as SourceBuffer
   await expect.poll(() => mediaSource.readyState, { timeout: 30_000 }).toBe('ended')
-  const reopen = async () => {
-    sourceBuffer.remove(0, 0.5)
+  const reopen = async (start = 0, end = 0.5) => {
+    sourceBuffer.remove(start, end)
     await new Promise((done) => sourceBuffer.addEventListener('updateend', done, { once: true }))
     expect(mediaSource.readyState).toBe('open')
   }
-  return { video, controller, reads, reopen }
+  return { video, controller, reads, reopen, hold }
 }
 
 it.each([...FIXTURES, '/shorter-audio-tone.mkv'])('plays %s to the end from a seek 2 s before its buffered end', async (fixture) => {
@@ -77,6 +91,31 @@ it.each([...FIXTURES, '/shorter-audio-tone.mkv'])('plays %s to the end from a se
   await reopen()
   video.currentTime = video.duration - 2
   await expect.poll(() => video.ended, { timeout: 8_000 }).toBe(true)
+})
+
+it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('plays %s to the end from a seek 2 s before its buffered end while the front is re-read', async (fixture) => {
+  const { video } = await buffered(fixture)
+  await seek(video, 21)
+  await video.play()
+  // the front evicted, so the seek back re-positions the remuxer there
+  await expect.poll(() => video.buffered.start(0), { timeout: 6_000 }).toBeGreaterThan(0.5)
+  video.currentTime = 0.2
+  await new Promise((done) => setTimeout(done, 1_500))
+  video.currentTime = video.duration - 2
+  await expect.poll(() => video.ended, { timeout: 12_000 }).toBe(true)
+}, 30_000)
+
+it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('stays at the end of %s on a move there while its removed end is read again', async (fixture) => {
+  const { video, reopen, hold } = await buffered(fixture)
+  const duration = video.duration
+  await reopen(20, duration)
+  await video.play()
+  hold(true)
+  video.currentTime = duration
+  await new Promise((done) => setTimeout(done, 500))
+  hold(false)
+  await expect.poll(() => video.ended, { timeout: 8_000 }).toBe(true)
+  expect(video.currentTime).toBeGreaterThan(duration - 1)
 })
 
 it.each(FIXTURES)('reads nothing for a prepared seek 2 s before the buffered end of %s', async (fixture) => {
