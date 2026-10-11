@@ -35,13 +35,13 @@ const entry = (over: Partial<PlaybackErrorEntry> = {}): PlaybackErrorEntry => ({
 
 describe('the playback error log', () => {
   it('is not offered at all until something has failed', async () => {
-    const screen = await render(<MediaPlayer title="Quiet" />, sized())
+    const screen = await render(<MediaPlayer {...playerAssets} title="Quiet" />, sized())
     // the control being absent on a healthy session is the whole point of it
     expect(screen.container.querySelector('button.errors')).toBeNull()
   })
 
   it('appears once the pipeline fails, lists the failure, and copies it out', async () => {
-    const writeText = vi.fn(() => Promise.resolve())
+    const writeText = vi.fn((_text: string) => Promise.resolve())
     const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
     // a real clipboard write needs a user gesture and a permission the runner has not got, and what
     // is under test is WHAT gets copied, not whether the platform accepted it
