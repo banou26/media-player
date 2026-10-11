@@ -336,6 +336,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const ranges = getTimeRanges(sourceBuffer)
       if (!ranges.length) return true
       const ct = bufferAnchor()
+      // A range that runs to an end still buffered leaves nothing to read: after a seek back, reading on only
+      // appended again what was buffered, 13 reads of 32 KB on a move to 2 s before the end (measured 2026-10-12)
+      if (endInBuffer() && atEnd(ct)) return false
       const range = ranges.find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
       /*
        * Never read past what evict() keeps, measured on the run holding the anchor rather than
