@@ -16,6 +16,10 @@ import { playerAssets } from '../../../src/asset-urls'
  * the longer track: while the MediaSource is open, `buffered` ends at the shorter one, 0.4 s earlier,
  * and evict() reopens it on every trim. `remove(0, 0.5)` reopens it the same way. Capped at the declared
  * duration, Firefox ended 1 of 12 such seeks, each after a remuxer seek (measured 2026-10-11).
+ *
+ * The file whose audio ends 1 s early is the one where the playhead passes the shorter track's end while
+ * the MediaSource is open, so no range holds it: until the end was re-armed from the playhead's position
+ * too, it never ended in either engine, 0 of 3 runs each (measured 2026-10-11).
  */
 const FIXTURES = ['/loud-tone.mkv', '/short-audio-tone.mkv', '/short-video-tone.mkv']
 
@@ -65,7 +69,7 @@ const buffered = async (fixture: string) => {
   return { video, controller, reads, reopen }
 }
 
-it.each(FIXTURES)('plays %s to the end from a seek 2 s before its buffered end', async (fixture) => {
+it.each([...FIXTURES, '/shorter-audio-tone.mkv'])('plays %s to the end from a seek 2 s before its buffered end', async (fixture) => {
   const { video, reopen } = await buffered(fixture)
   await seek(video, 20)
   await video.play()

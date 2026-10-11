@@ -423,9 +423,10 @@ export const ensureCueFixture = async () => {
 
 export const SHORT_AUDIO_FIXTURE = 'short-audio-tone.mkv'
 export const SHORT_VIDEO_FIXTURE = 'short-video-tone.mkv'
+export const SHORTER_AUDIO_FIXTURE = 'shorter-audio-tone.mkv'
 
 /**
- * The loud tone's thirty seconds with one track 0.4 s shorter than the other.
+ * The loud tone's thirty seconds with one track 0.4 s, or the audio 1 s, shorter than the other.
  *
  * While its MediaSource is open, a SourceBuffer's `buffered` is where both tracks have data, so it ends
  * at the shorter track, and only once the MediaSource is ended does it run to the longer one, which is
@@ -449,9 +450,10 @@ const ensureUnevenFixture = async (name, { video, audio }) => {
 }
 export const ensureShortAudioFixture = () => ensureUnevenFixture(SHORT_AUDIO_FIXTURE, { video: 30, audio: 29.6 })
 export const ensureShortVideoFixture = () => ensureUnevenFixture(SHORT_VIDEO_FIXTURE, { video: 29.6, audio: 30 })
+export const ensureShorterAudioFixture = () => ensureUnevenFixture(SHORTER_AUDIO_FIXTURE, { video: 30, audio: 29 })
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureLoudFixture, ensureCueFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureLoudFixture, ensureCueFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

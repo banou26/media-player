@@ -354,11 +354,12 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
     const playheadRange = () => rangeAt(videoElement.currentTime)
 
-    // whether the range holding a position runs to the furthest append; the end may only be signalled
-    // once the playhead's own range does
+    // whether a position is at the furthest append, or the range holding it runs to it; the end may only
+    // be signalled then. Past the shorter track's end no range holds the playhead while the MediaSource is
+    // open, so a range alone never re-armed the end of a file whose tracks end 1 s apart (measured 2026-10-11)
     const atEnd = (time = videoElement.currentTime) => {
       const range = rangeAt(time)
-      return !!range && range.end >= lastAppendedEnd - 0.1
+      return time >= lastAppendedEnd - 0.1 || (!!range && range.end >= lastAppendedEnd - 0.1)
     }
     const trackAppendedEnd = () => {
       const ends = getTimeRanges(sourceBuffer).map((r) => r.end)
