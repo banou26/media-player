@@ -621,7 +621,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       if (alreadyPlayable(time)) return
       /*
        * The remuxer is already positioned at exactly this time with nothing removed since, so let it
-       * read on.
+       * read on. Its seek still running or data at the target is required too: the browser also removes
+       * data, by its own eviction when an append goes over its memory budget.
        *
        * `prepareSeek` positions it BEFORE the playhead moves, and the caller moves the playhead anyway
        * once its budget runs out, with the seek or the runway's reads still running. Without this, the
@@ -630,7 +631,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
        * long as seeking the old way. It also covers a finished prepare to a keyframe in Firefox, whose
        * range starts the reorder delay past the target, so the target never counts as buffered.
        */
-      if (positioned && Math.abs(time - lastSeekPosition) < 0.001) return
+      if (positioned && (seeking || runwayFrom(time) > 0) && Math.abs(time - lastSeekPosition) < 0.001) return
       finished = false
       if (dragTimer) clearTimeout(dragTimer)
       if (!dragging) {
