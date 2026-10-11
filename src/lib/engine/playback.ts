@@ -271,6 +271,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let prepareTarget: number | undefined
     const bufferAnchor = () => prepareTarget ?? videoElement.currentTime
     let finished = false
+    // whether the end of the file was ever appended, which unlike `finished` a seek does not clear
+    let endAppended = false
     // libav aborts the running task when a new one starts, so both flags need a generation token
     let readGeneration = 0
     let seekGeneration = 0
@@ -364,7 +366,16 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const trackAppendedEnd = () => {
       const ends = getTimeRanges(sourceBuffer).map((r) => r.end)
       if (ends.length) lastAppendedEnd = Math.max(lastAppendedEnd, ...ends)
+      if (finished) endAppended = true
     }
+    /*
+     * Whether the end of the file is in the buffer. A seek clears `finished`, so past one it is read back
+     * from `buffered`, since evict() and the browser both remove data: counted from a flag alone, a move to
+     * the end of a file whose end had been removed signalled the end there, endOfStream cut the duration to
+     * what was buffered, and the playhead went back to 20 s of 30 in both engines (measured 2026-10-12).
+     */
+    const endInBuffer = () =>
+      finished || (endAppended && (getTimeRanges(sourceBuffer).at(-1)?.end ?? 0) >= lastAppendedEnd - 0.1)
 
     const seekTo = async (time: number) => {
       seeking = true
@@ -489,15 +500,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     }
 
     /**
-     * Whether a position has its runway, which stops at the end of the file once the remuxer has read to it.
+     * Whether a position has its runway, which stops at the end of the file while the end is in the buffer.
      *
      * No target in the last 3 s can have the full runway, and re-positioning the remuxer there re-appends
-     * over the buffered end, after which Firefox 151 stays at the end and never fires `ended`. The end is
-     * the furthest append, the one `endOfStream` waits on, never the declared duration: that is the longer
-     * track, while an open MediaSource's `buffered` ends at the shorter one, and evict() reopens it on
-     * every trim (measured 2026-10-11).
+     * over the buffered end, after which Firefox 151 stays at the end and never fires `ended`: its demuxer
+     * had read the track's last frame, and once that frame is replaced it waits for one starting at the
+     * track's end. So the end counts while it is buffered, even with the reader re-reading toward it after
+     * a seek back (measured 2026-10-12). The end is the furthest append, the one `endOfStream` waits on,
+     * never the declared duration: that is the longer track, while an open MediaSource's `buffered` ends at
+     * the shorter one, and evict() reopens it on every trim (measured 2026-10-11).
      */
-    const hasRunway = (time: number) => runwayFrom(time) >= SEEK_RUNWAY || (finished && atEnd(time))
+    const hasRunway = (time: number) => runwayFrom(time) >= SEEK_RUNWAY || (endInBuffer() && atEnd(time))
 
     /**
      * Put the data in place for a position the playhead has NOT moved to yet.
@@ -692,7 +705,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       evict().catch(() => {})
       pump().catch((error) => reportError(error, false))
       // every remove() puts the MediaSource back to 'open', so the end has to be re-armed
-      if (finished && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream().catch(() => {})
+      if (endInBuffer() && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream().catch(() => {})
     }, 100)
     teardown.push(() => clearInterval(interval))
 
