@@ -350,14 +350,14 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       return !range || range.end < ct + BUFFER_TARGET
     }
 
-    const playheadRange = () => {
-      const ct = videoElement.currentTime
-      return getTimeRanges(sourceBuffer).find((r) => r.start <= ct + BOUNDARY_SLACK && ct < r.end)
-    }
+    const rangeAt = (time: number) =>
+      getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+    const playheadRange = () => rangeAt(videoElement.currentTime)
 
-    // the end may only be signalled once the playhead's own range covers it
-    const atEnd = () => {
-      const range = playheadRange()
+    // whether the range holding a position runs to the furthest append; the end may only be signalled
+    // once the playhead's own range does
+    const atEnd = (time = videoElement.currentTime) => {
+      const range = rangeAt(time)
       return !!range && range.end >= lastAppendedEnd - 0.1
     }
     const trackAppendedEnd = () => {
@@ -483,19 +483,20 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     /** Seconds of contiguous data past a position that make it safe to play from. */
     const runwayFrom = (time: number) => {
-      const range = getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+      const range = rangeAt(time)
       return range ? range.end - time : 0
     }
 
     /**
-     * Whether a position has its runway, which stops at the end of the file.
+     * Whether a position has its runway, which stops at the end of the file once the remuxer has read to it.
      *
-     * Without the cap no target in the last 3 s ever has it, so each one re-positioned the remuxer over a
-     * buffered end, and after that re-append Firefox 151 stays at the end and never fires `ended`
-     * (measured 2026-10-11). The 0.1 s absorbs a buffered end just short of the declared duration.
+     * No target in the last 3 s can have the full runway, and re-positioning the remuxer there re-appends
+     * over the buffered end, after which Firefox 151 stays at the end and never fires `ended`. The end is
+     * the furthest append, the one `endOfStream` waits on, never the declared duration: that is the longer
+     * track, while an open MediaSource's `buffered` ends at the shorter one, and evict() reopens it on
+     * every trim (measured 2026-10-11).
      */
-    const hasRunway = (time: number) =>
-      runwayFrom(time) >= Math.min(SEEK_RUNWAY, metadata.info.input.duration - time - 0.1)
+    const hasRunway = (time: number) => runwayFrom(time) >= SEEK_RUNWAY || (finished && atEnd(time))
 
     /**
      * Put the data in place for a position the playhead has NOT moved to yet.
