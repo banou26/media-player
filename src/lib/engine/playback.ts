@@ -102,7 +102,15 @@ const PRE_EVICT_TIGHT = -5
 const POST_EVICT_TIGHT = 20
 const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
-// how far past the playhead a range may start and still count as the one holding it
+/*
+ * How far past the playhead a range may start and still count as the one holding it, which decides how
+ * much to read and never whether to fetch.
+ *
+ * Firefox 151 reports a range from its first presented frame, the reorder delay past its keyframe: 82 ms
+ * on most fixtures and 166 ms on anime-chapters, at load and after every remuxer seek, where Chrome 153
+ * reports the keyframe itself. Without the slack a playhead paused at 0 reads the whole file, and a
+ * prepared seek to a keyframe builds no runway (measured 2026-10-11).
+ */
 const BOUNDARY_SLACK = 1
 /*
  * Seconds of data a seek target needs behind it before the playhead is allowed to move there.
@@ -451,11 +459,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * seek, and playback would stall at the end of this range instead. At or after it, the bytes from
      * here to the read cursor are contiguous and reading simply carries on.
      */
-    const alreadyPlayable = (time: number) => time >= lastSeekPosition && !!playheadRange()
+    const alreadyPlayable = (time: number) => time >= lastSeekPosition && playableAt(time)
 
-    /** Whether a GIVEN time has data behind it, as opposed to whether the playhead does. */
+    /**
+     * Whether the element can play from a GIVEN time without a fetch.
+     *
+     * Exact. A seek that lands before a range waits there for good once the gap passes 60 to 90 ms in
+     * Chrome 153, or 250 to 300 ms in Firefox 151, so Firefox's reorder delay cannot be allowed for here
+     * and a target inside it costs a remuxer seek (24 fps fixtures, measured 2026-10-11).
+     */
     const playableAt = (time: number) =>
-      getTimeRanges(sourceBuffer).some((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+      getTimeRanges(sourceBuffer).some((r) => r.start <= time && time < r.end)
 
     /**
      * Put the data in place for a position the playhead has NOT moved to yet.
@@ -482,7 +496,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     const prepareSeek = async (time: number) => {
       if (destroyed) return
-      if (runwayFrom(time) >= SEEK_RUNWAY) return
+      if (playableAt(time) && runwayFrom(time) >= SEEK_RUNWAY) return
       finished = false
       preparing++
       prepareTarget = time
