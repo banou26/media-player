@@ -1,11 +1,12 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 
 import { startPlayback } from '../../../src/lib/engine'
 import { playerAssets } from '../../../src/asset-urls'
 
 /**
  * A seek into a range ahead of the reader has to re-position the remuxer unless the target has its
- * runway there, and a move to where a prepare already positioned it must not position it again.
+ * runway there, and a move to where a prepare already positioned it must not position it again, unless
+ * the data there is gone.
  *
  * The source holds every read in a byte span, as a torrent does with pieces it has not downloaded.
  * A seek 10 ms before the end of an island past that span counted as playable because it lay after
@@ -17,7 +18,10 @@ import { playerAssets } from '../../../src/asset-urls'
 const FIXTURE = '/loud-tone.mkv'
 
 const cleanups: (() => void)[] = []
-afterEach(() => { while (cleanups.length) cleanups.pop()?.() })
+afterEach(() => {
+  while (cleanups.length) cleanups.pop()?.()
+  vi.restoreAllMocks()
+})
 
 const ranges = (video: HTMLVideoElement) =>
   [...Array(video.buffered.length)].map((_, i) => [video.buffered.start(i), video.buffered.end(i)] as const)
@@ -109,10 +113,10 @@ it('prepares a runway for a seek into the end of an island ahead of the reader',
 
 /*
  * A keyframe, because Firefox reports the range from the reorder delay past it and so never counts the
- * target as buffered; and a move made while the runway is still being read, which is what a prepare
- * over a torrent outlasting its budget gets.
+ * target as buffered; and moves made while the seek or the runway is still being read, which is what a
+ * prepare over a torrent outlasting its budget gets.
  */
-it.each(['after', 'while'])('positions the remuxer once for a move made %s a prepare reads its runway', async (when) => {
+it.each(['after', 'while', 'before'])('positions the remuxer once for a move made %s a prepare reads its runway', async (when) => {
   const { video, controller, hold, release, reads, pos } = await open()
   const target = controller.indexes.find(({ timestamp }) => timestamp >= 20)!.timestamp
   const before = reads.length
@@ -120,14 +124,36 @@ it.each(['after', 'while'])('positions the remuxer once for a move made %s a pre
     await controller.prepareSeek(target)
     video.currentTime = target
   } else {
-    const runway = hold(pos(target + 2), pos(target + 4))
+    const held = when === 'while' ? hold(pos(target + 2), pos(target + 4)) : hold(pos(target), pos(target + 2))
     void controller.prepareSeek(target)
-    await expect.poll(() => runway.held.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    await expect.poll(() => held.held.length, { timeout: 10_000 }).toBeGreaterThan(0)
     video.currentTime = target
     await new Promise((done) => setTimeout(done, 500))
-    release(runway)
+    release(held)
   }
   // past what the prepare read, so a second seek the move started has made its reads by then
   await expect.poll(() => covers(video, target + 6), { timeout: 10_000 }).toBe(true)
   expect(reads.slice(before).filter((offset) => offset === pos(target)).length).toBe(1)
+})
+
+// Firefox reports the range from 82 ms past 0, so only the remuxer starting out positioned at 0 makes this free
+it('positions nothing for a paused seek to 0 right after load', async () => {
+  const { video, reads, pos } = await open()
+  const before = reads.length
+  await seek(video, 0)
+  await new Promise((done) => setTimeout(done, 1_000))
+  expect(reads.slice(before).filter((offset) => offset === pos(0)).length).toBe(0)
+})
+
+// a removal this pipeline did not make, as the browser's own eviction on append can make
+it('plays from a seek back to where the remuxer was positioned once the browser removed the data there', async () => {
+  const addSourceBuffer = vi.spyOn(MediaSource.prototype, 'addSourceBuffer')
+  const { video } = await open()
+  const sourceBuffer = addSourceBuffer.mock.results[0].value as SourceBuffer
+  await video.play()
+  await expect.poll(() => video.currentTime, { timeout: 8_000 }).toBeGreaterThan(3)
+  sourceBuffer.remove(0, 2.5)
+  await new Promise((done) => sourceBuffer.addEventListener('updateend', done, { once: true }))
+  video.currentTime = 0
+  await expect.poll(() => video.currentTime, { timeout: 8_000 }).toBeGreaterThan(1)
 })
