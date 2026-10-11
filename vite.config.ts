@@ -105,15 +105,15 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['src/**/*.test.{ts,tsx}', 'tests/**/*.test.{ts,tsx}'],
-          exclude: ['src/**/*.browser.test.{ts,tsx}', 'tests/**/*.browser.test.{ts,tsx}'],
+          include: ['tests/**/*.test.{ts,tsx}'],
+          exclude: ['tests/**/*.browser.test.{ts,tsx}'],
         },
       },
       {
         extends: true,
         test: {
           name: 'browser',
-          include: ['src/**/*.browser.test.{ts,tsx}', 'tests/**/*.browser.test.{ts,tsx}'],
+          include: ['tests/**/*.browser.test.{ts,tsx}'],
           exclude: ['tests/**/*.autoplay.browser.test.{ts,tsx}'],
           browser: browser(),
         },

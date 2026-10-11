@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
-import { createFakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
+import { createFakeRemoteMedia } from './remote-media.fixture'
 
 /**
  * A media the player does not own shows its buffered time on the seekbar.

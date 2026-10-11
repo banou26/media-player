@@ -23,10 +23,7 @@
   },
   "files": [
     "dist",
-    "src/lib",
-    "!src/lib/**/*.test.ts",
-    "!src/lib/**/*.test.tsx",
-    "!src/lib/**/*.fixture.ts"
+    "src/lib"
   ],
   "scripts": {
     "dev": "npm run copy-assets && vp dev --port 4560",

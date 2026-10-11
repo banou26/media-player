@@ -1,14 +1,14 @@
 // `cdp().send` is typed by the provider's augmentation, which nothing else in tests/ loads
 /// <reference types="@vitest/browser-playwright" />
 import type { PassThroughPictureInPicture } from '../../../src/lib/react/media'
-import type { FakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
+import type { FakeRemoteMedia } from './remote-media.fixture'
 
 import { describe, expect, it } from 'vitest'
 import { cdp, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
-import { createFakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
+import { createFakeRemoteMedia } from './remote-media.fixture'
 import { tap } from './cdp-input'
 
 /**
