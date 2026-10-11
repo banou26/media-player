@@ -5,7 +5,7 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { usePlayer } from '../../../src/lib/react/player'
-import { createFakeRemoteMedia } from '../../../src/lib/react/remote-media.fixture'
+import { createFakeRemoteMedia } from './remote-media.fixture'
 import { playerAssets } from '../../../src/asset-urls'
 
 /**
