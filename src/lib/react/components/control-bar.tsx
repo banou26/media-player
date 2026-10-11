@@ -25,23 +25,6 @@ const SEEK_STEP = 5
 const REFOCUS_POLL = 50
 const REFOCUS_AFTER = 1_000
 
-/**
- * Two stacked lines inside a tooltip.
- *
- * The width to wrap against is no longer here: TooltipDisplay bounds every chip it draws, at the
- * same 26 units this had imposed by hand, so a call site only says what its content is.
- */
-const tooltipLinesStyle = css`
-  display: flex;
-  flex-direction: column;
-  gap: calc(0.4 * var(--mp-unit));
-
-  .hint {
-    opacity: 0.72;
-    font-size: 0.9em;
-  }
-`
-
 const style = css`
   position: absolute;
   bottom: 0;
@@ -384,7 +367,6 @@ export const ControlBar = () => {
             ? (
               <TooltipDisplay
                 id='picture-in-picture'
-                // anchored to its end, or the two-line burn-in copy runs off the right of the player
                 tooltipPlace='top-end'
                 text={
                   <button
@@ -409,26 +391,14 @@ export const ControlBar = () => {
                   </button>
                 }
                 toolTipText={
-                  // The chip is drawn in its own subtree, where the control bar's rules never
-                  // reach it: a bare `small` stays inline and runs straight on from the line above
-                  // it. Both lines carry their layout themselves.
-                  <span css={tooltipLinesStyle}>
-                    <span className='lead'>
-                      {!burnIn
-                        ? 'Picture in picture'
-                        : !hasSubtitles
-                            ? 'This file has no subtitles'
-                            : burnedInSubtitles
-                              ? 'Subtitles are in the picture'
-                              : 'Put the subtitles in the picture'}
-                    </span>
-                    {burnIn && hasSubtitles
-                      ? (
-                        <span className='hint'>
-                          Then hover the video and click your browser&apos;s own pop out button
-                        </span>
-                      )
-                      : null}
+                  <span>
+                    {!burnIn
+                      ? 'Picture in picture'
+                      : !hasSubtitles
+                          ? 'This file has no subtitles'
+                          : burnedInSubtitles
+                            ? 'Subtitles are in the picture'
+                            : 'Put the subtitles in the picture'}
                   </span>
                 }
               />

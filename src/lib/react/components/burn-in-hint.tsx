@@ -4,7 +4,6 @@ import { css } from '@emotion/react'
 import { fonts } from '../../utils/fonts'
 import { usePlayer } from '../player'
 
-/** Long enough to read twice, short enough not to sit over the picture. */
 const VISIBLE_MS = 9000
 
 const style = css`
@@ -38,20 +37,9 @@ const style = css`
     opacity: 1;
   }
 
-  .words {
-    display: flex;
-    flex-direction: column;
-    gap: calc(0.3 * var(--mp-unit));
-  }
-
-  .title {
-    ${fonts.bMedium.bold}
+  .text {
+    ${fonts.bMedium.medium}
     color: #fff;
-  }
-
-  .body {
-    ${fonts.bSmall.regular}
-    color: rgba(255, 255, 255, 0.75);
   }
 
   /* Points at the edge the browser's control lives on, which is the whole message. */
@@ -90,12 +78,7 @@ export const BurnInHint = () => {
   return (
     <div css={style} className={show ? 'show' : ''} role='status'>
       <div className='card'>
-        <div className='words'>
-          <div className='title'>Subtitles are in the picture</div>
-          <div className='body'>
-            Now hover the video and click your browser&apos;s own pop out button
-          </div>
-        </div>
+        <div className='text'>Now click your browser&apos;s pop out button</div>
         <div className='arrow' aria-hidden='true'>&rarr;</div>
       </div>
     </div>
