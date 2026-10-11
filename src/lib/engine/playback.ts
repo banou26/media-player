@@ -469,8 +469,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * plays to the island's end and waits there until the reader has read the whole gap, which over a
      * torrent is as long as downloading it.
      */
-    const alreadyPlayable = (time: number) =>
-      time >= lastSeekPosition && playableAt(time) && runwayFrom(time) >= SEEK_RUNWAY
+    const alreadyPlayable = (time: number) => time >= lastSeekPosition && playableAt(time) && hasRunway(time)
 
     /**
      * Whether the element can play from a GIVEN time without a fetch.
@@ -481,6 +480,22 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      */
     const playableAt = (time: number) =>
       getTimeRanges(sourceBuffer).some((r) => r.start <= time && time < r.end)
+
+    /** Seconds of contiguous data past a position that make it safe to play from. */
+    const runwayFrom = (time: number) => {
+      const range = getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
+      return range ? range.end - time : 0
+    }
+
+    /**
+     * Whether a position has its runway, which stops at the end of the file.
+     *
+     * Without the cap no target in the last 3 s ever has it, so each one re-positioned the remuxer over a
+     * buffered end, and after that re-append Firefox 151 stays at the end and never fires `ended`
+     * (measured 2026-10-11). The 0.1 s absorbs a buffered end just short of the declared duration.
+     */
+    const hasRunway = (time: number) =>
+      runwayFrom(time) >= Math.min(SEEK_RUNWAY, metadata.info.input.duration - time - 0.1)
 
     /**
      * Put the data in place for a position the playhead has NOT moved to yet.
@@ -500,15 +515,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * island the reader never extends. The CALLER owns the deadline: this can take as long as a read
      * takes, and over a torrent that is unbounded.
      */
-    /** Seconds of contiguous data past a position that make it safe to play from. */
-    const runwayFrom = (time: number) => {
-      const range = getTimeRanges(sourceBuffer).find((r) => r.start <= time + BOUNDARY_SLACK && time < r.end)
-      return range ? range.end - time : 0
-    }
-
     const prepareSeek = async (time: number) => {
       if (destroyed) return
-      if (playableAt(time) && runwayFrom(time) >= SEEK_RUNWAY) return
+      if (playableAt(time) && hasRunway(time)) return
       finished = false
       preparing++
       prepareTarget = time
