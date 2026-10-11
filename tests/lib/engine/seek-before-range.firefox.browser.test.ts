@@ -69,6 +69,15 @@ it.each([0.5, 0.1])('plays from a seek that lands %s s before the buffer', async
   expect(video.paused).toBe(false)
 })
 
+// the remuxer starts out positioned at 0, so this goes back to where it was last positioned once that data is gone
+it('plays from a seek back to 0 once the front was evicted', async () => {
+  const { video } = await evictedFront()
+  await video.play()
+  video.currentTime = 0
+  await expect.poll(() => video.currentTime, { timeout: 8_000 }).toBeGreaterThan(1)
+  expect(video.paused).toBe(false)
+})
+
 it('prepares a seek that lands half a second before the buffer', async () => {
   const { video, controller, front } = await evictedFront()
   const target = front - 0.5

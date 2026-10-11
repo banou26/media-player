@@ -280,6 +280,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let outstandingError = false
     // where the remuxer was last positioned, which is the floor of what it can still read forward from
     let lastSeekPosition = 0
+    // whether nothing was removed since, so everything read forward from there is still buffered
+    let positioned = true
 
     // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
     const reportError = (error: unknown, aborted: boolean, terminal = false) => {
@@ -313,12 +315,16 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
       const post = tight ? POST_EVICT_TIGHT : POST_EVICT
       const ranges = getTimeRanges(sourceBuffer)
+      const remove = (start: number, end: number) => {
+        positioned = false
+        return unbufferRange(start, end)
+      }
       // From 0, never from the reported start: once a group is removed, Firefox 151 reports the start
       // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
       // (measured 2026-10-11).
-      if (ranges.length && ranges[0].start < ct + pre) await unbufferRange(0, ct + pre)
+      if (ranges.length && ranges[0].start < ct + pre) await remove(0, ct + pre)
       for (const { end } of ranges) {
-        if (end > ct + post) await unbufferRange(ct + post, end)
+        if (end > ct + post) await remove(ct + post, end)
       }
     }
 
@@ -364,6 +370,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       pending = null
       pendingAttempts = 0
       lastSeekPosition = time
+      positioned = true
       const generation = ++seekGeneration
       try {
         // `seek` ends by reading, and that read can hit the end of the file, which finalizes the
@@ -381,6 +388,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           trackAppendedEnd()
         }
       } catch (error) {
+        if (generation === seekGeneration) positioned = false
         reportError(error, destroyed || generation !== seekGeneration)
       } finally {
         if (generation === seekGeneration) seeking = false
@@ -454,12 +462,15 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * BOTH the input and the output context and re-runs write_header, because the fragmented mp4 muxer
      * cannot rewind. Skipping it when the target is already playable is most of what a seek costs.
      *
-     * Both conditions are needed. Buffered alone is not enough: landing before the last remuxer position
-     * means the reader is somewhere ahead, so the gap between here and it can never be filled without a
-     * seek, and playback would stall at the end of this range instead. At or after it, the bytes from
-     * here to the read cursor are contiguous and reading simply carries on.
+     * Buffered alone is not enough: landing before the last remuxer position means the reader is
+     * somewhere ahead, so the gap between here and it can never be filled without a seek, and playback
+     * would stall at the end of this range instead. Nor is landing after it: the range holding the
+     * target can be an island ahead of the reader, so the target also needs its runway, or the element
+     * plays to the island's end and waits there until the reader has read the whole gap, which over a
+     * torrent is as long as downloading it.
      */
-    const alreadyPlayable = (time: number) => time >= lastSeekPosition && playableAt(time)
+    const alreadyPlayable = (time: number) =>
+      time >= lastSeekPosition && playableAt(time) && runwayFrom(time) >= SEEK_RUNWAY
 
     /**
      * Whether the element can play from a GIVEN time without a fetch.
@@ -484,9 +495,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * delays the seek: delaying the seek by the same amount while appending nothing still wedged 4
      * out of 4, so it is the data and not the delay.
      *
-     * Returns as soon as there is nothing to wait for, so a seek into buffered ground costs nothing.
-     * The CALLER owns the deadline: this can take as long as a read takes, and over a torrent that
-     * is unbounded.
+     * Returns at once when the target already has its runway, so a seek into buffered ground costs
+     * nothing. Otherwise the remuxer is positioned at the target, since the range holding it can be an
+     * island the reader never extends. The CALLER owns the deadline: this can take as long as a read
+     * takes, and over a torrent that is unbounded.
      */
     /** Seconds of contiguous data past a position that make it safe to play from. */
     const runwayFrom = (time: number) => {
@@ -501,7 +513,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       preparing++
       prepareTarget = time
       try {
-        if (!playableAt(time)) await seekTo(time)
+        await seekTo(time)
         /*
          * Captured AFTER the seek, never before.
          *
@@ -599,14 +611,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       lastSeekingAt = now
       if (alreadyPlayable(time)) return
       /*
-       * A seek for exactly this position is already running, so let it finish.
+       * The remuxer is already positioned at exactly this time with nothing removed since, so let it
+       * read on.
        *
-       * `prepareSeek` starts one BEFORE the playhead moves, and the caller moves the playhead anyway
-       * once its budget runs out. Without this, the move fires `seeking`, which starts the identical
-       * read again and bumps the generation, throwing away everything the first one had done. The
-       * benchmark caught it as a seek that took twice as long as seeking the old way.
+       * `prepareSeek` positions it BEFORE the playhead moves, and the caller moves the playhead anyway
+       * once its budget runs out, with the seek or the runway's reads still running. Without this, the
+       * move fires `seeking`, which starts the identical read again and bumps the generation, throwing
+       * away everything the first one had done. The benchmark caught it as a seek that took twice as
+       * long as seeking the old way. It also covers a finished prepare to a keyframe in Firefox, whose
+       * range starts the reorder delay past the target, so the target never counts as buffered.
        */
-      if (seeking && Math.abs(time - lastSeekPosition) < 0.001) return
+      if (positioned && Math.abs(time - lastSeekPosition) < 0.001) return
       finished = false
       if (dragTimer) clearTimeout(dragTimer)
       if (!dragging) {
