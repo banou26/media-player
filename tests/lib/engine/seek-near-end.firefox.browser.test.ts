@@ -26,6 +26,11 @@ import { playerAssets } from '../../../src/asset-urls'
  * waited at the end for good, 3 runs of 3 on each file, the audio-short one at 29.707 (measured 2026-10-12).
  * That end counts only while it is still buffered: counted from a flag alone, a move to the end of a file
  * whose end had been removed went back to 20.005 of 30.08 in both engines, 2 runs of 2 (measured 2026-10-12).
+ *
+ * Past that seek back the reader read on from the front through what was buffered: 13 reads of 32 KB in
+ * Chromium and 14 in Firefox after the move, where 0.10.14, which positioned the remuxer there, made 4, 3 runs
+ * of 3 (measured 2026-10-12). Over a torrent each one fetches pieces nobody needs. At the default read size one
+ * read holds the whole fixture, so only small reads can count them.
  */
 const FIXTURES = ['/loud-tone.mkv', '/short-audio-tone.mkv', '/short-video-tone.mkv']
 
@@ -42,7 +47,7 @@ const seek = (video: HTMLVideoElement, time: number) =>
   })
 
 // the whole file read and its end signalled, then the MediaSource reopened
-const buffered = async (fixture: string) => {
+const buffered = async (fixture: string, bufferSize?: number) => {
   const size = Number((await fetch(fixture, { method: 'HEAD' })).headers.get('content-length'))
   expect(size, 'run `node scripts/fixture.mjs` to generate the test media').toBeGreaterThan(0)
   const video = document.createElement('video')
@@ -62,6 +67,7 @@ const buffered = async (fixture: string) => {
     videoElement: video,
     subtitleContainer: subtitles,
     length: size,
+    bufferSize,
     read: async (offset, length) => {
       reads.push(offset)
       if (holding) await new Promise<void>((done) => held.push(done))
@@ -103,6 +109,20 @@ it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('plays %s to the end from a
   await new Promise((done) => setTimeout(done, 1_500))
   video.currentTime = video.duration - 2
   await expect.poll(() => video.ended, { timeout: 12_000 }).toBe(true)
+}, 30_000)
+
+it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('reads no more on a move near the end of %s after a seek back than a remuxer seek there', async (fixture) => {
+  const { video, reads } = await buffered(fixture, 32_768)
+  await seek(video, 21)
+  await video.play()
+  await expect.poll(() => video.buffered.start(0), { timeout: 6_000 }).toBeGreaterThan(0.5)
+  video.currentTime = 0.2
+  await new Promise((done) => setTimeout(done, 1_500))
+  const before = reads.length
+  video.currentTime = video.duration - 2
+  await expect.poll(() => video.ended, { timeout: 12_000 }).toBe(true)
+  await new Promise((done) => setTimeout(done, 1_000))
+  expect(reads.length - before).toBeLessThanOrEqual(4)
 }, 30_000)
 
 it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('stays at the end of %s on a move there while its removed end is read again', async (fixture) => {
