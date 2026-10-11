@@ -304,8 +304,12 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const ct = videoElement.currentTime
       const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
       const post = tight ? POST_EVICT_TIGHT : POST_EVICT
-      for (const { start, end } of getTimeRanges(sourceBuffer)) {
-        if (start < ct + pre) await unbufferRange(start, ct + pre)
+      const ranges = getTimeRanges(sourceBuffer)
+      // From 0, never from the reported start: once a group is removed, Firefox 151 reports the start
+      // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
+      // (measured 2026-10-11).
+      if (ranges.length && ranges[0].start < ct + pre) await unbufferRange(0, ct + pre)
+      for (const { end } of ranges) {
         if (end > ct + post) await unbufferRange(ct + post, end)
       }
     }

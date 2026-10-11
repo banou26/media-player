@@ -20,7 +20,7 @@ const findChrome = () => {
 }
 
 // a function, because vitest writes each project's name onto its instances
-const browser = () => ({
+const browser = (engine: 'chromium' | 'firefox' = 'chromium') => ({
   enabled: true,
   // MEDIA_PLAYER_HEADFUL=1 to watch it, and to check whether a layout or a codec decision
   // differs from the headless shell's
@@ -40,16 +40,20 @@ const browser = () => ({
   // `--mute-audio` is output only: currentTime, buffered and the decode path are identical
   // muted, so it cannot change a result. Without it a suite that plays real media takes
   // over the speakers of whatever machine runs it.
-  provider: playwright({
-    launchOptions: { executablePath: findChrome(), chromiumSandbox: true, args: ['--mute-audio'] },
-  }),
+  provider: engine === 'firefox'
+    ? playwright({
+      launchOptions: { executablePath: process.env.MEDIA_PLAYER_FIREFOX, firefoxUserPrefs: { 'media.volume_scale': '0.0' } },
+    })
+    : playwright({
+      launchOptions: { executablePath: findChrome(), chromiumSandbox: true, args: ['--mute-audio'] },
+    }),
   /**
    * The viewport is set explicitly because the default is 414x896, a phone.
    * The chrome branches on `min-width: 768px` and on `pointer: coarse`, so an unset
    * viewport silently tests the mobile layout only, and a container wider than 414 is
    * clipped out of any failure screenshot.
    */
-  instances: [{ browser: 'chromium' as const, viewport: { width: 1280, height: 720 } }],
+  instances: [{ browser: engine, viewport: { width: 1280, height: 720 } }],
 })
 
 // player.fkn.app. The library it consumes lives at src/lib and is built separately by
@@ -127,6 +131,22 @@ export default defineConfig({
           browser: browser(),
         },
       },
+      /**
+       * Firefox for the files that pin a Gecko behaviour, which the browser project also runs in Chromium as
+       * the control. CI installs playwright's Firefox. Elsewhere it is opt-in: MEDIA_PLAYER_FIREFOX names a
+       * playwright Firefox build, and on NixOS an ffmpeg lib directory has to be on LD_LIBRARY_PATH, without
+       * which Firefox has no H.264 (measured 2026-10-11, Firefox 151).
+       */
+      ...(process.env.CI || process.env.MEDIA_PLAYER_FIREFOX
+        ? [{
+          extends: true as const,
+          test: {
+            name: 'firefox',
+            include: ['tests/**/*.firefox.browser.test.{ts,tsx}'],
+            browser: browser('firefox'),
+          },
+        }]
+        : []),
     ],
   },
 })

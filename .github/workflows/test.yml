@@ -37,7 +37,9 @@ jobs:
 
       # vite.config.ts prefers a Chrome already on PATH and falls back to playwright's own download,
       # so make sure that fallback exists and that the shared libraries either binary needs are present.
-      - run: npx playwright install --with-deps chromium
+      # Firefox always comes from that download; on CI the firefox project runs the files that pin a
+      # Gecko behaviour, and `--with-deps` brings the libavcodec its H.264 needs.
+      - run: npx playwright install --with-deps chromium firefox
 
       # public/ is gitignored, so a fresh checkout carries none of the libav assets the player loads
       # at runtime. Without this the local playback test times out waiting for metadata. jassub's
