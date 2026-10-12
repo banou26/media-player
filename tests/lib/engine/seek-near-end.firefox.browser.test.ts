@@ -150,6 +150,7 @@ it('plays on through a hole under 1 s before the buffered end while a seek back 
   await new Promise((done) => setTimeout(done, 500))
   expect(video.buffered.length).toBe(2)
   const hole = video.buffered.start(1)
+  expect(hole - video.buffered.end(0)).toBeLessThan(1)
   source.delay = 2_500
   video.currentTime = 5
   await video.play()
