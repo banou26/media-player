@@ -221,6 +221,12 @@ export type MediaPlayerRemoteOptions =
     subtitles?: DelegatedTracks
     audioTracks?: DelegatedTracks
     /**
+     * The source's own quality choices, as a row of the settings menu that shows the selected one.
+     * Offered only with two or more rows to choose between; `offLabel` names a row with no quality
+     * picked, such as an automatic one, whose id is null.
+     */
+    quality?: DelegatedTracks
+    /**
      * Offer picture in picture, entered by the host from inside the media's own document. Off by
      * default, and then there is no control at all. See `PassThroughPictureInPicture` for what the
      * host takes on by passing it. Read by value, so it may be written inline.
@@ -396,6 +402,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       selectAudioTrack: (id) => audio.select(String(id)),
     })
   }, [setSourceState, audio])
+
+  const quality = remote?.quality?.selection ?? null
+  useEffect(() => {
+    setSourceState({ quality })
+  }, [setSourceState, quality])
 
   /*
    * Guarded, and its own effect, for the reason the ones above are.

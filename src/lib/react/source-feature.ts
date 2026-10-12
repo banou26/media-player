@@ -1,4 +1,5 @@
 import type { MediaChapter, MediaIndex, PictureInPictureMode, ThumbnailImage } from '../engine'
+import type { DelegatedSelection } from './media'
 
 import { definePlayerFeature } from '@videojs/core/dom'
 
@@ -175,6 +176,9 @@ export type SourceState = {
   selectedAudioTrack: string | number | undefined
   selectAudioTrack: (id: string | number) => void | Promise<void>
 
+  /** The settings menu's quality choices, from a media the player does not own. null when none are offered. */
+  quality: DelegatedSelection | null
+
   /** Chrome auto-hide. True means the controls, title and cursor are hidden. */
   hideUI: boolean
   setHideUI: (hide: boolean) => void
@@ -283,6 +287,7 @@ const initialState: SourceState = {
   audioTracks: [],
   selectedAudioTrack: undefined,
   selectAudioTrack: () => {},
+  quality: null,
   hideUI: false,
   setHideUI: () => {},
   hasMedia: false,
