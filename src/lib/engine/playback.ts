@@ -709,8 +709,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       if (elementFailed || videoElement.error) return
       evict().catch(() => {})
       pump().catch((error) => reportError(error, false))
-      // every remove() puts the MediaSource back to 'open', so the end has to be re-armed
-      if (endInBuffer() && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream().catch(() => {})
+      // Every remove() puts the MediaSource back to 'open', so the end has to be re-armed, though not while a remuxer
+      // seek runs: queued behind a remove() and run after a move had started one, it came before that seek's append over
+      // the end, and Firefox 151 then sometimes waited at the end for good (4 of 1060 end moves, measured 2026-10-12)
+      if (endInBuffer() && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream(() => !seeking).catch(() => {})
     }, 100)
     teardown.push(() => clearInterval(interval))
 
