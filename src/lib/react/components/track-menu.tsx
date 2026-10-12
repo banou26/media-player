@@ -154,7 +154,7 @@ export const popoverStyle = css`
 export const TrackMenu = (
   { title, tracks, selected, onSelect, onBack, offLabel, pending, failed }: {
     title: string
-    tracks: TrackChoice[]
+    tracks: readonly TrackChoice[]
     selected: string | number | undefined
     onSelect: (id: string | number | undefined) => void
     /** Absent means the menu was opened straight from the bar, so the header is a label and no more. */

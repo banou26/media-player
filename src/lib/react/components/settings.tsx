@@ -107,7 +107,8 @@ ${popoverStyle}
 enum PopoverContent {
   Default,
   PlaybackRate,
-  Audio
+  Audio,
+  Quality
 }
 
 export const SettingsAction = () => {
@@ -116,6 +117,7 @@ export const SettingsAction = () => {
   const audioTracks = usePlayer((state) => state.audioTracks)
   const selectedAudioTrack = usePlayer((state) => state.selectedAudioTrack)
   const selectAudioTrack = usePlayer((state) => state.selectAudioTrack)
+  const quality = usePlayer((state) => state.quality)
   const volumeNormalizer = usePlayer((state) => state.volumeNormalizer)
 
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
@@ -133,6 +135,15 @@ export const SettingsAction = () => {
     if (id === undefined) return
     runSelect(id, () => selectAudioTrack(id))
   }
+
+  const chooseQuality = (id: string | number | undefined) => {
+    if (!quality) return
+    runSelect(id ?? null, () => quality.select(id === undefined ? null : String(id)))
+  }
+  const qualityRows = quality ? quality.options.length + (quality.offLabel ? 1 : 0) : 0
+  const qualityLabel = quality?.selectedId == null
+    ? quality?.offLabel
+    : quality.options.find(({ id }) => id === quality.selectedId)?.label
 
   const changePopoverContent = (newPopoverContent: PopoverContent) => () => {
     setPopoverContent(newPopoverContent)
@@ -174,6 +185,17 @@ export const SettingsAction = () => {
                 <div onClick={changePopoverContent(PopoverContent.Audio)}>
                   <div>Audio</div>
                   <div>
+                    <ChevronRight />
+                  </div>
+                </div>
+              )
+              : null}
+            {qualityRows > 1
+              ? (
+                <div onClick={changePopoverContent(PopoverContent.Quality)}>
+                  <div>Quality</div>
+                  <div>
+                    {qualityLabel ? <span className='secondary'>{qualityLabel}</span> : null}
                     <ChevronRight />
                   </div>
                 </div>
@@ -250,6 +272,20 @@ export const SettingsAction = () => {
             selected={selectedAudioTrack}
             onSelect={chooseAudio}
             onBack={changePopoverContent(PopoverContent.Default)}
+            pending={pending}
+            failed={failed}
+          />
+        )
+      }
+      {
+        open && popoverContent === PopoverContent.Quality && quality && (
+          <TrackMenu
+            title='Quality'
+            tracks={quality.options}
+            selected={quality.selectedId ?? undefined}
+            onSelect={chooseQuality}
+            onBack={changePopoverContent(PopoverContent.Default)}
+            offLabel={quality.offLabel}
             pending={pending}
             failed={failed}
           />
