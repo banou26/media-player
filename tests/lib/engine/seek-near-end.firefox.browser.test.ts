@@ -31,6 +31,11 @@ import { playerAssets } from '../../../src/asset-urls'
  * Chromium and 14 in Firefox after the move, where 0.10.14, which positioned the remuxer there, made 4, 3 runs
  * of 3 (measured 2026-10-12). Over a torrent each one fetches pieces nobody needs. At the default read size one
  * read holds the whole fixture, so only small reads can count them.
+ *
+ * A move just past what was read leaves a hole up to the keyframe the remuxer seeks to. With keyframes 0.833 s
+ * apart it is under the 1 s slack, so the range after it counted as the one holding a playhead stopped in it: after
+ * a seek back with every read 2.5 s late nothing read the hole, and playback stayed at 9.075 in Chromium and 9.165
+ * in Firefox for good, 5 runs of 5 (measured 2026-10-12).
  */
 const FIXTURES = ['/loud-tone.mkv', '/short-audio-tone.mkv', '/short-video-tone.mkv']
 
@@ -46,8 +51,7 @@ const seek = (video: HTMLVideoElement, time: number) =>
     video.currentTime = time
   })
 
-// the whole file read and its end signalled, then the MediaSource reopened
-const buffered = async (fixture: string, bufferSize?: number) => {
+const open = async (fixture: string, bufferSize?: number) => {
   const size = Number((await fetch(fixture, { method: 'HEAD' })).headers.get('content-length'))
   expect(size, 'run `node scripts/fixture.mjs` to generate the test media').toBeGreaterThan(0)
   const video = document.createElement('video')
@@ -56,12 +60,12 @@ const buffered = async (fixture: string, bufferSize?: number) => {
   document.body.append(video, subtitles)
   const addSourceBuffer = vi.spyOn(MediaSource.prototype, 'addSourceBuffer')
   const reads: number[] = []
-  // reads wait while `holding`, as a torrent holds pieces it lacks
-  let holding = false
+  // reads from `holdFrom` on wait until released, as a torrent holds pieces it lacks, and answer `delay` ms late
+  const source = { holdFrom: Infinity, delay: 0 }
   const held: (() => void)[] = []
-  const hold = (on: boolean) => {
-    holding = on
-    if (!on) held.splice(0).forEach((done) => done())
+  const release = () => {
+    source.holdFrom = Infinity
+    held.splice(0).forEach((done) => done())
   }
   const controller = await startPlayback({
     videoElement: video,
@@ -70,23 +74,31 @@ const buffered = async (fixture: string, bufferSize?: number) => {
     bufferSize,
     read: async (offset, length) => {
       reads.push(offset)
-      if (holding) await new Promise<void>((done) => held.push(done))
+      if (offset >= source.holdFrom) await new Promise<void>((done) => held.push(done))
+      if (source.delay) await new Promise((done) => setTimeout(done, source.delay))
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
       return (await fetch(fixture, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
     },
     ...playerAssets,
   })
-  cleanups.push(() => { controller.destroy(); hold(false); video.remove(); subtitles.remove() })
+  cleanups.push(() => { controller.destroy(); release(); video.remove(); subtitles.remove() })
   const mediaSource = addSourceBuffer.mock.contexts[0] as MediaSource
   const sourceBuffer = addSourceBuffer.mock.results[0].value as SourceBuffer
+  return { video, controller, reads, mediaSource, sourceBuffer, source, held, release }
+}
+
+// the whole file read and its end signalled, then the MediaSource reopened
+const buffered = async (fixture: string, bufferSize?: number) => {
+  const opened = await open(fixture, bufferSize)
+  const { mediaSource, sourceBuffer } = opened
   await expect.poll(() => mediaSource.readyState, { timeout: 30_000 }).toBe('ended')
   const reopen = async (start = 0, end = 0.5) => {
     sourceBuffer.remove(start, end)
     await new Promise((done) => sourceBuffer.addEventListener('updateend', done, { once: true }))
     expect(mediaSource.readyState).toBe('open')
   }
-  return { video, controller, reads, reopen, hold }
+  return { ...opened, reopen }
 }
 
 it.each([...FIXTURES, '/shorter-audio-tone.mkv'])('plays %s to the end from a seek 2 s before its buffered end', async (fixture) => {
@@ -125,15 +137,34 @@ it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('reads no more on a move ne
   expect(reads.length - before).toBeLessThanOrEqual(4)
 }, 30_000)
 
+it('plays on through a hole under 1 s before the buffered end while a seek back re-reads slowly', async () => {
+  const { video, controller, mediaSource, source, held } = await open('/short-gop-tone.mkv', 32_768)
+  const hold = controller.indexes.find(({ timestamp }) => timestamp >= 8)!.pos
+  source.holdFrom = hold
+  await expect.poll(() => held.length, { timeout: 20_000 }).toBeGreaterThan(0)
+  await new Promise((done) => setTimeout(done, 300))
+  source.holdFrom = Infinity
+  // past what was read, so the remuxer seeks to the next keyframe and leaves a hole up to it
+  video.currentTime = video.buffered.end(video.buffered.length - 1) + 0.9
+  await expect.poll(() => mediaSource.readyState, { timeout: 15_000 }).toBe('ended')
+  await new Promise((done) => setTimeout(done, 500))
+  expect(video.buffered.length).toBe(2)
+  const hole = video.buffered.start(1)
+  source.delay = 2_500
+  video.currentTime = 5
+  await video.play()
+  await expect.poll(() => video.currentTime, { timeout: 25_000 }).toBeGreaterThan(hole + 1)
+}, 50_000)
+
 it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('stays at the end of %s on a move there while its removed end is read again', async (fixture) => {
-  const { video, reopen, hold } = await buffered(fixture)
+  const { video, reopen, source, release } = await buffered(fixture)
   const duration = video.duration
   await reopen(20, duration)
   await video.play()
-  hold(true)
+  source.holdFrom = 0
   video.currentTime = duration
   await new Promise((done) => setTimeout(done, 500))
-  hold(false)
+  release()
   await expect.poll(() => video.ended, { timeout: 8_000 }).toBe(true)
   expect(video.currentTime).toBeGreaterThan(duration - 1)
 })

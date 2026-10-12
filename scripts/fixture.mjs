@@ -452,8 +452,28 @@ export const ensureShortAudioFixture = () => ensureUnevenFixture(SHORT_AUDIO_FIX
 export const ensureShortVideoFixture = () => ensureUnevenFixture(SHORT_VIDEO_FIXTURE, { video: 29.6, audio: 30 })
 export const ensureShorterAudioFixture = () => ensureUnevenFixture(SHORTER_AUDIO_FIXTURE, { video: 30, audio: 29 })
 
+export const SHORT_GOP_FIXTURE = 'short-gop-tone.mkv'
+export const SHORT_GOP_FIXTURE_PATH = PUBLIC_DIR + SHORT_GOP_FIXTURE
+
+/** The loud tone with a keyframe every 20 frames, 0.833 s, so a remuxer seek can leave a hole under 1 s. */
+export const ensureShortGopFixture = async () => {
+  if (await exists(SHORT_GOP_FIXTURE_PATH)) return SHORT_GOP_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=30',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+    '-af', 'volume=12dB',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '20', '-keyint_min', '20', '-sc_threshold', '0',
+    '-c:a', 'aac', '-ac', '2',
+    '-map', '0:v', '-map', '1:a',
+    SHORT_GOP_FIXTURE_PATH,
+  ])
+  return SHORT_GOP_FIXTURE_PATH
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureLoudFixture, ensureCueFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureLoudFixture, ensureCueFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
