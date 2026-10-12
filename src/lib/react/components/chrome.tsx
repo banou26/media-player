@@ -52,6 +52,9 @@ const style = css`
   align-items: center;
   height: 100%;
   width: 100%;
+  /* focusable with shortcuts='player', and the first key after a click on the picture would otherwise
+     ring the whole player as :focus-visible */
+  outline: none;
 
   & > div:not(:last-of-type) {
     position: absolute;

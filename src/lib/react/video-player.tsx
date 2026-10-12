@@ -76,8 +76,8 @@ type CommonOptions = {
   /**
    * Where the keyboard shortcuts listen. `'window'`, the default, takes keys from the whole page, which suits a
    * page that is only the player. `'player'` takes a key only when the focus is inside the player (a click on the
-   * picture puts it there) or the player is fullscreen, so Space and the arrow keys keep scrolling the page and
-   * pressing its buttons everywhere else.
+   * picture puts it there), or nothing has the focus and the last click or focus was in the player, or the player
+   * is fullscreen, so Space and the arrow keys keep scrolling the page and pressing its buttons everywhere else.
    */
   shortcuts?: 'window' | 'player'
 

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
+import type { MediaChapter } from '../../../src/lib/engine'
+
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { createFakeRemoteMedia } from './remote-media.fixture'
 
@@ -11,18 +13,22 @@ import { createFakeRemoteMedia } from './remote-media.fixture'
  * is the browser's own default.
  */
 const added: Element[] = []
-const pageWithPlayer = async (shortcuts?: 'window' | 'player') => {
+const pageWithPlayer = async (
+  shortcuts?: 'window' | 'player',
+  { chapters, parent = document.body }: { chapters?: MediaChapter[], parent?: ParentNode } = {},
+) => {
   const outside = document.createElement('button')
   outside.textContent = 'Stop'
   const pressed = { count: 0 }
   outside.addEventListener('click', () => { pressed.count++ })
   const container = document.createElement('div')
   container.style.cssText = 'width: 480px; height: 270px;'
-  document.body.append(outside, container)
+  document.body.append(outside)
+  parent.append(container)
   added.push(outside, container)
 
   const media = createFakeRemoteMedia()
-  const screen = await render(<MediaPlayer media={media} shortcuts={shortcuts} />, { container })
+  const screen = await render(<MediaPlayer media={media} shortcuts={shortcuts} chapters={chapters} />, { container })
   await expect.poll(() => !!screen.container.querySelector('button.play'), { timeout: 5000 }).toBe(true)
   return { media, outside, pressed, screen }
 }
@@ -74,6 +80,51 @@ describe('keyboard shortcuts kept to the player', () => {
     const down = await press('{ArrowDown}')
     expect(down.defaultPrevented).toBe(true)
     expect(media.volume).toBeLessThan(1)
+
+    const root = screen.container.querySelector('.video')!.parentElement!
+    expect(getComputedStyle(root).outlineStyle, 'a key drew a focus ring around the whole player').toBe('none')
+  })
+
+  it('stay with the player when a control holding the focus goes away, until a click elsewhere', async () => {
+    const chapters = [
+      { start: 0, end: 5, title: 'Prologue' },
+      { start: 5, end: 30, title: 'Opening' },
+      { start: 30, end: 1200, title: 'Episode' },
+    ]
+    const { media, screen } = await pageWithPlayer('player', { chapters })
+    const skip = () => screen.container.querySelector<HTMLElement>('button.skip-chapter')
+    media.advanceTo(10)
+    await expect.poll(() => skip() && getComputedStyle(skip()!).visibility, { timeout: 5000 }).toBe('visible')
+    await userEvent.click(skip()!)
+    // the fake media does not announce its own seek
+    media.advanceTo(30)
+    await expect.poll(() => skip(), { timeout: 5000 }).toBe(null)
+    expect(document.activeElement, 'the pressed button did not leave the focus on the body').toBe(document.body)
+
+    const space = await press(' ')
+    expect(space.defaultPrevented).toBe(true)
+    await expect.poll(() => toggles(media.calls), { timeout: 2000 }).toEqual(['play'])
+
+    const text = document.createElement('p')
+    text.textContent = 'Episodes'
+    document.body.append(text)
+    added.push(text)
+    await userEvent.click(text)
+    const again = await press(' ')
+    expect(again.defaultPrevented, 'Space after a click on the page was prevented').toBe(false)
+    expect(toggles(media.calls)).toEqual(['play'])
+  })
+
+  it('act from inside a player mounted in a shadow root', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    added.push(host)
+    const { media, screen } = await pageWithPlayer('player', { parent: host.attachShadow({ mode: 'open' }) })
+    ;(screen.container.querySelector('.video')!.parentElement as HTMLElement).focus()
+
+    const space = await press(' ')
+    expect(space.defaultPrevented).toBe(true)
+    await expect.poll(() => toggles(media.calls), { timeout: 2000 }).toEqual(['play'])
   })
 
   it('act in fullscreen whatever has the focus', async () => {

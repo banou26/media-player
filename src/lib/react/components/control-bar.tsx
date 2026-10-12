@@ -202,13 +202,21 @@ export const ControlBar = (
     if (wasMuted && !player.muted) player.toggleMuted()
   }, [player])
 
+  // whether the last press or focus on the page landed in the player: a focused control that goes away (Skip
+  // Opening, once pressed) leaves the focus on the body, and the shortcuts stay with the player through that
+  const engaged = useRef(false)
+
   useEffect(() => {
     const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
+    // the path, not ev.target, which a shadow root around the player retargets to its host
+    const targetOf = (ev: Event) => ev.composedPath()[0] as HTMLElement | undefined
+    const engage = (ev: Event) => { engaged.current = !!root.current?.contains(targetOf(ev) ?? null) }
     const eventListener = (ev: KeyboardEvent) => {
       // on the window, so typing into a consumer's own input opts out
-      const target = ev.target as HTMLElement | null
+      const target = targetOf(ev)
       if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? '')) return
-      if (shortcuts === 'player' && !player.fullscreen && !root.current?.contains(target)) return
+      const fromPlayer = root.current?.contains(target ?? null) || (target === document.body && engaged.current)
+      if (shortcuts === 'player' && !player.fullscreen && !fromPlayer) return
 
       let shouldPreventDefault = true
       // space would otherwise reach the browser's own shortcut
@@ -238,7 +246,13 @@ export const ControlBar = (
       }
     }
     window.addEventListener('keydown', eventListener)
-    return () => window.removeEventListener('keydown', eventListener)
+    window.addEventListener('pointerdown', engage, true)
+    window.addEventListener('focusin', engage, true)
+    return () => {
+      window.removeEventListener('keydown', eventListener)
+      window.removeEventListener('pointerdown', engage, true)
+      window.removeEventListener('focusin', engage, true)
+    }
   }, [player, modifyVolume, requestSeek, shortcuts, root])
 
   const handleWheel = useCallback((e: WheelEvent) => {
