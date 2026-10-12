@@ -76,6 +76,9 @@ describe('subtitles while the video is paused', () => {
     const video = screen.container.querySelector('video')!
     video.pause()
     await expect.poll(() => video.paused, { timeout: 5_000 }).toBe(true)
+    // the frame showing when the pause lands can still be reported after it, 36 ms later on CI once autoplay had
+    // started playback (measured 2026-10-12), so that one is let through before counting
+    await new Promise((done) => { video.requestVideoFrameCallback(done); setTimeout(done, 500) })
     // and it has to STAY paused, or a presented frame would repaint it for us and this proves nothing
     const framesWhilePaused: number[] = []
     video.requestVideoFrameCallback(() => framesWhilePaused.push(video.currentTime))
