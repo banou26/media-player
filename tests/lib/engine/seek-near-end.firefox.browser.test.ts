@@ -36,6 +36,11 @@ import { playerAssets } from '../../../src/asset-urls'
  * apart it is under the 1 s slack, so the range after it counted as the one holding a playhead stopped in it: after
  * a seek back with every read 2.5 s late nothing read the hole, and playback stayed at 9.075 in Chromium and 9.165
  * in Firefox for good, 5 runs of 5 (measured 2026-10-12).
+ *
+ * The end is re-armed every 100 ms behind whatever the SourceBuffer has queued, so it could run after a move had
+ * started a remuxer seek and before that seek appended the end again. Firefox 151 then sometimes waited at the end
+ * for good, 4 of 1060 end moves (measured 2026-10-12). Holding back a trim's `updateend` forces that order in both
+ * engines.
  */
 const FIXTURES = ['/loud-tone.mkv', '/short-audio-tone.mkv', '/short-video-tone.mkv']
 
@@ -168,6 +173,33 @@ it.each(['/loud-tone.mkv', '/short-audio-tone.mkv'])('stays at the end of %s on 
   release()
   await expect.poll(() => video.ended, { timeout: 8_000 }).toBe(true)
   expect(video.currentTime).toBeGreaterThan(duration - 1)
+})
+
+it('signals no end queued before a move until the move\'s remuxer seek has appended', async () => {
+  const { video, mediaSource, sourceBuffer } = await buffered('/short-video-tone.mkv')
+  await seek(video, 20)
+  await video.play()
+  // the next trim evict() makes reopens the MediaSource and, held here, keeps everything queued after it waiting
+  let finishTrim: (() => void) | undefined
+  const listen = sourceBuffer.addEventListener.bind(sourceBuffer)
+  vi.spyOn(sourceBuffer, 'addEventListener').mockImplementation((type, listener, options) => {
+    if (type !== 'updateend' || finishTrim) return listen(type, listener, options)
+    finishTrim = () => (listener as EventListener)(new Event('updateend'))
+  })
+  await expect.poll(() => finishTrim, { timeout: 3_000 }).toBeDefined()
+  expect(mediaSource.readyState).toBe('open')
+  await new Promise((done) => setTimeout(done, 300))
+  const endOfStream = vi.spyOn(mediaSource, 'endOfStream')
+  const appendBuffer = vi.spyOn(sourceBuffer, 'appendBuffer')
+  // past the video's end, which the open MediaSource does not hold, so the move re-positions the remuxer
+  video.currentTime = video.duration - 0.3
+  await new Promise((done) => video.addEventListener('seeking', done, { once: true }))
+  await new Promise((done) => setTimeout(done, 300))
+  finishTrim!()
+  await expect.poll(() => appendBuffer.mock.calls.length, { timeout: 5_000 }).toBeGreaterThan(0)
+  const appended = appendBuffer.mock.invocationCallOrder[0]
+  expect(endOfStream.mock.invocationCallOrder.filter((call) => call < appended)).toEqual([])
+  await expect.poll(() => video.ended, { timeout: 8_000 }).toBe(true)
 })
 
 it.each(FIXTURES)('reads nothing for a prepared seek 2 s before the buffered end of %s', async (fixture) => {

@@ -50,10 +50,13 @@ export const updateSourceBuffer = (sourceBuffer: SourceBuffer, mediaSource: Medi
   const updateTimestampOffset = (timestampOffset: number) =>
     enqueue(async () => { sourceBuffer.timestampOffset = timestampOffset })
 
-  // endOfStream throws mid-update and is undone by the next remove(), so the caller re-arms it
-  const endOfStream = () =>
+  /**
+   * endOfStream throws mid-update and is undone by the next remove(), so the caller re-arms it.
+   * `allowed` is asked when the call reaches the front of the queue, not when it is queued.
+   */
+  const endOfStream = (allowed = () => true) =>
     enqueue(async () => {
-      if (mediaSource.readyState !== 'open' || sourceBuffer.updating) return
+      if (mediaSource.readyState !== 'open' || sourceBuffer.updating || !allowed()) return
       try { mediaSource.endOfStream() } catch {}
     })
 
