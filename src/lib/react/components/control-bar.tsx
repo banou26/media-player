@@ -1,4 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
+import type { RefObject } from 'react'
+
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { Maximize, Minimize, Pause, Play, RotateCcw } from 'lucide-react'
@@ -157,7 +159,9 @@ const style = css`
   }
 `
 
-export const ControlBar = () => {
+export const ControlBar = (
+  { shortcuts = 'window', root }: { shortcuts?: 'window' | 'player', root: RefObject<HTMLDivElement | null> },
+) => {
   const player = usePlayer()
   const paused = usePlayer((state) => state.paused)
   const currentTime = usePlayer((state) => state.currentTime)
@@ -201,9 +205,10 @@ export const ControlBar = () => {
   useEffect(() => {
     const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
     const eventListener = (ev: KeyboardEvent) => {
-      // on the window, so typing into a consumer's own input is the one case that opts out
+      // on the window, so typing into a consumer's own input opts out
       const target = ev.target as HTMLElement | null
       if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? '')) return
+      if (shortcuts === 'player' && !player.fullscreen && !root.current?.contains(target)) return
 
       let shouldPreventDefault = true
       // space would otherwise reach the browser's own shortcut
@@ -234,7 +239,7 @@ export const ControlBar = () => {
     }
     window.addEventListener('keydown', eventListener)
     return () => window.removeEventListener('keydown', eventListener)
-  }, [player, modifyVolume, requestSeek])
+  }, [player, modifyVolume, requestSeek, shortcuts, root])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
