@@ -129,10 +129,11 @@ export type ChromeProps = {
   overlay?: ReactNode
   /** False draws no control bar at all, leaving the picture, the title and the overlay. */
   controls?: boolean
+  shortcuts?: 'window' | 'player'
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -264,6 +265,8 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
       onPointerDown={onPointerDown}
       onMouseOut={onMouseOut}
       className={hideUI ? 'hide' : ''}
+      // focusable, so a click on the picture puts the focus, and with it the shortcuts, inside the player
+      tabIndex={shortcuts === 'player' ? -1 : undefined}
     >
       <Overlay onSubtitleRef={onSubtitleRef} />
       {overlayItems(overlay).map(({ key, item }) => (
@@ -275,7 +278,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, chil
           {item}
         </div>
       ))}
-      {controls === false ? null : <ControlBar />}
+      {controls === false ? null : <ControlBar shortcuts={shortcuts} root={root} />}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
       <SkipChapter />

@@ -74,6 +74,14 @@ type CommonOptions = {
   controls?: boolean
 
   /**
+   * Where the keyboard shortcuts listen. `'window'`, the default, takes keys from the whole page, which suits a
+   * page that is only the player. `'player'` takes a key only when the focus is inside the player (a click on the
+   * picture puts it there) or the player is fullscreen, so Space and the arrow keys keep scrolling the page and
+   * pressing its buttons everywhere else.
+   */
+  shortcuts?: 'window' | 'player'
+
+  /**
    * The app's own content over the video: a download readout, a badge, a logo, anything the player
    * itself has no opinion about.
    *
@@ -411,6 +419,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       onSubtitleRef={setSubtitleLayer}
       overlay={options.overlay}
       controls={options.controls}
+      shortcuts={options.shortcuts}
     >
       {children}
     </Chrome>
