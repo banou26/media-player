@@ -308,6 +308,7 @@ export const ControlBar = (
     // Armed, the whole bar takes no pointer events, or the rows around the control would still catch
     // the click at its box. The chrome's layer covers everything but the control meanwhile.
     <div
+      className='control-bar'
       css={style}
       style={{ ...hideUI ? { opacity: '0', pointerEvents: 'none' } : armed ? { pointerEvents: 'none' } : {} }}
     >

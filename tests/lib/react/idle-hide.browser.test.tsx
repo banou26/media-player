@@ -6,17 +6,11 @@ import { createFakeRemoteMedia } from './remote-media.fixture'
 import { playerAssets } from '../../../src/asset-urls'
 
 /**
- * The chrome does not hide itself out from under a pointer that is resting on a control.
+ * The chrome hides three seconds after the mouse last moved, wherever it rests, the control bar
+ * included, unless one of the bar's menus is open, which must not vanish while it is in use.
  *
- * The hide is a timeout on the last MOVEMENT, so aiming at a small control and pausing for three
- * seconds used to run it out and take the control away under the cursor. Everything then falls
- * through to the picture, which is measurable rather than cosmetic: `elementFromPoint` at the
- * button's own centre returns the `video`, so a click pauses playback instead of pressing the
- * button, and a right click offers the browser's video menu rather than the link's. That is how a
- * link an app draws in the overlay stops behaving like a link.
- *
- * Two arms, and the second is the one that keeps the first honest: resting on the PICTURE must still
- * hide, or "never hides" would pass this too.
+ * The two kept apart on purpose: resting on the bar must hide, or "never hides" would pass, and
+ * resting on an open menu must not, or "always hides" would.
  */
 const AUTO_HIDE_DELAY = 3_000
 const PAST_THE_DELAY = AUTO_HIDE_DELAY + 900
@@ -51,16 +45,14 @@ const restPointerOn = (element: Element) => {
 const chromeOf = (container: HTMLElement) => container.querySelector('.video')!.parentElement!
 
 /**
- * The control bar's own box, found through the row it wraps, since emotion leaves it no stable class.
- *
- * Worth the indirection because the `hide` class only carries `cursor: none`. What a viewer actually
+ * The control bar's own box. The `hide` class only carries `cursor: none`. What a viewer actually
  * loses is this element's opacity, so a test about a black screen has to read the opacity rather than
  * trust the class to stand in for it.
  */
 const controlBarOf = (container: HTMLElement) => container.querySelector('.actions')!.parentElement!
 
 describe('the chrome going idle', () => {
-  it('stays up while the mouse is resting on a control', async () => {
+  it('hides while the mouse is resting on the control bar', async () => {
     const { container } = sized()
     const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, { container })
     await expect.poll(() => !!screen.container.querySelector('button.full-screen'), { timeout: 5000 }).toBe(true)
@@ -72,7 +64,24 @@ describe('the chrome going idle', () => {
       .not.toBeNull()
 
     await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
-    expect(chromeOf(container).className, 'the control vanished from under the pointer').not.toContain('hide')
+    expect(chromeOf(container).className, 'the bar kept the chrome up under a resting mouse').toContain('hide')
+    expect(getComputedStyle(controlBarOf(container)).opacity, 'the bar is still painted').toBe('0')
+  }, 20_000)
+
+  it('stays up while the mouse is resting on an open menu', async () => {
+    const { container } = sized()
+    const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, { container })
+    await expect.poll(() => !!screen.container.querySelector('button.settings'), { timeout: 5000 }).toBe(true)
+
+    ;(screen.container.querySelector('button.settings') as HTMLButtonElement).click()
+    await expect.poll(() => screen.container.querySelector('.popover.menu'), { timeout: 3000 }).not.toBeNull()
+    const menu = screen.container.querySelector('.popover.menu')!
+    const at = restPointerOn(menu)
+    expect(document.elementFromPoint(at.x, at.y)?.closest('.popover.menu'), 'the probe never landed on the menu')
+      .not.toBeNull()
+
+    await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
+    expect(chromeOf(container).className, 'the menu vanished from under the pointer').not.toContain('hide')
   }, 20_000)
 
   it('still hides when the mouse is resting on the picture', async () => {
