@@ -20,7 +20,7 @@ export const tap = async (x: number, y: number) => {
 
 export const mouseTo = (x: number, y: number) => cdp().send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
 
-const press = (type: 'mousePressed' | 'mouseReleased', x: number, y: number, clickCount: number) =>
+export const press = (type: 'mousePressed' | 'mouseReleased', x: number, y: number, clickCount = 1) =>
   cdp().send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount })
 
 /** The browser takes the click count from here, not from timing, so a count of 2 is the second click of a double click. */
