@@ -235,9 +235,13 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
     lastPointerType.current = event.pointerType
   }
 
+  const pausedBeforeClick = useRef(true)
+
   // play/pause with a mouse, show or hide the controls with a finger, which has no other way back
-  const onVideoClick = () => {
+  const onVideoClick = (event: React.MouseEvent) => {
     if (lastPointerType.current === 'mouse') {
+      if (event.detail > 1) return
+      pausedBeforeClick.current = player.paused
       player.togglePaused()
       return
     }
@@ -246,6 +250,15 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
       clearTimeout(autoHide.current)
       hide()
     }
+  }
+
+  // The first click toggled playback, so it is put back rather than toggled again: a remote media
+  // reports its pause late, and a second toggle would read it as still playing and pause it twice.
+  const onVideoDoubleClick = () => {
+    if (lastPointerType.current !== 'mouse') return
+    if (pausedBeforeClick.current) player.pause()
+    else void player.play().catch(() => {})
+    void player.toggleFullscreen()
   }
 
   // relatedTarget alone is not enough: the browser fires mouseout with a null one while the pointer
@@ -294,7 +307,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
           />
         )
         : null}
-      <div className="video" onClick={onVideoClick}>
+      <div className="video" onClick={onVideoClick} onDoubleClick={onVideoDoubleClick}>
         {onVideoRef ? <video ref={onVideoRef} playsInline /> : null}
         {children}
       </div>
