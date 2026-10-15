@@ -4,6 +4,7 @@ import { render } from 'vitest-browser-react'
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { createFakeRemoteMedia } from './remote-media.fixture'
 import { playerAssets } from '../../../src/asset-urls'
+import { mouseTo, press } from './cdp-input'
 
 /**
  * The chrome hides three seconds after the mouse last moved, wherever it rests, the control bar
@@ -82,6 +83,27 @@ describe('the chrome going idle', () => {
 
     await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
     expect(chromeOf(container).className, 'the menu vanished from under the pointer').not.toContain('hide')
+  }, 20_000)
+
+  it('stays up while the mouse holds the seekbar still, and hides once it lets go', async () => {
+    const { container } = sized()
+    const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} />, { container })
+    await expect.poll(() => !!screen.container.querySelector('button.full-screen'), { timeout: 5000 }).toBe(true)
+
+    const { left, top, width, height } = screen.container.querySelector('.progress-bar .padding')!.getBoundingClientRect()
+    const x = left + width / 2
+    const y = top + height / 2
+    expect(document.elementFromPoint(x, y)?.closest('.progress-bar'), 'the probe never landed on the seekbar').not.toBeNull()
+    await mouseTo(x, y)
+    await press('mousePressed', x, y)
+
+    await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
+    const whileHeld = chromeOf(container).className
+    await press('mouseReleased', x, y)
+    expect(whileHeld, 'the bar vanished in the middle of a seek').not.toContain('hide')
+
+    await new Promise((resolve) => setTimeout(resolve, PAST_THE_DELAY))
+    expect(chromeOf(container).className, 'the bar stayed up after the button was let go').toContain('hide')
   }, 20_000)
 
   it('still hides when the mouse is resting on the picture', async () => {

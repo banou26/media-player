@@ -147,6 +147,8 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
   const lastPointerType = useRef<string>('mouse')
   // where the mouse last was, which is where it still is when nothing has moved
   const pointer = useRef({ x: -1, y: -1 })
+  // a mouse button held down with the mouse still is a drag on the seekbar or the volume, not yet over
+  const pressed = useRef(false)
   const root = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
@@ -191,8 +193,8 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
    *
    * Only what actually takes pointer events can be hit: the chrome's own layers opt out, and an
    * overlay item opts out until an app opts a child back in. The picture and the control bar are
-   * excluded here because resting on them is exactly when hiding is right, unless one of the bar's
-   * menus is open, which is still in use.
+   * excluded here because resting on them is exactly when hiding is right, unless a button is held
+   * on the bar or one of its menus is open, which are still in use.
    *
    * The mouse only. A finger has no resting position, and `elementFromPoint` on the last tap would
    * keep the controls up forever after one press.
@@ -207,7 +209,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
     if (!root.current || x < 0) return false
     const hit = document.elementFromPoint(x, y)
     if (!hit || !root.current.contains(hit) || hit.closest('.video')) return false
-    if (hit.closest('.control-bar')) return !!root.current.querySelector('.control-bar [aria-expanded="true"]')
+    if (hit.closest('.control-bar')) return pressed.current || !!root.current.querySelector('.control-bar [aria-expanded="true"]')
     return true
   }
 
@@ -236,6 +238,11 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
 
   const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     lastPointerType.current = event.pointerType
+    pressed.current = true
+  }
+
+  const onPointerUp = () => {
+    pressed.current = false
   }
 
   const pausedBeforeClick = useRef(true)
@@ -282,6 +289,8 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
       ref={setRoot}
       onPointerMove={onPointerMove}
       onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onMouseOut={onMouseOut}
       className={hideUI ? 'hide' : ''}
       // focusable, so a click on the picture puts the focus, and with it the shortcuts, inside the player
