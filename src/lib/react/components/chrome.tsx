@@ -189,9 +189,10 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
    * and a right click offers the browser's video menu rather than the control's. That is how a link
    * drawn in an overlay stops behaving like a link, which is what this exists to stop.
    *
-   * Only what actually takes pointer events can be hit, so this needs no list of selectors: the
-   * chrome's own layers opt out, an overlay item opts out until an app opts a child back in, and the
-   * picture is excluded here because resting on the picture is exactly when hiding is right.
+   * Only what actually takes pointer events can be hit: the chrome's own layers opt out, and an
+   * overlay item opts out until an app opts a child back in. The picture and the control bar are
+   * excluded here because resting on them is exactly when hiding is right, unless one of the bar's
+   * menus is open, which is still in use.
    *
    * The mouse only. A finger has no resting position, and `elementFromPoint` on the last tap would
    * keep the controls up forever after one press.
@@ -205,7 +206,9 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
     const { x, y } = pointer.current
     if (!root.current || x < 0) return false
     const hit = document.elementFromPoint(x, y)
-    return !!hit && root.current.contains(hit) && !hit.closest('.video')
+    if (!hit || !root.current.contains(hit) || hit.closest('.video')) return false
+    if (hit.closest('.control-bar')) return !!root.current.querySelector('.control-bar [aria-expanded="true"]')
+    return true
   }
 
   const hideUnlessTheMouseIsOnAControl = () => {
