@@ -514,7 +514,9 @@ export const NORMALIZER_FIXTURES = {
 const normalizerSignal = () => {
   const RATE = NORMALIZER_RATE, N = NORMALIZER_SECONDS * RATE
   let seed = 987654321
-  const rand = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296 }
+  // Math.imul: a plain product passes 2^53 and rounds, and the generator fell into a loop of 419 values, so the noise
+  // repeated every 419 samples and matching the audio found it 8.7 ms off as readily as in place (HOR-498, 2026-10-17)
+  const rand = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296 }
   const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand())
   const uni = (a, b) => a + (b - a) * rand()
   const bandpass = (f, q) => {
