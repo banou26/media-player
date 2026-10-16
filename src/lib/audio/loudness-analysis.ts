@@ -179,7 +179,8 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
       read,
       audioStreamIndex: source.audioStreamIndex,
     })
-    if (stopped) return
+    // stopped while it was being made, which stop() could not end
+    if (stopped) return terminateRemuxer(remuxer)
     const init = await remuxer.init()
     if (stopped) return
     duration = init.info.input.duration || Infinity

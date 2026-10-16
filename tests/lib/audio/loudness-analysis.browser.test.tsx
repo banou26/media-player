@@ -6,6 +6,7 @@ import { makeRemuxer } from 'libav-wasm'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { attachVolumeNormalizer } from '../../../src/lib/audio/volume-normalizer'
+import { startLoudnessAnalysis } from '../../../src/lib/audio/loudness-analysis'
 import { audioSamplesOf, audioTrackOf } from '../../../src/lib/audio/volume-normalizer-worklet.js'
 import { playerAssets } from '../../../src/asset-urls'
 
@@ -244,4 +245,31 @@ describe('the analysis ahead, in the player', () => {
     await expect.poll(() => last()?.normal, { timeout: 10_000 }).toBeLessThan(-28)
     await screen.unmount()
   }, 90_000)
+})
+
+describe('the analysis, stopped', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  // React's StrictMode runs an effect, cleans it up and runs it again at once, which stops the first analysis here
+  it('ends a remuxer that was still starting when it was stopped', async () => {
+    const { workers } = watchWorkers()
+    const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode
+    const analysis = startLoudnessAnalysis({
+      node,
+      element: document.createElement('video'),
+      scriptUrl: playerAssets.normalizerWorkletUrl,
+      source: {
+        read: async () => new ArrayBuffer(0),
+        length: 1,
+        publicPath: playerAssets.publicPath,
+        libavWorkerUrl: playerAssets.libavWorkerUrl,
+        audioStreamIndex: 1,
+      },
+    })
+    analysis.stop()
+    const remuxers = () => workers.filter(({ url }) => url.includes('libav'))
+    // the control: its worker was started
+    await expect.poll(() => remuxers().length).toBe(1)
+    await expect.poll(() => remuxers()[0]!.terminated, { timeout: 10_000 }).toBe(true)
+  }, 30_000)
 })
