@@ -52,7 +52,8 @@ const referenceOf = async (url: string, rate: number) => {
 }
 
 // how far the reference's timeline sits from the signal's own, found on the fixture's float WAV
-const primingOf = async (left: Float32Array) => {
+const primingOf = async (url: string) => {
+  const left = (await new OfflineAudioContext(2, 1, 48000).decodeAudioData(await fetchBytes(url))).getChannelData(0)
   const bytes = new DataView(await fetchBytes('/normalizer-signal.wav'))
   const at = 5 * 48000, n = 4800
   const source = Float32Array.from({ length: n }, (_, i) => bytes.getFloat32(44 + 8 * (at + i), true))
@@ -105,6 +106,29 @@ const play = async (url: string) => {
   return { video, finish }
 }
 
+/*
+ * Playback and decodeAudioData resample a file to the context's rate with different filters and phases, and Chrome
+ * runs the context at 44.1 kHz where the machine has no audio output, as on GitHub's runners. Below 2 kHz the two
+ * agree: at 44.1 kHz, 42 to 50% of the audible recording of a 48 kHz file was found in the file unfiltered, 90 to 99%
+ * below 4 kHz, 99.3 to 99.7% below 2 kHz (HOR-498, 2026-10-17). A second order Butterworth, run forward then backward
+ * so nothing moves in time.
+ */
+const lowpass = (x: Float32Array, rate: number, f = 2000) => {
+  const w = 2 * Math.PI * f / rate, alpha = Math.sin(w) / (2 * Math.SQRT1_2), c = Math.cos(w), a0 = 1 + alpha
+  const b0 = (1 - c) / 2 / a0, b1 = (1 - c) / a0, a1 = -2 * c / a0, a2 = (1 - alpha) / a0
+  const y = Float32Array.from(x)
+  for (const backward of [false, true]) {
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0
+    for (let k = 0; k < y.length; k++) {
+      const i = backward ? y.length - 1 - k : k, v = y[i]!
+      const out = b0 * v + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2
+      x2 = x1; x1 = v; y2 = y1; y1 = out
+      y[i] = out
+    }
+  }
+  return y
+}
+
 /** Where each recorded input sample sits in the reference, by matching 5 ms blocks, as the review's analysis did. */
 const locate = (recorded: Float32Array, frames: Float64Array, reference: Float32Array, marks: { media: number, ctx: number, still: boolean }[], rate: number, delay: number) => {
   const B = Math.round(rate / 200)
@@ -129,7 +153,8 @@ const locate = (recorded: Float32Array, frames: Float64Array, reference: Float32
     for (let i = 0; i < B; i++) energy += recorded[a + i]! ** 2
     if (energy / B < 1e-10) { last = null; continue }
     let at: number | null = null
-    if (last !== null && ncc(a, last + B) > 0.999) at = last + B
+    // a fresh search in voiced dialogue can come out a pitch period off, so the block that follows on is preferred
+    if (last !== null && ncc(a, last + B) > 0.99) at = last + B
     if (at === null) {
       const predicted = predict(frames[a]!)
       if (predicted === null) { last = null; continue }
@@ -169,10 +194,11 @@ const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, event
     }
   }
   const reference = await referenceOf(url, rate)
-  const priming = rate === 48000 ? await primingOf(reference.left) : 0
-  const position = locate(input, frames, reference.left, marks, rate, delay)
+  const priming = await primingOf(url)
+  const position = locate(lowpass(input, rate), frames, lowpass(reference.left, rate), marks, rate, delay)
   const W = Math.round(rate / 1000)
   const results = events.map((event) => ({ ...event, heard: 0, short: 0, worst: -Infinity }))
+  let audible = 0, found = 0
   for (let m = 0; (m + 1) * W <= total; m++) {
     let xi = 0, xo = 0, known = true
     for (let i = m * W; i < (m + 1) * W; i++) {
@@ -180,7 +206,10 @@ const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, event
       xo += output[i]! ** 2
       if (!Number.isFinite(position[i])) known = false
     }
-    if (!known || xi < W * 1e-7) continue
+    if (xi < W * 1e-7) continue
+    audible++
+    if (!known) continue
+    found++
     const time = (position[m * W]! + W / 2) / rate
     // where the last frame ends is each decoder's own say: the FLAC one ran 2 ms over the reference's
     if (time > reference.seconds - 0.02) continue
@@ -193,7 +222,8 @@ const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, event
       if (applied > asked + 1) result.short++
     }
   }
-  return { results: results.filter(({ heard }) => heard > 0), located: position.filter(Number.isFinite).length / total, priming }
+  // of what was heard, not of the recording, whose silence is however long the seeks and pauses took
+  return { results: results.filter(({ heard }) => heard > 0), located: found / audible, priming }
 }
 
 const FIXTURES = ['/normalizer-aac.mkv', '/normalizer-aac.mp4', '/normalizer-opus.webm', '/normalizer-flac.mkv', '/normalizer-aac44.mkv']
@@ -204,9 +234,12 @@ describe('the normalizer in step with the media, live', () => {
     await userEvent.click(document.body)
     events = await (await fetch('/normalizer-events.json')).json()
   })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
 
-  it.each(FIXTURES)('cuts every loud sound in time in %s, through seeks, pauses and the end of the file', async (url) => {
+  const cutsInTime = async (url: string) => {
     const run = await play(url)
     const { video } = run
     const seek = async (time: number, wait: number) => {
@@ -243,13 +276,23 @@ describe('the normalizer in step with the media, live', () => {
 
     const { results, located, priming } = await measure(url, run, events)
     console.log(url, `located ${(100 * located).toFixed(1)}%, priming ${(priming * 1000).toFixed(2)} ms`, JSON.stringify(results.map(({ label, heard, short, worst }) => [label, heard, short, +worst.toFixed(2)])))
-    // the control: the recording holds most of the events, and their cuts. A 44.1 kHz file is resampled to the
-    // context's rate by playback and by decodeAudioData, with different resamplers, so fewer of its blocks match
-    expect(located).toBeGreaterThan(url.includes('aac44') ? 0.4 : 0.8)
+    // the control: the recording holds the events, and their cuts
+    expect(located).toBeGreaterThan(0.95)
     expect(results.length).toBeGreaterThan(8)
     // the clock pairs place a 44.1 kHz file's audio within about 2 ms (HOR-498 arm D, 2026-10-16), against to the
     // sample at 48 kHz, so a resume can leave a few ms of its cut that far off
     const allowed = url.includes('aac44') ? 5 : 0
     expect(results.filter(({ short }) => short > allowed).map(({ label, short }) => `${label}: ${short} ms`)).toEqual([])
+  }
+
+  it.each(FIXTURES)('cuts every loud sound in time in %s, through seeks, pauses and the end of the file', cutsInTime, 120_000)
+
+  // the rate of a machine with no audio output, and of many a real one, wherever this one runs at another
+  it('cuts every loud sound in time in /normalizer-flac.mkv with the context at 44.1 kHz', async () => {
+    const Native = AudioContext
+    vi.stubGlobal('AudioContext', class extends Native {
+      constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 44100 }) }
+    })
+    await cutsInTime('/normalizer-flac.mkv')
   }, 120_000)
 })
