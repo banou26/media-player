@@ -89,8 +89,8 @@ reads as a browser bug rather than a missing asset. Serve both.
 
 `libavWorkerUrl` (`libav-wasm/build/worker.js`) is named individually and still copies fine.
 
-`normalizerWorkletUrl` is this package's own `dist/volume-normalizer-worklet.js`, a plain script that
-copies fine or imports as a url; see [the volume normalizer](#the-volume-normalizer).
+`normalizerWorkletUrl` is this package's own `dist/volume-normalizer-worklet.js`, one plain module with no imports
+that copies fine or imports as a url; see [the volume normalizer](#the-volume-normalizer).
 
 ### jassub's assets are imported, not copied
 
@@ -241,9 +241,9 @@ until a pointer that hovers moves again.
 
 ### The volume normalizer
 
-A "Normalize volume" switch in the settings menu holds the loudness steady, so a music cue comes out no
-louder than the dialogue around it. It is offered once you pass the worklet's url, and it is off until
-the viewer turns it on or you pass `normalizeVolume`:
+A "Normalize volume" switch in the settings menu keeps the file's own normal level and turns down what goes well over
+it, so a sudden blast comes out near the dialogue and the dialogue is left as it was. It is offered once you pass the
+worklet's url, and it is on unless the viewer turns it off or you pass `normalizeVolume={false}`:
 
 ```tsx
 import normalizerWorkletUrl from '@banou/media-player/volume-normalizer-worklet.js?no-inline&url'
@@ -251,27 +251,34 @@ import normalizerWorkletUrl from '@banou/media-player/volume-normalizer-worklet.
 <MediaPlayer
   {...source}
   normalizerWorkletUrl={normalizerWorkletUrl}
-  normalizeVolume={saved}
+  normalizeVolume={saved ?? true}
   onNormalizeVolumeChange={save}
 />
 ```
 
-The player saves nothing, so an app that wants the choice to stick saves what
-`onNormalizeVolumeChange` reports and passes it back.
+The player saves nothing, so an app that wants the choice to stick saves what `onNormalizeVolumeChange` reports and
+passes it back.
 
-It is an AudioWorklet that follows EBU short-term loudness (K-weighted, 3 s) and turns the gain down,
-never up, toward -24 LUFS: up to 20 dB, cutting with a 0.25 s time constant and recovering with 1 s. A
-cue is brought within a dialogue's level in about 3 s, and it adds no delay. The url has to be a
-script your origin serves: a page whose CSP says `script-src 'self'` refuses a worklet from a `blob:`
-or `data:` url, and `build.lib` inlines assets as `data:` without `?no-inline`.
+It works in two stages. A worker reads the file a second time, through `thumbnailRead` when you pass one and only
+within `downloadedRanges`, decodes its audio with WebCodecs, learns the file's normal level (the median 400 ms
+loudness) and computes a cut with unlimited lookahead, so a cut starts before a spike: every 10 ms of the output is
+held to 10 LU over the normal level and every 50 ms to 8 LU. It analyses what is near the playhead first and then the
+rest of the file, keeping only 1 ms loudness readings, never the audio. Wherever that analysis has not reached the
+playhead, and for a track this browser's WebCodecs cannot decode, an AudioWorklet plays a live stage: a 100 ms detector
+that cuts what goes 5 LU over the level heard so far, and the 10 ms loudness held to 10 LU over it, seen 10 ms ahead.
+Neither stage ever boosts. The sound plays 10 ms behind the picture, on or off, once routed.
 
-The first time it is on, the `<video>` is routed through Web Audio for the rest of its life, because an
-element cannot be handed back; off is a bypass. Routing waits until the AudioContext runs: one that
-autoplay rules hold back resumes on the page's next click, tap or key press, and the video plays as it
-always did until then. WebKit is refused (`createMediaElementSource` in `@banou/ponyfill/web-audio`),
-since a routed element loses its volume and mute there. The refusal comes when routing would, once the
-switch is on and the AudioContext runs: until then the switch reads as available, and from then on it
-reads Unavailable, with the element never routed and playing as it always did.
+The url names one file that is both the worklet and the worker's script, so it has to be a script your origin serves:
+a page whose CSP says `script-src 'self'` refuses a worklet or a worker from a `blob:` or `data:` url, and
+`build.lib` inlines assets as `data:` without `?no-inline`. A worker must also be same-origin, so serve it from the
+page's own origin.
+
+The first time it is on, the `<video>` is routed through Web Audio for the rest of its life, because an element cannot
+be handed back; off is a bypass. Routing waits until the AudioContext runs: one that autoplay rules hold back resumes
+on the page's next click, tap or key press, and the video plays as it always did until then. WebKit is refused
+(`createMediaElementSource` in `@banou/ponyfill/web-audio`), since a routed element loses its volume and mute there.
+The refusal comes when routing would, once the switch is on and the AudioContext runs: until then the switch reads as
+available, and from then on it reads Unavailable, with the element never routed and playing as it always did.
 
 ## Layout
 
