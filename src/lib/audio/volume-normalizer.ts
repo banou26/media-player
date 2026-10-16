@@ -1,8 +1,10 @@
 import { createMediaElementSource } from '@banou/ponyfill/web-audio'
 
-/** The worklet's processorOptions, read once when the node is made; its header has the defaults. */
+/**
+ * The worklet's processorOptions, read once when the node is made: `enabled` false starts it bypassed, and
+ * `inputGainDb` is the gain already applied upstream (the element's volume), which loudness is judged without.
+ */
 export type VolumeNormalizerOptions = {
-  targetLufs?: number
   enabled?: boolean
   inputGainDb?: number
 }
@@ -106,7 +108,7 @@ export const attachVolumeNormalizer = (
     created.port.postMessage({ enabled, inputGainDb: inputGainDb() })
     source.connect(created).connect(context.destination)
     element.addEventListener('volumechange', () => created.port.postMessage({ inputGainDb: inputGainDb() }))
-    // the 3 s window describes where the playhead was, and a new file owes nothing to the last one's cut
+    // the live detector describes where the playhead was, and a new file owes nothing to the last one's level
     element.addEventListener('seeking', () => created.port.postMessage({ reset: 'seek' }))
     element.addEventListener('emptied', () => created.port.postMessage({ reset: 'source' }))
     node = created

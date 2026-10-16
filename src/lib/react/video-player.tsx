@@ -156,11 +156,12 @@ export type MediaPlayerLocalOptions =
     downloadedRanges?: DownloadedRange[]
 
     /**
-     * Reader for the thumbnail engine, when it should differ from playback's.
+     * Reader for the thumbnail engine and the volume normalizer's analysis, when it should differ from playback's.
      *
      * They are the same by default so generation shares playback's fetch order. A consumer whose
      * reads are not free wants them apart: a torrent hands this a non-prioritising, fail-fast reader
-     * so generating previews cannot steal download order from the bytes playback is blocked on.
+     * so generating previews cannot steal download order from the bytes playback is blocked on. The
+     * analysis asks it only for bytes inside `downloadedRanges`, and with none given, for the whole file.
      */
     thumbnailRead?: (offset: number, size: number) => Promise<ArrayBuffer>
     /** Off entirely. A second wasm worker during pipeline boot is worth avoiding on a slow source. */
@@ -176,10 +177,13 @@ export type MediaPlayerLocalOptions =
      */
     normalizerWorkletUrl?: string
     /**
-     * The settings menu's "Normalize volume" switch: holds the loudness steady, so a music cue is turned down to
-     * the dialogue around it. Off by default. The player keeps the switch's state from here and from the viewer's
-     * clicks; nothing is saved, so an app that wants it to stick saves what `onNormalizeVolumeChange` reports and
-     * passes it back.
+     * The settings menu's "Normalize volume" switch: keeps the file's normal level and turns down what goes well
+     * over it, a loud burst before it starts. On by default; pass false for off. The player keeps the switch's
+     * state from here and from the viewer's clicks; nothing is saved, so an app that wants it to stick saves what
+     * `onNormalizeVolumeChange` reports and passes it back.
+     *
+     * While it is on the file is read a second time, in a worker, as far as `downloadedRanges` allows, to find the
+     * loud parts ahead of the playhead. The sound plays 10 ms behind its input, on or off, once routed.
      *
      * The first time it is on, the element is routed through Web Audio for the rest of its life (off then
      * bypasses). If autoplay rules hold the audio back, that waits for the page's next click, tap or key press, and
@@ -188,7 +192,7 @@ export type MediaPlayerLocalOptions =
      * the element is never routed.
      */
     normalizeVolume?: boolean
-    /** The viewer flipped the switch. */
+    /** The viewer flipped the switch, to `normalizeVolume`: what an app saves to pass back as `normalizeVolume`. */
     onNormalizeVolumeChange?: (normalizeVolume: boolean) => void
   }
 
@@ -298,13 +302,37 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // so there is nothing for them to attach to and nothing to guard at the call site.
   usePlayback(video, subtitleLayer, local)
 
-  const normalizeVolumeProp = local?.normalizeVolume
-  const [normalizeVolume, setNormalizeVolume] = useState(!!normalizeVolumeProp)
-  useEffect(() => { setNormalizeVolume(!!normalizeVolumeProp) }, [normalizeVolumeProp])
+  const normalizeVolumeProp = local?.normalizeVolume ?? true
+  const [normalizeVolume, setNormalizeVolume] = useState(normalizeVolumeProp)
+  useEffect(() => { setNormalizeVolume(normalizeVolumeProp) }, [normalizeVolumeProp])
   const onNormalizeVolumeChange = useRef(local?.onNormalizeVolumeChange)
   onNormalizeVolumeChange.current = local?.onNormalizeVolumeChange
   const normalizerWorkletUrl = local?.normalizerWorkletUrl
-  const { refused: normalizerRefused } = useVolumeNormalizer(video, normalizerWorkletUrl, normalizeVolume)
+  // the background reader, through a ref: a streaming consumer passes a fresh closure several times a second
+  const analysisRead = useRef(thumbnailRead ?? read)
+  analysisRead.current = thumbnailRead ?? read
+  const playingAudio = usePlayer((state) => state.selectedAudioTrack)
+  const hasRead = !!read
+  const normalizerSource = useMemo(
+    () => hasRead && size && publicPath && libavWorkerUrl && typeof playingAudio === 'number' && playingAudio >= 0
+      ? {
+        read: (offset: number, length: number) => analysisRead.current!(offset, length),
+        length: size,
+        publicPath,
+        libavWorkerUrl,
+        audioStreamIndex: playingAudio,
+      }
+      : undefined,
+    [hasRead, size, publicPath, libavWorkerUrl, playingAudio],
+  )
+  const normalizerRanges = useMemo(
+    () => downloadedRanges?.map(({ startByteOffset, endByteOffset }) => [startByteOffset, endByteOffset] as [number, number]),
+    // a streaming consumer changes the array identity every tick, so compare contents
+    [downloadedRanges?.map(({ startByteOffset, endByteOffset }) => `${startByteOffset}-${endByteOffset}`).join(',')],
+  )
+  const { refused: normalizerRefused } = useVolumeNormalizer(
+    video, normalizerWorkletUrl, normalizeVolume, normalizerSource, normalizerRanges,
+  )
   const volumeNormalizer = useMemo<VolumeNormalizerControl | null>(
     () => normalizerWorkletUrl && typeof AudioWorkletNode === 'function'
       ? {
