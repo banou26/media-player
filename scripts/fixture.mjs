@@ -421,6 +421,29 @@ export const ensureCueFixture = async () => {
   return CUE_FIXTURE_PATH
 }
 
+export const STEP_FIXTURE = 'step-tone.mkv'
+export const STEP_FIXTURE_PATH = PUBLIC_DIR + STEP_FIXTURE
+
+/**
+ * A minute of the stereo tone at about -29.8 LUFS, 15 dB louder from 2 to 3 s of every 3, so the file's normal level
+ * is the quiet tone and the loud seconds are what the normalizer cuts.
+ */
+export const ensureStepFixture = async () => {
+  if (await exists(STEP_FIXTURE_PATH)) return STEP_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=60',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=60',
+    '-af', "volume='if(lt(mod(t,3),2),0.3981,2.2387)':eval=frame:precision=float",
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac', '-ac', '2',
+    '-map', '0:v', '-map', '1:a',
+    STEP_FIXTURE_PATH,
+  ])
+  return STEP_FIXTURE_PATH
+}
+
 export const SHORT_AUDIO_FIXTURE = 'short-audio-tone.mkv'
 export const SHORT_VIDEO_FIXTURE = 'short-video-tone.mkv'
 export const SHORTER_AUDIO_FIXTURE = 'shorter-audio-tone.mkv'
@@ -472,8 +495,167 @@ export const ensureShortGopFixture = async () => {
   return SHORT_GOP_FIXTURE_PATH
 }
 
+/**
+ * The volume normalizer's own signal: a minute of synthetic dialogue at about -24 LUFS over a room tone, with loud
+ * events at starts off the 1 ms grid (HOR-498 review, shortened from its 240 s). Written as float WAVs, the mix and
+ * the dialogue alone on the same timeline, with the events in `normalizer-events.json`, then encoded into the
+ * containers and codecs playback passes through. Seeded, so every run writes the same samples.
+ */
+export const NORMALIZER_RATE = 48000
+export const NORMALIZER_SECONDS = 60
+export const NORMALIZER_FIXTURES = {
+  'normalizer-aac.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k'],
+  'normalizer-aac.mp4': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'],
+  'normalizer-aac44.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k', '-ar', '44100'],
+  'normalizer-opus.webm': ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-g', '48', '-c:a', 'libopus', '-b:a', '160k'],
+  'normalizer-flac.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'flac'],
+}
+
+const normalizerSignal = () => {
+  const RATE = NORMALIZER_RATE, N = NORMALIZER_SECONDS * RATE
+  let seed = 987654321
+  const rand = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 4294967296 }
+  const gauss = () => Math.sqrt(-2 * Math.log(rand() + 1e-12)) * Math.cos(2 * Math.PI * rand())
+  const uni = (a, b) => a + (b - a) * rand()
+  const bandpass = (f, q) => {
+    const w = 2 * Math.PI * f / RATE, alpha = Math.sin(w) / (2 * q), a0 = 1 + alpha
+    const b0 = alpha / a0, b2 = -alpha / a0, a1 = -2 * Math.cos(w) / a0, a2 = (1 - alpha) / a0
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0
+    return (x) => { const y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = x; y2 = y1; y1 = y; return y }
+  }
+  // BS.1770's 48 kHz K-weighting, for setting levels
+  const kweight = (x) => {
+    const y = new Float64Array(x.length)
+    let s1 = 0, s2 = 0, t1 = 0, t2 = 0
+    for (let i = 0; i < x.length; i++) {
+      const v = x[i]
+      const a = 1.53512485958697 * v + s1; s1 = -2.69169618940638 * v + 1.69065929318241 * a + s2; s2 = 1.19839281085285 * v - 0.73248077421585 * a
+      const b = a + t1; t1 = -2 * a + 1.99004745483398 * b + t2; t2 = a - 0.99007225036621 * b
+      y[i] = b
+    }
+    return y
+  }
+  // gated loudness of a mono signal on both channels
+  const loudness = (x) => {
+    const y = kweight(x), block = 0.4 * RATE, hop = 0.1 * RATE, blocks = []
+    for (let s = 0; s + block <= y.length; s += hop) {
+      let e = 0
+      for (let i = s; i < s + block; i++) e += y[i] * y[i]
+      blocks.push(2 * e / block)
+    }
+    const absolute = blocks.filter((e) => -0.691 + 10 * Math.log10(e) > -70)
+    const mean = absolute.reduce((a, b) => a + b, 0) / absolute.length
+    const relative = absolute.filter((e) => e > mean * 0.1)
+    return -0.691 + 10 * Math.log10(relative.reduce((a, b) => a + b, 0) / relative.length)
+  }
+
+  const dialogue = new Float32Array(N)
+  for (let t = Math.round(0.4 * RATE); t < N;) {
+    const words = Math.floor(uni(3, 12))
+    for (let w = 0; w < words && t < N; w++) {
+      const length = Math.round(uni(0.08, 0.35) * RATE), amp = uni(0.5, 1)
+      const f0a = uni(95, 260), f0b = f0a * uni(0.8, 1.2)
+      const formants = [bandpass(uni(350, 900), 5), bandpass(uni(1000, 2400), 8), bandpass(uni(2500, 3400), 10)]
+      const fricative = rand() < 0.35, hiss = bandpass(uni(4000, 7000), 2)
+      let phase = 0
+      for (let i = 0; i < length && t + i < N; i++) {
+        const u = i / length
+        const env = Math.min(1, i / (0.012 * RATE)) * Math.min(1, (length - i) / (0.03 * RATE)) * (0.8 + 0.2 * Math.sin(2 * Math.PI * 4 * u))
+        phase += (f0a + (f0b - f0a) * u) / RATE
+        phase -= Math.floor(phase)
+        const saw = 2 * phase - 1
+        let v = formants[0](saw) + 0.6 * formants[1](saw) + 0.3 * formants[2](saw)
+        if (fricative && i < 0.06 * RATE) v += 0.25 * hiss(gauss())
+        dialogue[t + i] += amp * env * v
+      }
+      t += length + Math.round(uni(0.02, 0.1) * RATE)
+    }
+    t += Math.round(uni(0.25, 1.2) * RATE)
+  }
+  const scale = Math.pow(10, (-24 - loudness(dialogue)) / 20)
+  for (let i = 0; i < N; i++) dialogue[i] *= scale
+
+  const left = new Float32Array(N), right = new Float32Array(N)
+  for (let i = 0; i < N; i++) { left[i] = dialogue[i] + 0.0012 * gauss(); right[i] = dialogue[i] + 0.0012 * gauss() }
+  const events = []
+  // a burst at the dialogue's level plus `lu` over its own length (a decaying one: over its first 50 ms)
+  const burst = (start, seconds, lu, label, shape = 'flat') => {
+    const n = Math.round(seconds * RATE), s0 = Math.round(start * RATE), x = new Float32Array(n), tone = bandpass(uni(600, 1500), 0.7)
+    for (let i = 0; i < n; i++) {
+      const env = shape === 'decay'
+        ? Math.min(1, i / (0.001 * RATE)) * Math.exp(-i / (0.04 * RATE))
+        : Math.min(1, i / (0.0002 * RATE)) * Math.min(1, (n - i) / (0.0005 * RATE))
+      x[i] = env * (0.6 * gauss() + 0.8 * tone(gauss()))
+    }
+    const y = kweight(x), m = shape === 'decay' ? Math.min(n, Math.round(0.05 * RATE)) : n
+    let e = 0
+    for (let i = 0; i < m; i++) e += y[i] * y[i]
+    const g = Math.pow(10, (-24 + lu + 0.691 - 10 * Math.log10(2 * e / m)) / 20)
+    for (let i = 0; i < n && s0 + i < N; i++) { left[s0 + i] += g * x[i]; right[s0 + i] += 0.9 * g * x[i] }
+    events.push({ label, start, seconds, lu })
+  }
+  burst(6.3337, 0.003, 20, 'click 3 ms +20')
+  burst(10.1234, 0.010, 15, 'burst 10 ms +15')
+  burst(14.5678, 0.030, 15, 'burst 30 ms +15')
+  burst(18.9012, 0.100, 12, 'burst 100 ms +12')
+  burst(22.2468, 0.25, 20, 'gunshot +20', 'decay')
+  for (let k = 0; k < 6; k++) burst(26.7531 + 0.06 * k, 0.008, 18, `shot ${k + 1} of 6, 8 ms +18`)
+  {
+    const s0 = Math.round(30.4321 * RATE), n = Math.round(1.5 * RATE), g = Math.pow(10, 9 / 20) - 1
+    for (let i = 0; i < n; i++) { left[s0 + i] += g * dialogue[s0 + i]; right[s0 + i] += g * dialogue[s0 + i] }
+    events.push({ label: 'shout 1.5 s +9', start: 30.4321, seconds: 1.5, lu: 9 })
+  }
+  burst(34.3210, 0.05, 18, 'burst 50 ms +18')
+  burst(38.6543, 1.0, 18, 'burst 1 s +18')
+  burst(42.2222, 0.2, 12, 'burst 200 ms +12')
+  burst(46.4567, 0.02, 18, 'burst 20 ms +18')
+  burst(50.7654, 0.05, 15, 'burst 50 ms +15')
+  burst(56.5003, 0.02, 18, 'burst 20 ms +18 near the end')
+  burst(59.9502, 0.03, 18, 'burst 30 ms +18 in the last 50 ms')
+
+  let peak = 0
+  for (let i = 0; i < N; i++) peak = Math.max(peak, Math.abs(left[i]), Math.abs(right[i]))
+  if (peak > 0.99) {
+    const g = 0.99 / peak
+    for (let i = 0; i < N; i++) { left[i] *= g; right[i] *= g; dialogue[i] *= g }
+  }
+  return { left, right, dialogue, events }
+}
+
+const writeWav = async (path, left, right) => {
+  const n = left.length, data = Buffer.alloc(n * 8), header = Buffer.alloc(44)
+  for (let i = 0; i < n; i++) { data.writeFloatLE(left[i], 8 * i); data.writeFloatLE(right[i], 8 * i + 4) }
+  header.write('RIFF', 0); header.writeUInt32LE(36 + data.length, 4); header.write('WAVE', 8)
+  header.write('fmt ', 12); header.writeUInt32LE(16, 16); header.writeUInt16LE(3, 20); header.writeUInt16LE(2, 22)
+  header.writeUInt32LE(NORMALIZER_RATE, 24); header.writeUInt32LE(NORMALIZER_RATE * 8, 28); header.writeUInt16LE(8, 32); header.writeUInt16LE(32, 34)
+  header.write('data', 36); header.writeUInt32LE(data.length, 40)
+  await writeFile(path, Buffer.concat([header, data]))
+}
+
+export const ensureNormalizerFixtures = async () => {
+  const paths = Object.keys(NORMALIZER_FIXTURES).map((name) => PUBLIC_DIR + name)
+  const wav = PUBLIC_DIR + 'normalizer-signal.wav'
+  if ((await Promise.all([wav, ...paths].map(exists))).every(Boolean)) return wav
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  const { left, right, dialogue, events } = normalizerSignal()
+  await writeWav(wav, left, right)
+  await writeWav(PUBLIC_DIR + 'normalizer-dialogue.wav', dialogue, dialogue)
+  await writeFile(PUBLIC_DIR + 'normalizer-events.json', JSON.stringify(events, null, 1))
+  for (const [name, codecs] of Object.entries(NORMALIZER_FIXTURES)) {
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', `testsrc=size=160x90:rate=24:duration=${NORMALIZER_SECONDS}`,
+      '-i', wav,
+      ...codecs,
+      '-map', '0:v', '-map', '1:a',
+      PUBLIC_DIR + name,
+    ])
+  }
+  return wav
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureLoudFixture, ensureCueFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
