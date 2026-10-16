@@ -101,6 +101,34 @@ describe('the analysis ahead, in the player', () => {
     await screen.unmount()
   }, 120_000)
 
+  // a torrent fetches from the new playhead after a seek, so the bytes the analysis waited on may never come
+  it('leaves a read that waits on a download for a seek past it, and analyses where the playhead went', async () => {
+    const file = await bytesOf('/normalizer-flac.mkv')
+    const size = file.byteLength
+    const read = async (offset: number, length: number) => file.slice(offset, Math.min(offset + length, size))
+    const { covered, last } = watchWorkers()
+    const props = { read, size, thumbnailRead: read, thumbnailsEnabled: false, ...playerAssets, autoplay: true }
+    const tail = Math.round(0.99 * size)
+    const screen = await render(<MediaPlayer {...props} downloadedRanges={[
+      { startByteOffset: 0, endByteOffset: Math.round(0.3 * size) },
+      { startByteOffset: tail, endByteOffset: size },
+    ]} />, { container: mountIn() })
+    await expect.poll(covered, { timeout: 30_000 }).toBeGreaterThan(5)
+    await sleep(1500)
+    // the control: the analysis stopped short of the bytes it waits on
+    expect(covered()).toBeLessThan(20)
+    const video = screen.container.querySelector('video')!
+    video.currentTime = 45
+    await expect.poll(() => !video.seeking && video.currentTime > 45, { timeout: 30_000 }).toBe(true)
+    await screen.rerender(<MediaPlayer {...props} downloadedRanges={[
+      { startByteOffset: 0, endByteOffset: Math.round(0.3 * size) },
+      { startByteOffset: Math.round(0.65 * size), endByteOffset: size },
+    ]} />)
+    const around = () => (last()?.spans as [number, number][] | undefined)?.some(([from, to]) => from <= 46 && to >= 50) ?? false
+    await expect.poll(around, { timeout: 20_000 }).toBe(true)
+    await screen.unmount()
+  }, 90_000)
+
   it('plays the live stage alone where this browser cannot decode the track, and stops reading', async () => {
     // the normalizer's worker in a browser whose WebCodecs decodes no audio, handed the messages that came while it
     // loaded the script

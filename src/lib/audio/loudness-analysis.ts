@@ -58,7 +58,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     !ranges || ranges.some(([from, to]) => from <= offset && Math.min(offset + size, source.length) <= to)
   const read = async (offset: number, size: number) => {
     while (!readable(offset, size)) {
-      // a read that waits on a download the playhead has moved away from is given up, so the remuxer can seek
+      // given up once the task waiting on it has been aborted, or the analysis stopped
       if (stopped || await new Promise<boolean>((resolve) => waiting.add(resolve))) throw new Error('Cancelled')
     }
     return source.read(offset, size)
@@ -141,9 +141,19 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     const next = gap ?? gapFrom(0)
     return next === null ? 'done' : attempt(next)
   }
+  /*
+   * A remuxer call that waits on a download is let go of when a seek wants to move on, and the seek that follows
+   * aborts it: libav aborts the task in flight when another starts. Failing the read itself does not end the task,
+   * since Matroska's demuxer reads the same bytes again (HOR-498 review, 2026-10-17).
+   */
+  let abandon = () => {}
+  const abandonable = <T>(task: Promise<T>) => {
+    task.catch(() => {})
+    return Promise.race([task, new Promise<undefined>((resolve) => { abandon = () => resolve(undefined) })])
+  }
   const onSeeking = () => {
     playhead()
-    if (started && waiting.size && typeof decide() === 'number') release(true)
+    if (started && waiting.size && typeof decide() === 'number') abandon()
     wake()
   }
   const onTime = () => {
@@ -197,15 +207,20 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
       }
       try {
         if (next === 'read') {
-          const result = await remuxer.read()
+          const result = await abandonable(remuxer.read())
           if (stopped) return
+          if (!result) continue
           await send(result)
           if (result.finished) await endRun(true)
         } else {
           await endRun(false)
           tried.set(Math.round(next * 10), version)
-          const result = await remuxer.seek(Math.max(0, next - RUN_LEAD_IN_SECONDS))
+          const seeking = remuxer.seek(Math.max(0, next - RUN_LEAD_IN_SECONDS))
+          // what the task it aborted was waiting on
+          release(true)
+          const result = await abandonable(seeking)
           if (stopped) return
+          if (!result) continue
           run++
           active = true
           runStart = result.pts
