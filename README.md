@@ -44,6 +44,10 @@ const source = await inputToRemuxerInput({ url: 'https://example.com/episode.mkv
 const source = await inputToRemuxerInput({ length, read })
 ```
 
+A URL's source comes back with `readsDownload: true`, which the player takes beside `read` and `size`: each read of
+it is a download, so the volume normalizer then analyses the audio playback fetched rather than fetching the file
+again.
+
 `usePlayer` reads and drives playback state from anywhere inside a `MediaPlayer`. It is the only hook
 the chrome uses: the built-in video.js state and this player's own source state (tracks, thumbnails,
 indexes, readiness) live on one store, so there is no second context to reach for.
@@ -260,7 +264,8 @@ The player saves nothing, so an app that wants the choice to stick saves what `o
 passes it back.
 
 It works in two stages. A worker reads the file a second time, through `thumbnailRead` when you pass one and only
-within `downloadedRanges`, decodes its audio with WebCodecs, learns the file's normal level (the median 400 ms
+within `downloadedRanges` (for a source that `readsDownload` it reads nothing and takes the audio playback fetched,
+about 30 s ahead of the playhead), decodes its audio with WebCodecs, learns the file's normal level (the median 400 ms
 loudness) and computes a cut with unlimited lookahead, so a cut starts before a spike: every 10 ms of the output is
 held to 10 LU over the normal level and every 50 ms to 8 LU. It analyses what is near the playhead first and then the
 rest of the file, keeping only 1 ms loudness readings, never the audio. Wherever that analysis has not reached the
