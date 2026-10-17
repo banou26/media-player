@@ -74,12 +74,12 @@ const primingOf = async (url: string) => {
  * Plays a fixture in the player and records, for every output sample, the input it came from: the element's audio
  * through a DelayNode of the normalizer's own 10 ms, beside the normalizer's output.
  */
-const play = async (url: string) => {
+const play = async (url: string, readsDownload = false) => {
   const routed = vi.spyOn(AudioContext.prototype, 'createMediaElementSource')
   const container = document.createElement('div')
   container.style.cssText = 'width: 640px; height: 360px;'
   document.body.append(container)
-  const screen = await render(<MediaPlayer {...await httpSource(url)} {...playerAssets} autoplay />, { container })
+  const screen = await render(<MediaPlayer {...await httpSource(url)} readsDownload={readsDownload} {...playerAssets} autoplay />, { container })
   await expect.poll(() => screen.container.querySelector('video'), { timeout: 30_000 }).not.toBeNull()
   const video = screen.container.querySelector('video')!
   await expect.poll(() => routed.mock.results.length, { timeout: 30_000 }).toBe(1)
@@ -177,10 +177,10 @@ const locate = (recorded: Float32Array, frames: Float64Array, reference: Float32
 }
 
 /**
- * Per loud event, the milliseconds the normalizer cut more than 1 dB less than the curve asks, over the event and
+ * Per loud event, the milliseconds the normalizer cut more than `slack` dB less than the curve asks, over the event and
  * the 30 ms before and 100 ms after it, wherever the recording holds it: the review's measure.
  */
-const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, events: NormalizerEvent[]) => {
+const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, events: NormalizerEvent[], slack: number) => {
   const { batches, marks, rate, delay } = await run.finish()
   const total = batches.reduce((n, b) => n + b.frames.length * 128, 0)
   const input = new Float32Array(total), output = new Float32Array(total), frames = new Float64Array(total)
@@ -219,7 +219,7 @@ const measure = async (url: string, run: Awaited<ReturnType<typeof play>>, event
       if (time < start - 0.03 || time > start + result.seconds + 0.1) continue
       result.heard++
       result.worst = Math.max(result.worst, applied - asked)
-      if (applied > asked + 1) result.short++
+      if (applied > asked + slack) result.short++
     }
   }
   // of what was heard, not of the recording, whose silence is however long the seeks and pauses took
@@ -239,8 +239,8 @@ describe('the normalizer in step with the media, live', () => {
     vi.unstubAllGlobals()
   })
 
-  const cutsInTime = async (url: string) => {
-    const run = await play(url)
+  const cutsInTime = async (url: string, readsDownload = false) => {
+    const run = await play(url, readsDownload)
     const { video } = run
     const seek = async (time: number, wait: number) => {
       video.currentTime = time
@@ -274,7 +274,10 @@ describe('the normalizer in step with the media, live', () => {
     await expect.poll(() => video.ended, { timeout: 30_000 }).toBe(true)
     await sleep(500)
 
-    const { results, located, priming } = await measure(url, run, events)
+    // Following playback, the level is learned from what playback fetched and held at -26 LUFS until the whole file
+    // is known, about 1.3 dB over this signal's -27.3 for most of the run, so every cut is that much short (HOR-660,
+    // 2026-10-17). A cut out of step is short by far more.
+    const { results, located, priming } = await measure(url, run, events, readsDownload ? 2 : 1)
     console.log(url, `located ${(100 * located).toFixed(1)}%, priming ${(priming * 1000).toFixed(2)} ms`, JSON.stringify(results.map(({ label, heard, short, worst }) => [label, heard, short, +worst.toFixed(2)])))
     // the control: the recording holds the events, and their cuts
     expect(located).toBeGreaterThan(0.95)
@@ -285,7 +288,10 @@ describe('the normalizer in step with the media, live', () => {
     expect(results.filter(({ short }) => short > allowed).map(({ label, short }) => `${label}: ${short} ms`)).toEqual([])
   }
 
-  it.each(FIXTURES)('cuts every loud sound in time in %s, through seeks, pauses and the end of the file', cutsInTime, 120_000)
+  it.each(FIXTURES)('cuts every loud sound in time in %s, through seeks, pauses and the end of the file', (url) => cutsInTime(url), 120_000)
+
+  // a source whose reads are downloads, analysed from the audio playback fetched rather than read again
+  it('cuts every loud sound in time in /normalizer-flac.mkv over HTTP, following playback', () => cutsInTime('/normalizer-flac.mkv', true), 120_000)
 
   // the rate of a machine with no audio output, and of many a real one, wherever this one runs at another
   it('cuts every loud sound in time in /normalizer-flac.mkv with the context at 44.1 kHz', async () => {

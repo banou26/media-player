@@ -23,6 +23,18 @@ export type MediaIndex = { pos: number, timestamp: number }
  */
 export type MediaChapter = { start: number, end: number, title: string }
 
+/**
+ * What the remuxer produced, in the order it was appended: the init segment and the input audio stream it carries,
+ * a run at load and at every remuxer seek (`pts` is the timestampOffset its fragments are appended at), each
+ * fragment, and the end of the file once read. The buffers are playback's own and may be appended again, so a
+ * consumer copies what it keeps.
+ */
+export type PlaybackOutput =
+  | { type: 'init', data: ArrayBuffer, audioMimeType: string, audioStreamIndex: number }
+  | { type: 'run', pts: number }
+  | { type: 'fragment', data: ArrayBuffer }
+  | { type: 'end' }
+
 export type PlaybackOptions = {
   videoElement: HTMLVideoElement
   /**
@@ -51,6 +63,7 @@ export type PlaybackOptions = {
   onSeek?: (fraction: number) => void
   onSubtitleStreams?: (streams: SubtitleStream[]) => void
   onAudioStreams?: (streams: AudioStream[], selected: number) => void
+  onOutput?: (output: PlaybackOutput) => void
 }
 
 export type PlaybackController = {
@@ -146,7 +159,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     videoElement, subtitleContainer, read, length, publicPath, libavWorkerUrl,
     jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
-    onAudioStreams,
+    onAudioStreams, onOutput,
   } = options
 
   const remuxer = await makeRemuxer({
@@ -253,6 +266,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     const { appendBuffer, unbufferRange, updateTimestampOffset, endOfStream } = updateSourceBuffer(sourceBuffer, mediaSource)
     await appendBuffer(metadata.data)
+    onOutput?.({ type: 'init', data: metadata.data, audioMimeType: metadata.info.output.audioMimeType, audioStreamIndex: selectedAudio })
+    onOutput?.({ type: 'run', pts: 0 })
     if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
     onReady?.()
 
@@ -400,6 +415,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         if (fragments?.length) subtitles.pushFragments(fragments)
         await updateTimestampOffset(pts)
         if (destroyed || generation !== seekGeneration) return
+        onOutput?.({ type: 'run', pts })
+        if (data.byteLength) onOutput?.({ type: 'fragment', data })
+        if (done) onOutput?.({ type: 'end' })
         if (data.byteLength) {
           await appendBuffer(data)
           trackAppendedEnd()
@@ -458,6 +476,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           if (stale()) return
           if (done) finished = true
           if (fragments?.length) subtitles.pushFragments(fragments)
+          if (data.byteLength) onOutput?.({ type: 'fragment', data })
+          if (done) onOutput?.({ type: 'end' })
           if (!data.byteLength) return
           pending = data
           pendingAttempts = 0

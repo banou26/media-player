@@ -1,4 +1,4 @@
-import type { PlaybackController } from '../../engine'
+import type { PlaybackController, PlaybackOutput } from '../../engine'
 import type { PlaybackErrorEntry } from '../source-feature'
 import type { MediaPlayerLocalOptions } from '../video-player'
 
@@ -74,6 +74,7 @@ export const usePlayback = (
   subtitles: HTMLElement | null,
   /** null when the media is remote: there are no bytes, so there is no pipeline to run. */
   options: MediaPlayerLocalOptions | null,
+  onOutput?: (output: PlaybackOutput) => void,
 ) => {
   const player = usePlayer()
   // The four asset urls are required on the local arm, so a default only ever applies when options is
@@ -147,6 +148,8 @@ export const usePlayback = (
   onSeekRef.current = options?.onSeek
   const onPlaybackErrorRef = useRef(options?.onPlaybackError)
   onPlaybackErrorRef.current = options?.onPlaybackError
+  const onOutputRef = useRef(onOutput)
+  onOutputRef.current = onOutput
 
   // The store's ids are opaque, but everything this hook writes into it came from libav, so every id
   // that comes back is one of its own stream indices.
@@ -355,6 +358,7 @@ export const usePlayback = (
           onError: fail,
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
           onSeek: (fraction) => onSeekRef.current?.(fraction),
+          onOutput: (output) => onOutputRef.current?.(output),
           onSubtitleStreams: (streams) => {
             if (cancelled) return
             player.setSourceState({

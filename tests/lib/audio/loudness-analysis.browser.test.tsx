@@ -8,6 +8,7 @@ import MediaPlayer from '../../../src/lib/react/video-player'
 import { attachVolumeNormalizer } from '../../../src/lib/audio/volume-normalizer'
 import { startLoudnessAnalysis } from '../../../src/lib/audio/loudness-analysis'
 import { audioSamplesOf, audioTrackOf } from '../../../src/lib/audio/volume-normalizer-worklet.js'
+import { inputToRemuxerInput } from '../../../src/lib/utils/source'
 import { playerAssets } from '../../../src/asset-urls'
 
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms))
@@ -129,6 +130,65 @@ describe('the analysis ahead, in the player', () => {
     await screen.unmount()
   }, 90_000)
 
+  // player.fkn.app's url mode: each read is a download, and nothing says which bytes are already here
+  it('fetches an HTTP file no more than playback alone does, analysing what playback fetched, also after a seek', async () => {
+    const source = await inputToRemuxerInput({ url: new URL('/normalizer-flac.mkv', location.href).href })
+    const { last } = watchWorkers()
+    const analysed = (from: number, to: number) =>
+      (last()?.spans as [number, number][] | undefined)?.some(([a, b]) => a <= from && b >= to) ?? false
+    // paused at the start, then at 45 s, so playback reads the same bytes whether the normalizer is on or not
+    const fetched = async (normalizeVolume: boolean) => {
+      let bytes = 0
+      const read = async (offset: number, length: number) => {
+        const data = await source.read(offset, length)
+        bytes += data.byteLength
+        return data
+      }
+      const screen = await render(
+        <MediaPlayer
+          read={read} size={source.length} readsDownload={source.readsDownload} normalizeVolume={normalizeVolume}
+          thumbnailsEnabled={false} {...playerAssets}
+        />,
+        { container: mountIn() },
+      )
+      await expect.poll(() => screen.container.querySelector('video'), { timeout: 30_000 }).not.toBeNull()
+      const video = screen.container.querySelector('video')!
+      const bufferedEnd = () => video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0
+      await expect.poll(bufferedEnd, { timeout: 30_000 }).toBeGreaterThan(30)
+      // the control: playback has not buffered to the end, so what is analysed ahead is not the whole file
+      expect(bufferedEnd()).toBeLessThan(video.duration - 10)
+      if (normalizeVolume) await expect.poll(() => analysed(1, 25), { timeout: 20_000 }).toBe(true)
+      video.currentTime = 45
+      await expect.poll(bufferedEnd, { timeout: 30_000 }).toBeGreaterThan(video.duration - 1)
+      if (normalizeVolume) await expect.poll(() => analysed(46, 55), { timeout: 20_000 }).toBe(true)
+      await sleep(500)
+      await screen.unmount()
+      return bytes
+    }
+    const alone = await fetched(false)
+    expect(alone).toBeGreaterThan(0)
+    expect(await fetched(true)).toBe(alone)
+  }, 90_000)
+
+  it('turned on mid-play over HTTP, starts no remuxer of its own and analyses what playback fetches from then on', async () => {
+    const source = await inputToRemuxerInput({ url: new URL('/normalizer-flac.mkv', location.href).href })
+    const { workers, last } = watchWorkers()
+    const analysed = (from: number, to: number) =>
+      (last()?.spans as [number, number][] | undefined)?.some(([a, b]) => a <= from && b >= to) ?? false
+    const props = {
+      read: source.read, size: source.length, readsDownload: source.readsDownload, thumbnailsEnabled: false,
+      ...playerAssets, autoplay: true,
+    }
+    const screen = await render(<MediaPlayer {...props} normalizeVolume={false} />, { container: mountIn() })
+    await expect.poll(() => screen.container.querySelector('video')?.currentTime ?? 0, { timeout: 30_000 }).toBeGreaterThan(1)
+    await screen.rerender(<MediaPlayer {...props} normalizeVolume />)
+    // playback holds about 39 s by then, and reads on once less than 30 s of it is ahead
+    await expect.poll(() => analysed(41, 50), { timeout: 20_000 }).toBe(true)
+    expect(analysed(5, 6)).toBe(false)
+    expect(workers.filter(({ url }) => url.includes('libav')).length).toBe(1)
+    await screen.unmount()
+  }, 60_000)
+
   it('plays the live stage alone where this browser cannot decode the track, and stops reading', async () => {
     // the normalizer's worker in a browser whose WebCodecs decodes no audio, handed the messages that came while it
     // loaded the script
@@ -232,6 +292,44 @@ describe('the analysis ahead, in the player', () => {
     expect(spans.length).toBe(1)
     expect(spans[0][0]).toBe(0)
     expect(Math.abs(end - fromGap)).toBeLessThan(0.002)
+  }, 60_000)
+
+  // an analysis that attaches to playback mid-run has its decoder start at whatever fragment comes next
+  it('leaves out the first 50 ms of a run it joined, counted from the first fragment it was handed', async () => {
+    const file = await bytesOf('/normalizer-aac.mkv')
+    const remuxer = await makeRemuxer({
+      publicPath: playerAssets.publicPath,
+      workerUrl: playerAssets.libavWorkerUrl,
+      workerOptions: { type: 'module' },
+      length: file.byteLength,
+      read: async (offset, length) => file.slice(offset, Math.min(offset + length, file.byteLength)),
+    })
+    const init = await remuxer.init()
+    const fragments: ArrayBuffer[] = []
+    for (let done = false; !done;) {
+      const { data, finished } = await remuxer.read()
+      fragments.push(data)
+      done = finished
+    }
+    await remuxer.destroy()
+    const track = audioTrackOf(init.data)!
+    const from = fragments.findIndex((fragment, i) => i >= 3 && audioSamplesOf(fragment, track).length > 0)
+    const first = audioSamplesOf(fragments[from]!, track)[0]!.time / track.timescale
+    // the control: the run joined well after its start
+    expect(first).toBeGreaterThan(1)
+
+    const worker = new Worker(playerAssets.normalizerWorkletUrl, { type: 'module' })
+    const ended = new Promise<any>((resolve) => worker.addEventListener('message', ({ data }) => { if (data.type === 'ended') resolve(data) }))
+    const { port1 } = new MessageChannel()
+    worker.postMessage({ type: 'port', port: port1 }, [port1])
+    worker.postMessage({ type: 'init', data: init.data, codec: init.info.output.audioMimeType })
+    worker.postMessage({ type: 'run', run: 0, pts: 0, start: false, join: true })
+    for (const data of fragments.slice(from)) worker.postMessage({ type: 'fragment', run: 0, data }, [data])
+    worker.postMessage({ type: 'end', run: 0, finished: true })
+    const { spans } = await ended
+    worker.terminate()
+    expect(spans.length).toBe(1)
+    expect(Math.abs(spans[0][0] - (first + 0.05))).toBeLessThan(0.002)
   }, 60_000)
 
   it('keeps waiting for the end of the file through a seek while init reads it, and analyses once it arrives', async () => {

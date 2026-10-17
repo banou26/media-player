@@ -42,14 +42,18 @@ const fromUrl = async (
     if (!response.ok) throw new Error(`The source could not be read: HTTP ${response.status}`)
     return response.arrayBuffer()
   }
-  return { length, name, read }
+  return { length, name, read, readsDownload: true }
 }
 
-/** A source resolved down to what the remuxer needs: a total length and a byte-range reader. */
+/**
+ * A source resolved down to what the remuxer needs: a total length and a byte-range reader, and whether each read
+ * is a download, which the player's `readsDownload` takes.
+ */
 export type RemuxerInput = {
   length: number
   name?: string
   read: (offset: number, size: number) => Promise<ArrayBuffer>
+  readsDownload?: boolean
 }
 
 export const inputToRemuxerInput = async (

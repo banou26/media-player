@@ -629,12 +629,15 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
 }
 
 /*
- * The worker's side: fragments from a second libav remuxer reading the same file, decoded with WebCodecs.
+ * The worker's side: fragments from a second libav remuxer reading the same file, or from playback's own, decoded with
+ * WebCodecs.
  *
  *   { type: 'port', port }                the worklet's end of a MessageChannel, for the blocks
  *   { type: 'init', data, codec }         the init segment and the codec string MediaSource was given
  *   { type: 'run', run, pts, start }      a run of fragments starts, `pts` added to their times as the SourceBuffer's
- *                                         timestampOffset adds it for playback; `start` for the one from the start
+ *                                         timestampOffset adds it for playback; `start` for the one from the start,
+ *                                         and `join: true` for one whose first fragments went by unseen, which starts
+ *                                         at its first sample
  *   { type: 'fragment', run, data }       answered { type: 'ack', run, spans, end, normal } once its audio is queued
  *                                         for decoding: the analysed seconds, the file's end once known, and the
  *                                         level learned so far in LUFS
@@ -651,6 +654,7 @@ const serve = (scope) => {
   let decoder
   let runId = -1
   let pts = 0
+  let joining = false
   const analysis = createAnalysis({
     toWorklet: (message, transfer) => port?.postMessage(message, transfer),
     toPage: (message) => scope.postMessage(message),
@@ -707,10 +711,16 @@ const serve = (scope) => {
       runId = data.run
       pts = data.pts
       open(runId)
-      analysis.startRun(runId, pts, data.start)
+      joining = !!data.join
+      if (!joining) analysis.startRun(runId, pts, data.start)
     } else if (data.type === 'fragment') {
       if (data.run !== runId || decoder.state !== 'configured') return
-      for (const sample of audioSamplesOf(data.data, track)) {
+      const samples = audioSamplesOf(data.data, track)
+      if (joining && samples.length) {
+        joining = false
+        analysis.startRun(runId, pts + samples[0].time / track.timescale)
+      }
+      for (const sample of samples) {
         const time = pts + sample.time / track.timescale
         stamps.push(time)
         decoder.decode(new EncodedAudioChunk({

@@ -1,5 +1,6 @@
 import type { VolumeNormalizer } from '../../audio/volume-normalizer'
 import type { LoudnessSource } from '../../audio/loudness-analysis'
+import type { PlaybackTap } from '../../audio/playback-tap'
 
 import { useEffect, useRef, useState } from 'react'
 
@@ -12,13 +13,13 @@ import { startLoudnessAnalysis } from '../../audio/loudness-analysis'
  * engine turned the element down, which leaves it playing exactly as before.
  *
  * With a `source`, the file is also analysed ahead of the playhead while it is on, reading only the byte `ranges`
- * given (all of them when undefined).
+ * given (all of them when undefined), or with a `tap`, from the audio playback remuxed.
  */
 export const useVolumeNormalizer = (
   video: HTMLVideoElement | null,
   workletUrl: string | undefined,
   enabled: boolean,
-  source?: LoudnessSource,
+  source?: LoudnessSource | { tap: PlaybackTap, audioStreamIndex: number },
   ranges?: [number, number][],
 ) => {
   const handle = useRef<VolumeNormalizer | null>(null)
@@ -53,7 +54,9 @@ export const useVolumeNormalizer = (
   const analysis = useRef<ReturnType<typeof startLoudnessAnalysis> | null>(null)
   const sourceRef = useRef(source)
   sourceRef.current = source
-  const { length, publicPath, libavWorkerUrl, audioStreamIndex } = source ?? {}
+  const { length, publicPath, libavWorkerUrl } = source && 'read' in source ? source : {}
+  const tap = source && 'tap' in source ? source.tap : undefined
+  const audioStreamIndex = source?.audioStreamIndex
   useEffect(() => {
     const current = sourceRef.current
     if (!node || !video || !workletUrl || !enabled || !current) return
@@ -64,7 +67,7 @@ export const useVolumeNormalizer = (
       started.stop()
       analysis.current = null
     }
-  }, [node, video, workletUrl, enabled, length, publicPath, libavWorkerUrl, audioStreamIndex])
+  }, [node, video, workletUrl, enabled, length, publicPath, libavWorkerUrl, audioStreamIndex, tap])
 
   useEffect(() => { analysis.current?.update(ranges) }, [ranges])
 
