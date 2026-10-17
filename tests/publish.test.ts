@@ -60,9 +60,10 @@ describe('a release waits on Test', () => {
   })
 
   it('releases only a green Test run of a push, on the commit main is at', () => {
-    expect(job).toContain("github.event.workflow_run.conclusion == 'success'")
-    expect(job, 'a pull request from a fork branch named main also matches `branches`').toContain("github.event.workflow_run.event == 'push'")
-    expect(job, 'provenance names github.sha, so Test has to have passed on that commit').toContain('github.event.workflow_run.head_sha == github.sha')
+    const condition = job.slice(job.indexOf('if:')).replace(/\s+/g, ' ').trim()
+    expect(condition, 'all three at once: a fork pull request from a branch named main also matches `branches`, and provenance names github.sha').toBe(
+      "if: >- github.event_name == 'workflow_dispatch' || ( github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_sha == github.sha )",
+    )
     expect(steps, 'checking out anything but github.sha builds a commit provenance does not name').not.toMatch(/^\s+ref:/m)
   })
 
