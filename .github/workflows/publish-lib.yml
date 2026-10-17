@@ -8,8 +8,8 @@
 #
 # Chained on the test workflow rather than triggered by the push itself: main has no promotion gate,
 # so a push starts Test and this at the same moment, and a publish that overtook its own suite would
-# ship whatever was committed. `workflow_run` runs this only after Test has actually gone green, and
-# on the commit Test validated rather than on wherever main has moved since.
+# ship whatever was committed. `workflow_run` runs this only after Test has gone green on a push of
+# the commit main is at, since that commit is the one npm's provenance names.
 name: Publish @banou/media-player
 
 on:
@@ -32,7 +32,16 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # On workflow_run, GITHUB_SHA is main's tip, which is what this checks out and what provenance
+    # names, so Test has to have passed a push of that very commit: not a fork's pull request from a
+    # branch named main, and not a commit main has since moved past, which the newer commit's own
+    # Test run releases.
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_sha == github.sha
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -46,20 +55,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # publish exactly the commit the test run validated, not whatever main moved to since
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       # A dispatch must not satisfy the gate merely by existing: the button stays, it just has to
-      # point at a commit Test has already passed on.
+      # point at a commit Test has already passed on. `! -ge` rather than `-lt`, because `[` fails
+      # on an empty or non-numeric answer, and that has to stop the release too.
       - name: Require a green test run for this commit
         if: github.event_name == 'workflow_dispatch' && inputs.force != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          green=$(gh api "repos/${{ github.repository }}/actions/workflows/test.yml/runs?head_sha=${{ github.sha }}&status=completed" --jq '[.workflow_runs[] | select(.conclusion == "success")] | length')
-          echo "successful test runs for ${{ github.sha }}: ${green}"
-          if [ "$green" -lt 1 ]; then
+          green=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yml/runs?head_sha=$GITHUB_SHA&event=push&status=success" --jq .total_count)
+          echo "successful test runs for $GITHUB_SHA: $green"
+          if ! [ "$green" -ge 1 ]; then
             echo "::error::no successful test run for this commit - wait for Test, or dispatch again with force=true"
             exit 1
           fi
