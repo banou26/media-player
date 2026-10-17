@@ -41,7 +41,8 @@ const CLOCK_MS = 50
  * plays.
  *
  * Given a `tap` instead, it reads nothing and analyses the audio playback remuxed for `audioStreamIndex`, which runs
- * as far ahead of the playhead as playback buffers, from wherever playback is when it attaches.
+ * as far ahead of the playhead as playback buffers. It starts at the next fragment playback fetches, so what was
+ * buffered before it attached is not analysed.
  */
 export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
   node: AudioWorkletNode
