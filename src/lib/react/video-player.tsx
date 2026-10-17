@@ -15,15 +15,20 @@ import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture-in-picture'
 import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
+import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
 
 /**
  * The source, read a range at a time: the player never downloads the whole file. Both fields travel
  * together, so passing one without the other is a type error.
+ *
+ * `readsDownload` marks a source each read of which is a download, a file over HTTP, so the volume normalizer
+ * analyses the audio playback fetched instead of reading the file again. Without it, and with no
+ * `downloadedRanges`, every byte is taken to be readable for free, as a local file's are.
  */
 export type MediaPlayerSource =
-  | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number }
-  | { read?: undefined, size?: undefined }
+  | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number, readsDownload?: boolean }
+  | { read?: undefined, size?: undefined, readsDownload?: undefined }
 
 /** Shared by both arms: nothing here depends on who owns the media. */
 type CommonOptions = {
@@ -161,7 +166,8 @@ export type MediaPlayerLocalOptions =
      * They are the same by default so generation shares playback's fetch order. A consumer whose
      * reads are not free wants them apart: a torrent hands this a non-prioritising, fail-fast reader
      * so generating previews cannot steal download order from the bytes playback is blocked on. The
-     * analysis asks it only for bytes inside `downloadedRanges`, and with none given, for the whole file.
+     * analysis asks it only for bytes inside `downloadedRanges`, with none given for the whole file, and for
+     * nothing when the source `readsDownload`.
      */
     thumbnailRead?: (offset: number, size: number) => Promise<ArrayBuffer>
     /** Off entirely. A second wasm worker during pipeline boot is worth avoiding on a slow source. */
@@ -183,7 +189,8 @@ export type MediaPlayerLocalOptions =
      * `onNormalizeVolumeChange` reports and passes it back.
      *
      * While it is on the file is read a second time, in a worker, as far as `downloadedRanges` allows, to find the
-     * loud parts ahead of the playhead. The sound plays 10 ms behind its input, on or off, once routed.
+     * loud parts ahead of the playhead; a source that `readsDownload` is not read again, and its loud parts are found
+     * in what playback fetched. The sound plays 10 ms behind its input, on or off, once routed.
      *
      * The first time it is on, the element is routed through Web Audio for the rest of its life (off then
      * bypasses). If autoplay rules hold the audio back, that waits for the page's next click, tap or key press, and
@@ -250,7 +257,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // local arm and is absent when the media is remote.
   const { title, chapters } = options
   const {
-    size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled,
+    size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled, readsDownload,
   } = local ?? ({} as Partial<MediaPlayerLocalOptions>)
 
   const setMedia = useMediaAttach()
@@ -298,9 +305,12 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     return () => { dropped = true; stop?.() }
   }, [media, !!expose, exposeId, exposeOrigin, exposeChannel])
 
+  // one per file, as `size` is the source's identity everywhere here
+  const tap = useMemo(() => createPlaybackTap(), [size])
+
   // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
   // so there is nothing for them to attach to and nothing to guard at the call site.
-  usePlayback(video, subtitleLayer, local)
+  usePlayback(video, subtitleLayer, local, readsDownload ? tap.push : undefined)
 
   const normalizeVolumeProp = local?.normalizeVolume ?? true
   const [normalizeVolume, setNormalizeVolume] = useState(normalizeVolumeProp)
@@ -315,15 +325,17 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const hasRead = !!read
   const normalizerSource = useMemo(
     () => hasRead && size && publicPath && libavWorkerUrl && typeof playingAudio === 'number' && playingAudio >= 0
-      ? {
-        read: (offset: number, length: number) => analysisRead.current!(offset, length),
-        length: size,
-        publicPath,
-        libavWorkerUrl,
-        audioStreamIndex: playingAudio,
-      }
+      ? readsDownload
+        ? { tap, audioStreamIndex: playingAudio }
+        : {
+          read: (offset: number, length: number) => analysisRead.current!(offset, length),
+          length: size,
+          publicPath,
+          libavWorkerUrl,
+          audioStreamIndex: playingAudio,
+        }
       : undefined,
-    [hasRead, size, publicPath, libavWorkerUrl, playingAudio],
+    [hasRead, size, publicPath, libavWorkerUrl, playingAudio, readsDownload, tap],
   )
   const normalizerRanges = useMemo(
     () => downloadedRanges?.map(({ startByteOffset, endByteOffset }) => [startByteOffset, endByteOffset] as [number, number]),

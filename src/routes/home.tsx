@@ -136,7 +136,7 @@ export const Home = () => {
 
   // named rather than spread inline, because an inline ternary widens to two optional keys
   const sourceProps: MediaPlayerSource = source
-    ? { read: slowRead(source.read, readDelayParam()), size: source.length }
+    ? { read: slowRead(source.read, readDelayParam()), size: source.length, readsDownload: source.readsDownload }
     : {}
 
   return (

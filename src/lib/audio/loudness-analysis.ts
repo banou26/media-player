@@ -1,3 +1,5 @@
+import type { PlaybackTap } from './playback-tap'
+
 import { makeRemuxer } from 'libav-wasm'
 
 import { terminateRemuxer } from '../engine/playback'
@@ -37,12 +39,15 @@ const CLOCK_MS = 50
  * nearest the playhead first, then the rest of the file, and drops nothing it learned on a seek. Until a stretch is
  * analysed, and for the whole file where this browser's WebCodecs cannot decode the track, the worklet's live stage
  * plays.
+ *
+ * Given a `tap` instead, it reads nothing and analyses the audio playback remuxed for `audioStreamIndex`, which runs
+ * as far ahead of the playhead as playback buffers, from wherever playback is when it attaches.
  */
 export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
   node: AudioWorkletNode
   element: HTMLMediaElement
   scriptUrl: string
-  source: LoudnessSource
+  source: LoudnessSource | { tap: PlaybackTap, audioStreamIndex: number }
 }): LoudnessAnalysis => {
   let stopped = false
   let ranges: [number, number][] | undefined
@@ -54,14 +59,13 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
   }
   const changed = () => new Promise<void>((resolve) => wakers.add(resolve))
 
-  const readable = (offset: number, size: number) =>
-    !ranges || ranges.some(([from, to]) => from <= offset && Math.min(offset + size, source.length) <= to)
-  const read = async (offset: number, size: number) => {
-    while (!readable(offset, size)) {
+  const read = async (reader: LoudnessSource, offset: number, size: number) => {
+    const end = Math.min(offset + size, reader.length)
+    while (ranges && !ranges.some(([from, to]) => from <= offset && end <= to)) {
       // given up once the task waiting on it has been aborted, or the analysis stopped
       if (stopped || await new Promise<boolean>((resolve) => waiting.add(resolve))) throw new Error('Cancelled')
     }
-    return source.read(offset, size)
+    return reader.read(offset, size)
   }
   const release = (abandon: boolean) => {
     for (const resolve of [...waiting]) resolve(abandon)
@@ -180,14 +184,14 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     await acked
   }
 
-  const loop = async () => {
+  const loop = async (reader: LoudnessSource) => {
     remuxer = await makeRemuxer({
-      publicPath: source.publicPath,
-      workerUrl: source.libavWorkerUrl,
+      publicPath: reader.publicPath,
+      workerUrl: reader.libavWorkerUrl,
       workerOptions: { type: 'module' },
-      length: source.length,
-      read,
-      audioStreamIndex: source.audioStreamIndex,
+      length: reader.length,
+      read: (offset, size) => read(reader, offset, size),
+      audioStreamIndex: reader.audioStreamIndex,
     })
     // stopped while it was being made, which stop() could not end
     if (stopped) return terminateRemuxer(remuxer)
@@ -240,6 +244,30 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     remuxer = undefined
   }
 
+  let detach = () => {}
+  const follow = (tap: PlaybackTap, audioStreamIndex: number) => {
+    let open = false
+    const end = (finished: boolean) => {
+      if (open) worker.postMessage({ type: 'end', run, finished })
+      open = false
+    }
+    detach = tap.attach(audioStreamIndex, (output, join) => {
+      if (output.type === 'init') {
+        end(false)
+        const data = output.data.slice(0)
+        worker.postMessage({ type: 'init', data, codec: output.audioMimeType }, [data])
+      } else if (output.type === 'run') {
+        end(false)
+        open = true
+        worker.postMessage({ type: 'run', run: ++run, pts: output.pts, start: !join && output.pts <= 0, join })
+      } else if (output.type === 'end') end(true)
+      else if (open) {
+        const data = output.data.slice(0)
+        worker.postMessage({ type: 'fragment', run, data }, [data])
+      }
+    })
+  }
+
   const stop = () => {
     if (stopped) return
     stopped = true
@@ -250,6 +278,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     element.removeEventListener('seeking', onSeeking)
     element.removeEventListener('seeked', onTime)
     element.removeEventListener('timeupdate', onTime)
+    detach()
     if (remuxer) terminateRemuxer(remuxer)
     worker.terminate()
     node.port.postMessage({ analysis: null })
@@ -257,11 +286,14 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     replies.clear()
   }
 
-  loop().catch((error) => {
-    if (stopped) return
-    console.warn('[media-player] the volume normalizer cannot analyse ahead:', error)
-    stop()
-  })
+  if ('tap' in source) follow(source.tap, source.audioStreamIndex)
+  else {
+    loop(source).catch((error) => {
+      if (stopped) return
+      console.warn('[media-player] the volume normalizer cannot analyse ahead:', error)
+      stop()
+    })
+  }
   playhead()
 
   return {

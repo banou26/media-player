@@ -43,6 +43,7 @@ export type {
   PictureInPictureController,
   PlaybackController,
   PlaybackOptions,
+  PlaybackOutput,
   SubtitleStream,
   ThumbnailImage,
 } from './engine'
