@@ -34,7 +34,7 @@
     "types": "tsc -p tsconfig.lib.json",
     "copy-assets": "shx mkdir -p public && npm run copy-libav",
     "copy-libav": "shx cp node_modules/libav-wasm/build/worker.js public/libav-worker.js && shx cp node_modules/libav-wasm/build/libav.wasm public/libav.wasm && shx cp node_modules/libav-wasm/build/libav-jspi.wasm public/libav-jspi.wasm",
-    "test": "npm run fixtures && vp test run",
+    "test": "npm run copy-assets && npm run fixtures && vp test run",
     "fixtures": "node scripts/fixture.mjs"
   },
   "author": "Banou26",
