@@ -41,11 +41,6 @@ jobs:
       # Gecko behaviour, and `--with-deps` brings the libavcodec its H.264 needs.
       - run: npx playwright install --with-deps chromium firefox
 
-      # public/ is gitignored, so a fresh checkout carries none of the libav assets the player loads
-      # at runtime. Without this the local playback test times out waiting for metadata. jassub's
-      # worker and wasm are NOT here: they come through the bundler from src/asset-urls.ts.
-      - run: npm run copy-assets
-
       - run: npm run types
 
       - run: npm test
