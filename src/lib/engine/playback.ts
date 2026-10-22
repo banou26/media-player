@@ -499,14 +499,18 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * BOTH the input and the output context and re-runs write_header, because the fragmented mp4 muxer
      * cannot rewind. Skipping it when the target is already playable is most of what a seek costs.
      *
-     * Buffered alone is not enough: landing before the last remuxer position means the reader is
-     * somewhere ahead, so the gap between here and it can never be filled without a seek, and playback
-     * would stall at the end of this range instead. Nor is landing after it: the range holding the
-     * target can be an island ahead of the reader, so the target also needs its runway, or the element
-     * plays to the island's end and waits there until the reader has read the whole gap, which over a
-     * torrent is as long as downloading it.
+     * Buffered alone is not enough: the range holding the target has to reach the last remuxer position,
+     * since the reader is somewhere ahead of it and a gap between them can never be filled without a seek,
+     * so playback would stall at the end of this range instead. A target behind that position is just as
+     * safe once its range reaches it: seeking there anyway re-read the target's whole GOP over buffered
+     * data, and a quick seek forward during that re-read showed a frame from 15 s away in Chrome 155
+     * (measured 2026-10-23).
+     * Nor is reaching it enough: the range can be an island ahead of the reader, so the target also needs
+     * its runway, or the element plays to the island's end and waits there until the reader has read the
+     * whole gap, which over a torrent is as long as downloading it.
      */
-    const alreadyPlayable = (time: number) => time >= lastSeekPosition && playableAt(time) && hasRunway(time)
+    const alreadyPlayable = (time: number) =>
+      getTimeRanges(sourceBuffer).some((r) => r.start <= time && time < r.end && r.end >= lastSeekPosition) && hasRunway(time)
 
     /**
      * Whether the element can play from a GIVEN time without a fetch.
