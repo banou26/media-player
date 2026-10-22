@@ -178,6 +178,7 @@ export const ControlBar = (
   // Keyboard seeks go through the same door as the seek bar: data first, then the playhead. See
   // `requestSeek` on the source state for why an element that seeks into a hole is the problem.
   const requestSeek = usePlayer((state) => state.requestSeek)
+  const stepFrame = usePlayer((state) => state.stepFrame)
   const [volumeElement, setVolumeElement] = useState<HTMLButtonElement | null>(null)
   const passThroughButton = useRef<HTMLButtonElement>(null)
   const refocus = useRef<ReturnType<typeof setInterval>>(undefined)
@@ -215,6 +216,9 @@ export const ControlBar = (
       // on the window, so typing into a consumer's own input opts out
       const target = targetOf(ev)
       if (target?.isContentEditable || /^(input|textarea|select)$/i.test(target?.tagName ?? '')) return
+      // Ctrl+F, Alt+Left and the like are the browser's, but Windows reports AltGr, which types < and > on some
+      // layouts, as Ctrl and Alt
+      if ((ev.ctrlKey || ev.metaKey || ev.altKey) && !ev.getModifierState('AltGraph')) return
       const fromPlayer = root.current?.contains(target ?? null) || (target === document.body && engaged.current)
       if (shortcuts === 'player' && !player.fullscreen && !fromPlayer) return
 
@@ -237,6 +241,7 @@ export const ControlBar = (
       else if (ev.key === 'ArrowLeft') {
         seek(Math.max(player.currentTime - SEEK_STEP, 0))
       }
+      else if ((ev.key === '<' || ev.key === '>') && stepFrame) stepFrame(ev.key === '>' ? 1 : -1)
       else {
         shouldPreventDefault = false
       }
@@ -253,7 +258,7 @@ export const ControlBar = (
       window.removeEventListener('pointerdown', engage, true)
       window.removeEventListener('focusin', engage, true)
     }
-  }, [player, modifyVolume, requestSeek, shortcuts, root])
+  }, [player, modifyVolume, requestSeek, stepFrame, shortcuts, root])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()

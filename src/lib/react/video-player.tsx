@@ -11,6 +11,7 @@ import { useContainerAttach, useMediaAttach } from '@videojs/react'
 
 import { Player, usePlayer } from './player'
 import { usePlayback } from './hooks/use-playback'
+import { useFrameStep } from './hooks/use-frame-step'
 import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture-in-picture'
@@ -273,6 +274,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // permanent no-op.
   const media = remote?.media ?? video
   useEffect(() => { setMedia?.(media); return () => setMedia?.(null) }, [media, setMedia])
+  useFrameStep(media)
 
   // Served after it is attached, and re-served when the media changes: what an embedder drives is
   // whatever this player drives at the time. Keyed on the option's `origin` and `channel`, not on the

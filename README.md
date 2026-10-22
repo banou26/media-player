@@ -162,8 +162,10 @@ an offer to skip an opening or ending, volume on a log curve, mute, playback spe
 selection, subtitle track selection, picture in picture, fullscreen, and keyboard shortcuts. Nothing
 is persisted: volume, speed and track choices start at their defaults every load.
 
-The shortcuts (Space or `k`, `f`, `m`, the arrow keys) listen on the whole page. Pass `shortcuts="player"` for a
-player among other content: a key then acts only from inside the player (a click on the picture puts the focus
+The shortcuts (Space or `k`, `f`, `m`, the arrow keys, and `<` and `>` to pause and step one frame back or forward)
+listen on the whole page, and leave Ctrl, Cmd and Alt combinations to the browser. The frame steps need a media
+with `requestVideoFrameCallback`, which a `media` playing in another document does not have. Pass `shortcuts="player"`
+for a player among other content: a key then acts only from inside the player (a click on the picture puts the focus
 there) or while it is fullscreen, and Space and the arrows keep scrolling the page everywhere else.
 
 ### Chapters
