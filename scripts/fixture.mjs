@@ -495,6 +495,47 @@ export const ensureShortGopFixture = async () => {
   return SHORT_GOP_FIXTURE_PATH
 }
 
+export const FRAME_STEP_FIXTURE = 'frame-step.mkv'
+export const FRAME_STEP_FIXTURE_PATH = PUBLIC_DIR + FRAME_STEP_FIXTURE
+export const FRAME_STEP_60_FIXTURE = 'frame-step-60.mkv'
+export const FRAME_STEP_60_FIXTURE_PATH = PUBLIC_DIR + FRAME_STEP_60_FIXTURE
+
+/**
+ * Every frame paints its own number, so a test reads the frame on screen off the picture rather than off a timestamp:
+ * the left half is 16 + (n mod 16) * 14, the right half 16 + (floor(n / 16) mod 16) * 14. A keyframe every 240
+ * frames, B-frames, and one subtitle line from 2.00 to 4.00 s.
+ */
+const frameStepFixture = async (path, rate, duration) => {
+  if (await exists(path)) return path
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = path + '.ass'
+  await writeFile(subs, SCALE_HEADER.replace(
+    'Dialogue: 0,0:00:00.00,0:00:20.00,Default,,0,0,0,,HHHHHHHH',
+    'Dialogue: 0,0:00:02.00,0:00:04.00,Default,,0,0,0,,HHHHHHHH',
+  ))
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', `color=c=black:s=640x360:r=${rate}:d=${duration},format=gray,geq=lum='if(lt(X,320),16+mod(N,16)*14,16+mod(floor(N/16),16)*14)',format=yuv420p`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${duration}`,
+    '-i', subs,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '8', '-g', '240', '-keyint_min', '240', '-sc_threshold', '0',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=eng',
+    path,
+  ])
+  await rm(subs, { force: true })
+  return path
+}
+
+/** Twenty seconds at 23.976 fps, keyframes at 0 and 10.01 s. */
+export const ensureFrameStepFixture = () => frameStepFixture(FRAME_STEP_FIXTURE_PATH, '24000/1001', 20)
+
+/** Ten seconds at 60 fps, keyframes every 4 s. */
+export const ensureFrameStep60Fixture = () => frameStepFixture(FRAME_STEP_60_FIXTURE_PATH, '60', 10)
+
 /**
  * The volume normalizer's own signal: a minute of synthetic dialogue at about -24 LUFS over a room tone, with loud
  * events at starts off the 1 ms grid (HOR-498 review, shortened from its 240 s). Written as float WAVs, the mix and
@@ -657,7 +698,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
