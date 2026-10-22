@@ -444,6 +444,25 @@ export const ensureStepFixture = async () => {
   return STEP_FIXTURE_PATH
 }
 
+export const LONG_GOP_FIXTURE = 'long-gop.mkv'
+export const LONG_GOP_FIXTURE_PATH = PUBLIC_DIR + LONG_GOP_FIXTURE
+
+/** Thirty seconds of 720p at 23.976 fps with B-frames and a keyframe every 240 frames, at 0, 10.01 and 20.02 s. */
+export const ensureLongGopFixture = async () => {
+  if (await exists(LONG_GOP_FIXTURE_PATH)) return LONG_GOP_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=24000/1001:duration=30',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=30',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-g', '240', '-keyint_min', '240', '-sc_threshold', '0',
+    '-c:a', 'aac',
+    '-map', '0:v', '-map', '1:a',
+    LONG_GOP_FIXTURE_PATH,
+  ])
+  return LONG_GOP_FIXTURE_PATH
+}
+
 export const SHORT_AUDIO_FIXTURE = 'short-audio-tone.mkv'
 export const SHORT_VIDEO_FIXTURE = 'short-video-tone.mkv'
 export const SHORTER_AUDIO_FIXTURE = 'shorter-audio-tone.mkv'
@@ -698,7 +717,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
