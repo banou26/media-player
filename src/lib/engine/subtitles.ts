@@ -10,7 +10,7 @@ export type SubtitleStream = { streamIndex: number, title: string, language: str
 export const SUBTITLES_OFF = -1
 
 type SubtitleHeaderPart = { type: 'header', streamIndex: number, content: string, eventsContent: string, styles: Map<string, number> }
-type SubtitleDialoguePart = { type: 'dialogue', streamIndex: number, index: number, assEvent: ASSEvent }
+type SubtitleDialoguePart = { type: 'dialogue', streamIndex: number, assEvent: ASSEvent }
 
 export type SubtitleRendererOptions = {
   video: HTMLVideoElement
@@ -125,7 +125,6 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
   return {
     type: 'dialogue',
     streamIndex: fragment.streamIndex,
-    index: dialogueIndex,
     assEvent: {
       Name: event.Name ?? '',
       // libass wants the raw effect field and ass-compiler has already destructured it into an
@@ -158,7 +157,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   let attachments: [string, Uint8Array][] = []
   const headers = new Map<number, SubtitleHeaderPart>()
   const streams: SubtitleStream[] = []
-  const dialogues = new Map<number, Map<number, SubtitleDialoguePart>>()
+  const dialogues = new Map<number, Map<string, SubtitleDialoguePart>>()
   let selected: number | undefined
   let onStreams = options.onStreams
   /**
@@ -333,11 +332,16 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       } else {
         const header = headers.get(fragment.streamIndex)
         if (!header) continue
-        let byIndex = dialogues.get(fragment.streamIndex)
-        if (!byIndex) { byIndex = new Map(); dialogues.set(fragment.streamIndex, byIndex) }
+        let byLine = dialogues.get(fragment.streamIndex)
+        if (!byLine) { byLine = new Map(); dialogues.set(fragment.streamIndex, byLine) }
+        // Everything but the leading ReadOrder: a line libav converts from SubRip, WebVTT or mov_text
+        // takes it from a counter in FFmpeg's decoder, so the same cue read again after a seek comes
+        // back under a new one. The cost: an ASS line repeating another in every other field draws
+        // once, where libass draws both.
+        const key = `${fragment.start},${fragment.end},${fragment.content.slice(fragment.content.indexOf(',') + 1)}`
+        if (byLine.has(key)) continue
         const part = toDialoguePart(header, fragment)
-        if (byIndex.has(part.index)) continue
-        byIndex.set(part.index, part)
+        byLine.set(key, part)
         if (selected === fragment.streamIndex) incoming.push(part.assEvent)
       }
     }
