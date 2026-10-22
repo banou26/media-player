@@ -192,6 +192,79 @@ export const ensureSeekFixture = async () => {
   return SEEK_FIXTURE_PATH
 }
 
+export const SUBRIP_FIXTURE = 'subtitle-subrip.mkv'
+export const SUBRIP_FIXTURE_PATH = PUBLIC_DIR + SUBRIP_FIXTURE
+
+/** The seek fixture's picture with a SubRip track kept as SubRip, its one line from 1 s to 3 s. */
+export const ensureSubRipFixture = async () => {
+  if (await exists(SUBRIP_FIXTURE_PATH)) return SUBRIP_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = SUBRIP_FIXTURE_PATH + '.srt'
+  await writeFile(subs, '1\n00:00:01,000 --> 00:00:03,000\nHHHHHHHH\n\n')
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-i', subs,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=eng',
+    SUBRIP_FIXTURE_PATH,
+  ])
+  await rm(subs, { force: true })
+  return SUBRIP_FIXTURE_PATH
+}
+
+export const MATRIX_FIXTURE = 'subtitle-matrix.mkv'
+export const MATRIX_FIXTURE_PATH = PUBLIC_DIR + MATRIX_FIXTURE
+
+/**
+ * A BT.709 picture under a script that says `YCbCr Matrix: TV.601`. Its one line is red and has no
+ * border or shadow, so every opaque pixel is the fill colour.
+ */
+export const MATRIX_HEADER = [
+  '[Script Info]',
+  'ScriptType: v4.00+',
+  'PlayResX: 1280',
+  'PlayResY: 720',
+  'YCbCr Matrix: TV.601',
+  '',
+  '[V4+ Styles]',
+  'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  'Style: Default,Liberation Sans,80,&H000000FF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,10,10,15,1',
+  '',
+  '[Events]',
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Default,,0,0,0,,HHHHHHHH',
+  '',
+].join('\n')
+
+export const ensureMatrixFixture = async () => {
+  if (await exists(MATRIX_FIXTURE_PATH)) return MATRIX_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = MATRIX_FIXTURE_PATH + '.ass'
+  await writeFile(subs, MATRIX_HEADER)
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-i', subs,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=eng',
+    MATRIX_FIXTURE_PATH,
+  ])
+  await rm(subs, { force: true })
+  return MATRIX_FIXTURE_PATH
+}
+
 export const HEADER_FIXTURE = 'subtitle-header.mkv'
 export const HEADER_FIXTURE_PATH = PUBLIC_DIR + HEADER_FIXTURE
 
@@ -717,7 +790,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
