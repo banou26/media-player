@@ -244,6 +244,15 @@ export type MediaPlayerRemoteOptions =
      * host takes on by passing it. Read by value, so it may be written inline.
      */
     pictureInPicture?: PassThroughPictureInPicture
+    /**
+     * Steps the media one frame back (-1) or forward (1), made by the host inside the media's own
+     * document, where its frames can be seen; pausing first is the host's. Used only for a media
+     * without `requestVideoFrameCallback`, as one in another document is: a media with it is stepped
+     * by the player, and without either `<` and `>` do nothing. One press before the promise settles
+     * waits for it and the rest are dropped, so a held key steps as fast as the host lands them, and
+     * a rejection is logged. Read by value, so it may be written inline.
+     */
+    stepFrame?: (direction: 1 | -1) => Promise<void>
   }
 
 export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
@@ -274,7 +283,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // permanent no-op.
   const media = remote?.media ?? video
   useEffect(() => { setMedia?.(media); return () => setMedia?.(null) }, [media, setMedia])
-  useFrameStep(media)
+  useFrameStep(media, remote?.stepFrame)
 
   // Served after it is attached, and re-served when the media changes: what an embedder drives is
   // whatever this player drives at the time. Keyed on the option's `origin` and `channel`, not on the

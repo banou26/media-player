@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { server, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
@@ -381,5 +381,79 @@ describe('frame step on < and >', () => {
       expect(media.currentTime, `${key} moved a media whose frames are not seen`).toBe(60)
     }
     expect(media.paused).toBe(true)
+  })
+
+  it('asks the host for the step on a media whose frames this document cannot see', async () => {
+    const media = createFakeRemoteMedia()
+    const asked: number[] = []
+    const landings: (() => void)[] = []
+    const stepFrame = (direction: 1 | -1) => {
+      asked.push(direction)
+      return new Promise<void>((done) => { landings.push(done) })
+    }
+    const screen = await render(<MediaPlayer media={media} stepFrame={stepFrame} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    await userEvent.keyboard('>')
+    expect(asked).toEqual([1])
+    // two presses while the host's step is on its way: one waits for it, the other is dropped
+    await userEvent.keyboard('>>')
+    expect(asked, 'a press was sent before the step landed').toEqual([1])
+    landings[0]!()
+    await expect.poll(() => asked, { timeout: 1000 }).toEqual([1, 1])
+    landings[1]!()
+    await wait(0)
+    await userEvent.keyboard('<')
+    expect(asked).toEqual([1, 1, -1])
+  })
+
+  it('asks the host step of the latest render, passed after the media, and none once it is withdrawn', async () => {
+    const media = createFakeRemoteMedia()
+    const asked: string[] = []
+    const player = (host?: string) => (
+      <MediaPlayer media={media} stepFrame={host ? async () => { asked.push(host) } : undefined} />
+    )
+    const screen = await render(player(), sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    const seen: KeyboardEvent[] = []
+    const record = (event: KeyboardEvent) => { seen.push(event) }
+    window.addEventListener('keydown', record)
+    const taken = async () => {
+      seen.length = 0
+      await userEvent.keyboard('>')
+      await wait(0)
+      return seen.find((event) => event.key === '>')?.defaultPrevented
+    }
+    try {
+      await screen.rerender(player('first'))
+      expect(await taken(), 'a host step passed after the media was not offered').toBe(true)
+      expect(asked).toEqual(['first'])
+      // inline, so a new function on every render
+      await screen.rerender(player('second'))
+      await taken()
+      expect(asked, 'an earlier render\'s host step was asked').toEqual(['first', 'second'])
+      await screen.rerender(player())
+      expect(await taken(), 'a withdrawn host step still took the key').toBe(false)
+      expect(asked).toEqual(['first', 'second'])
+    } finally {
+      window.removeEventListener('keydown', record)
+    }
+  })
+
+  it('logs a host step that rejects, and asks the host again on the next key', async () => {
+    const media = createFakeRemoteMedia()
+    const failure = new Error('the page refused the step')
+    let asked = 0
+    const stepFrame = async () => { asked++; throw failure }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const screen = await render(<MediaPlayer media={media} stepFrame={stepFrame} />, sized(480, 270))
+      await userEvent.click(screen.container.querySelector('.video')!)
+      await userEvent.keyboard('>')
+      await expect.poll(() => warn.mock.calls.some((call) => call.includes(failure))).toBe(true)
+      await userEvent.keyboard('<')
+      expect(asked).toBe(2)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
