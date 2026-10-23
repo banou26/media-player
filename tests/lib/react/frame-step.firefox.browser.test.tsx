@@ -123,20 +123,40 @@ describe('frame step on < and >', () => {
     expect(video.paused).toBe(true)
   })
 
+  it('moves two frames on two presses that come before the first step has landed', async () => {
+    const { video } = await mount()
+    await land(video, 100)
+    // the first seek after a pause from playing took 1 to 1.4 s to land on anime.fkn.app's 720p webm (Chrome,
+    // 2026-10-23): a press while one is on its way waits for it
+    await userEvent.keyboard('>>')
+    await expect.poll(() => painted(video), { timeout: 3000 }).toBe(102)
+    await wait(300)
+    expect(painted(video)).toBe(102)
+    await userEvent.keyboard('<<')
+    await expect.poll(() => painted(video), { timeout: 3000 }).toBe(100)
+  })
+
   it('shows every frame on the way while a key is held', async () => {
     const { video } = await mount()
     await expect.poll(() => bufferedTo(video), { timeout: 30_000 }).toBeGreaterThan(19)
     await land(video, 225)
     const shown = [painted(video)]
-    const watch = setInterval(() => { const n = painted(video); if (n !== shown.at(-1)) shown.push(n) }, 5)
+    const sample = () => { const n = painted(video); if (n !== shown.at(-1)) shown.push(n) }
+    // on a timer and on every presented frame: a press waiting behind a step starts its own as the first lands, so a
+    // frame can show for less than a 5 ms tick (Firefox under load, 1 run in 8), and Firefox's frame callbacks alone
+    // missed the first step's frame (3 of 3, 2026-10-23)
+    let watching = true
+    const timer = setInterval(sample, 5)
+    const onFrame = () => { if (watching) { sample(); video.requestVideoFrameCallback(onFrame) } }
+    video.requestVideoFrameCallback(onFrame)
     try {
-      // repeats faster than a step decodes at the end of a GOP, stopped short of the keyframe at 240, after which a step
-      // can land before the next repeat and its frame show for less than the watch's tick
+      // repeats faster than a step decodes at the end of a GOP, stopped short of the keyframe at 240
       const start = performance.now()
       while (performance.now() - start < 1500 && painted(video) < 236) await userEvent.keyboard('>')
       await wait(1000)
     } finally {
-      clearInterval(watch)
+      watching = false
+      clearInterval(timer)
     }
     expect(shown.length).toBeGreaterThan(3)
     expect(shown.slice(1).map((n, i) => n - shown[i]!), `frames shown: ${shown.join(', ')}`).toEqual(shown.slice(1).map(() => 1))

@@ -12,6 +12,26 @@ const presented = (video: HTMLVideoElement, timeout: number) => new Promise<void
   video.requestVideoFrameCallback(() => { clearTimeout(timer); done() })
 })
 
+// one press waits for the step on its way, so two quick presses move two frames, and the rest are dropped, so a held key
+// steps as fast as frames land
+const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
+  let busy = false
+  let next: 1 | -1 | undefined
+  const run = async (direction: 1 | -1) => {
+    if (busy) { next = direction; return }
+    busy = true
+    try {
+      await step(direction)
+    } finally {
+      busy = false
+      const queued = next
+      next = undefined
+      if (queued) void run(queued)
+    }
+  }
+  return run
+}
+
 /**
  * Offers `stepFrame` for a media whose frames this document can see, one with `requestVideoFrameCallback`.
  *
@@ -66,38 +86,30 @@ export const useFrameStep = (media: PlayerMedia | null) => {
       return near.reduce((sum, gap) => sum + gap, 0) / near.length
     }
 
-    let busy = false
-    const stepFrame = async (direction: 1 | -1) => {
-      // a key repeat while a step is on its way is dropped, so a held key steps as fast as frames land
-      if (busy) return
-      busy = true
-      try {
-        if (!video.paused) {
-          video.pause()
-          // Chrome can still report the frame on screen after the pause
-          await presented(video, 100)
-        }
-        const length = frameLength()
-        // off `state`: the store has a getter only for the fields it was created with
-        const pending = player.state.seekingTo
-        const target = pending !== undefined
-          ? pending + direction * length
-          : played
-            ? played.mediaTime + (direction > 0 ? 1.5 : -0.5) * length
-            : video.currentTime + direction * length
-        const time = Math.max(0, Math.min(target, video.duration || target))
-        const landed = new Promise<void>((done) => {
-          const timer = setTimeout(done, 1000)
-          video.addEventListener('seeked', () => { clearTimeout(timer); done() }, { once: true })
-        })
-        const { requestSeek } = player.state
-        if (requestSeek) requestSeek(time)
-        else video.currentTime = time
-        await landed
-      } finally {
-        busy = false
+    const stepFrame = oneAtATime(async (direction) => {
+      if (!video.paused) {
+        video.pause()
+        // Chrome can still report the frame on screen after the pause
+        await presented(video, 100)
       }
-    }
+      const length = frameLength()
+      // off `state`: the store has a getter only for the fields it was created with
+      const pending = player.state.seekingTo
+      const target = pending !== undefined
+        ? pending + direction * length
+        : played
+          ? played.mediaTime + (direction > 0 ? 1.5 : -0.5) * length
+          : video.currentTime + direction * length
+      const time = Math.max(0, Math.min(target, video.duration || target))
+      const landed = new Promise<void>((done) => {
+        const timer = setTimeout(done, 1000)
+        video.addEventListener('seeked', () => { clearTimeout(timer); done() }, { once: true })
+      })
+      const { requestSeek } = player.state
+      if (requestSeek) requestSeek(time)
+      else video.currentTime = time
+      await landed
+    })
     setSourceState({ stepFrame })
     return () => {
       video.removeEventListener('seeking', onSeeking)
