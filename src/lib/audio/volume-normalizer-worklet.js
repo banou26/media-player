@@ -564,8 +564,10 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
       toWorklet({ drop: block })
     }
     if (!Number.isFinite(level)) return
-    for (let block = Math.max(0, here - 1); block <= here + 3; block++) {
-      if (block * BLOCK_BINS >= endBin) break
+    // the playhead's own block first: under load each took 21 to 43 ms, and sent after the one before it, a seek's
+    // cut over HTTP reached the worklet 64 to 75 ms after the seek, its audio 72 to 83 ms (HOR-888, 2026-10-23)
+    for (const block of [here, here - 1, here + 1, here + 2, here + 3]) {
+      if (block < 0 || block * BLOCK_BINS >= endBin) continue
       const start = block * BLOCK_BINS
       const known = signature(start - MARGIN_BINS, start + BLOCK_BINS + MARGIN_BINS)
       const last = sent.get(block)
@@ -1064,14 +1066,16 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
    * finds it at all, is taken only once the next search, 250 ms later, peaks within 2 ms of it, clear or not: voiced
    * dialogue repeats with its pitch, so a peak a pitch period off can come out ahead, and a FLAC run once matched 45 ms
    * off with every check passed. Over the whole 250 ms either way an Opus file's matches were never that clear (HOR-498
-   * build, 2026-10-17).
+   * build, 2026-10-17). Kept past that next one, a candidate that a match came back to after four elsewhere locked an
+   * Opus run under load 18 ms off, every cut that much late (HOR-888, 2026-10-23).
    */
   found(offset, clear) {
     const near = (other) => other !== null && Math.abs(offset - other) <= 0.002
-    if (near(this.candidate)) {
+    const confirmed = near(this.candidate)
+    this.candidate = null
+    if (confirmed) {
       this.offset = offset
       this.doubt = false
-      this.candidate = null
     } else if (clear) {
       if (!this.doubt && near(this.offset)) this.offset = offset
       else this.candidate = offset

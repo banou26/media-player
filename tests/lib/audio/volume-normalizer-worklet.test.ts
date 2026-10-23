@@ -11,6 +11,7 @@ type Processor = {
   offset: number | null
   doubt: boolean
   handover: number
+  found: (offset: number, clear: boolean) => void
 }
 
 // the worklet's globals, in place before the module is evaluated, so it registers its processor here
@@ -219,6 +220,20 @@ describe('the worklet against the media time', () => {
     expect(node.doubt).toBe(false)
     expect((node.offset! - before) * 1000).toBeCloseTo(12, 0)
     expect(short(record, 47, 50)).toEqual([])
+  })
+
+  // the matches of an Opus run under load, in seconds, against 6.5 ms where its audio was (HOR-888, 2026-10-23)
+  it('takes a clear match only once the match right after it agrees', () => {
+    const { node } = rig()
+    node.found(-0.01207, true)
+    for (const elsewhere of [-0.00302, 0.022, -0.00116, 0.00648]) node.found(elsewhere, false)
+    node.found(-0.01122, false)
+    expect(node.offset).toBeNull()
+    // the control: the same two back to back lock it
+    node.found(-0.01207, true)
+    node.found(-0.01122, false)
+    expect(node.offset).toBe(-0.01122)
+    expect(node.doubt).toBe(false)
   })
 
   it('keeps the cut in step through a pause in the middle of a loud burst', () => {
