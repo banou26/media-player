@@ -562,6 +562,11 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const prepareSeek = async (time: number) => {
       if (destroyed) return
       if (playableAt(time) && hasRunway(time)) return
+      // A drag still settling holds every read, so the runway would never be read, and its settle would then position the
+      // remuxer back where the drag stopped. A seek back under 250 ms after a seek forward is one (Firefox 153 and 157,
+      // 2026-10-23).
+      if (dragTimer) clearTimeout(dragTimer)
+      dragTimer = undefined
       finished = false
       preparing++
       prepareTarget = time

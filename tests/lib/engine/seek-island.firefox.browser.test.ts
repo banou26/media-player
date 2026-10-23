@@ -84,13 +84,15 @@ const open = async () => {
   return { video, controller, hold, lift, release, reads, pos }
 }
 
-// an island [20, 24) ahead of a reader moved back to 2, which is what seeking forward then back leaves
-const island = async () => {
+// an island [20, 24) ahead of a reader moved back to 2, which is what seeking forward then back leaves; `scrubbed`
+// passes through the gap the reader is stalled in first, so the move to 2 is a drag still settling
+const island = async (scrubbed = false) => {
   const opened = await open()
   const { video, hold, lift, pos } = opened
   const past = hold(pos(24), Infinity)
   await seek(video, 20)
   await expect.poll(() => ranges(video).at(-1)?.[1], { timeout: 10_000 }).toBeGreaterThan(23.9)
+  if (scrubbed) await new Promise((done) => { video.addEventListener('seeking', done, { once: true }); video.currentTime = 15 })
   await seek(video, 2)
   lift(past)
   return { ...opened, target: ranges(video).at(-1)![1] - 0.01 }
@@ -107,6 +109,13 @@ it('prepares a runway for a seek into the end of an island ahead of the reader',
   const { video, controller, target } = await island()
   await controller.prepareSeek(target)
   // Firefox plays from up to 250 ms before a range, which is how far past the target one may start
+  const [, end] = ranges(video).find(([start, end]) => start <= target + 0.25 && target < end) ?? [0, 0]
+  expect(end - target, `prepared ${target}, buffered ${JSON.stringify(ranges(video))}`).toBeGreaterThan(2.5)
+})
+
+it('prepares a runway for a seek into the end of an island ahead of the reader while a drag back settles', async () => {
+  const { video, controller, target } = await island(true)
+  await controller.prepareSeek(target)
   const [, end] = ranges(video).find(([start, end]) => start <= target + 0.25 && target < end) ?? [0, 0]
   expect(end - target, `prepared ${target}, buffered ${JSON.stringify(ranges(video))}`).toBeGreaterThan(2.5)
 })
