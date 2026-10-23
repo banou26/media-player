@@ -1,6 +1,6 @@
 import type { PlayerMedia } from '../media'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { usePlayer } from '../player'
 
@@ -43,13 +43,31 @@ const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
  * The frame's length is learned from the gaps between frames presented one after another while playing at up to 1x:
  * faster, a 60 Hz display presents every other frame of a 60 fps file. A step while a seek waits for its data starts
  * from that seek's target.
+ *
+ * A media without `requestVideoFrameCallback` is stepped by `hostStep`, when its host can step it.
  */
-export const useFrameStep = (media: PlayerMedia | null) => {
+export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1 | -1) => Promise<void>) => {
   const player = usePlayer()
   const setSourceState = usePlayer((state) => state.setSourceState)
+  const host = useRef(hostStep)
+  host.current = hostStep
+  const hosted = !!hostStep
   useEffect(() => {
     const video = media as HTMLVideoElement | null
-    if (!video || typeof video.requestVideoFrameCallback !== 'function') return
+    if (!video) return
+    if (typeof video.requestVideoFrameCallback !== 'function') {
+      if (!hosted) return
+      setSourceState({
+        stepFrame: oneAtATime(async (direction) => {
+          try {
+            await host.current?.(direction)
+          } catch (error) {
+            console.warn('the host could not step a frame', error)
+          }
+        }),
+      })
+      return () => setSourceState({ stepFrame: undefined })
+    }
 
     let played: VideoFrameCallbackMetadata | undefined
     let bySeek = false
@@ -117,5 +135,5 @@ export const useFrameStep = (media: PlayerMedia | null) => {
       video.cancelVideoFrameCallback(handle)
       setSourceState({ stepFrame: undefined })
     }
-  }, [media, player, setSourceState])
+  }, [media, hosted, player, setSourceState])
 }

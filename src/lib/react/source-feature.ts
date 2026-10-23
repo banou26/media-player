@@ -238,7 +238,10 @@ export type SourceState = {
    */
   requestSeek?: (time: number) => void
 
-  /** One frame back or forward, pausing first. Undefined for a media whose frames this document cannot see. */
+  /**
+   * One frame back or forward, pausing first. Undefined for a media whose frames this document cannot see, unless its
+   * host steps it (the remote arm's `stepFrame`).
+   */
   stepFrame?: (direction: 1 | -1) => void
 
   /** Set when the pipeline fails. Cleared when it recovers. */
