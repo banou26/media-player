@@ -135,6 +135,18 @@ describe('the analysis, as the file is read', () => {
     expect(blocks.get(1)!.gain.every((v) => v <= 0)).toBe(true)
   })
 
+  it('sends the block the playhead is in before the ones around it', () => {
+    const sent: number[] = []
+    const analysis = createAnalysis({ toWorklet: (message) => { if ('block' in message) sent.push(message.block) } })
+    analysis.startRun(0, 0, true)
+    feed(analysis, 0, 60)
+    analysis.endRun(true)
+    analysis.flushBlocks()
+    sent.length = 0
+    analysis.setPlayhead(50.76)
+    expect(sent).toEqual([5, 4])
+  })
+
   it('fills the file in out of order, around the playhead first, and ends with what reading it in order gives', () => {
     const { blocks, toWorklet } = collect()
     const pages: { type: string, run?: number }[] = []
