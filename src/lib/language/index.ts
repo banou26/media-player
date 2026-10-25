@@ -20,6 +20,8 @@ const NOT_LANGUAGES = new Set(['und', 'zxx', 'mul', 'mis'])
 // sign and song tracks, forced subtitles, commentaries and described audio, unless the title says it is the full track
 const PARTIAL = /sign|song|forced|commentary|karaoke|descri/i
 const FULL = /full|dialog/i
+// closed captions, hearing impaired and audio description in a title, which Intl.Locale reads as regions (CC, AD) or accepts
+const TRACK_NOTES = new Set(['CC', 'HI', 'AD'])
 
 const key = (text: string) => text.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()
 
@@ -65,7 +67,7 @@ const parseName = (text: string | undefined): Language | undefined => {
   if (!named) return undefined
   const region = qualifier?.trim()
   // through Intl.Locale, which reads the 'UK' of 'English (UK)' as GB
-  return (region && /^(?:[A-Z]{2}|\d{3})$/.test(region) ? fromTag(`${named}-${region}`) : undefined) ?? fromTag(named)
+  return (region && /^(?:[A-Z]{2}|\d{3})$/.test(region) && !TRACK_NOTES.has(region) ? fromTag(`${named}-${region}`) : undefined) ?? fromTag(named)
 }
 
 const parseLanguage = (text: string | undefined) => {
