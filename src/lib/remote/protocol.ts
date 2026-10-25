@@ -114,7 +114,6 @@ export const syncEventsFor = (snapshot: PlayerSnapshot): PlayerEvent[] => [
   // subscribed would otherwise sit on a spinner with `player.error` set and nothing to read it.
   ...snapshot.ended ? ['ended'] as const : [],
   ...snapshot.error ? ['error'] as const : [],
-  ...snapshot.chapters.length ? ['chapterschange'] as const : [],
 ]
 
 const pairs = (ranges: TimeRangesLike | undefined): [number, number][] => {
