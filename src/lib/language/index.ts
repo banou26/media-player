@@ -53,19 +53,24 @@ const nameIndex = () => {
   return names = index
 }
 
-const parseLanguage = (text: string | undefined): Language | undefined => {
+// a title or a label is read by name only: as a tag, 'SDH' would be Southern Kurdish and 'UK' Ukrainian
+const parseName = (text: string | undefined): Language | undefined => {
   const trimmed = text?.trim()
   if (!trimmed) return undefined
-  const tagged = fromTag(trimmed)
-  if (tagged) return tagged
   const index = nameIndex()
   const whole = index.get(key(trimmed))
   if (whole) return fromTag(whole)
   const [, base, qualifier] = /^([^([]+)(?:\(([^)]*)\))?/.exec(trimmed.normalize('NFKC')) ?? []
   const named = base ? index.get(key(base)) : undefined
-  const language = named ? fromTag(named) : undefined
+  if (!named) return undefined
   const region = qualifier?.trim()
-  return language && region && /^(?:[A-Z]{2}|\d{3})$/.test(region) ? { ...language, variant: region } : language
+  // through Intl.Locale, which reads the 'UK' of 'English (UK)' as GB
+  return (region && /^(?:[A-Z]{2}|\d{3})$/.test(region) ? fromTag(`${named}-${region}`) : undefined) ?? fromTag(named)
+}
+
+const parseLanguage = (text: string | undefined) => {
+  const trimmed = text?.trim()
+  return trimmed ? fromTag(trimmed) ?? parseName(trimmed) : undefined
 }
 
 /**
@@ -73,7 +78,7 @@ const parseLanguage = (text: string | undefined): Language | undefined => {
  * neither names a language.
  */
 export const languageOf = (track: LanguageTrack | undefined): string | undefined =>
-  [track?.language, track?.title].find((text) => parseLanguage(text))?.trim()
+  parseLanguage(track?.language) ? track!.language!.trim() : parseName(track?.title) ? track!.title!.trim() : undefined
 
 const isPartial = ({ language = '', title = '' }: LanguageTrack) => {
   const text = `${language} ${title}`
@@ -91,7 +96,7 @@ export const preferredTrack = (preference: string, tracks: readonly LanguageTrac
   let best = -1
   let bestScore = 0
   tracks.forEach((track, index) => {
-    const found = parseLanguage(track.language) ?? parseLanguage(track.title)
+    const found = parseLanguage(track.language) ?? parseName(track.title)
     if (found?.language !== wanted.language) return
     const named = languageOf(track)
     const score = 1

@@ -15,6 +15,8 @@ describe('preferredTrack', () => {
   it('finds nothing for a language no track is in, or for a preference that names no language', () => {
     expect(preferredTrack('fr', tags('jpn', 'eng'))).toBe(-1)
     expect(preferredTrack('und', tags('und', 'eng'))).toBe(-1)
+    expect(preferredTrack('zxx', tags('zxx'))).toBe(-1)
+    expect(preferredTrack('mul', tags('mul'))).toBe(-1)
     expect(preferredTrack('Signs & Songs', [{ language: 'eng', title: 'Signs & Songs' }])).toBe(-1)
   })
 
@@ -45,6 +47,7 @@ describe('preferredTrack', () => {
     expect(preferredTrack('English [CC]', tags('English', 'English [CC]'))).toBe(1)
     expect(preferredTrack('es-419', tags('es-ES', 'es-419'))).toBe(1)
     expect(preferredTrack('English (US)', tags('en-GB', 'en-US'))).toBe(1)
+    expect(preferredTrack('English (UK)', tags('en-US', 'en-GB'))).toBe(1)
     expect(preferredTrack('pt-BR', tags('Português (Portugal)', 'Português (Brasil)'))).toBe(1)
   })
 })
@@ -54,8 +57,14 @@ describe('languageOf', () => {
     expect(languageOf({ language: 'jpn', title: 'Commentary' })).toBe('jpn')
     expect(languageOf({ language: 'und', title: 'English' })).toBe('English')
     expect(languageOf({ language: 'und', title: 'Signs & Songs' })).toBeUndefined()
+    expect(languageOf({ language: 'zxx' })).toBeUndefined()
+    expect(languageOf({ language: 'mul' })).toBeUndefined()
     expect(languageOf({ language: ' Español (América Latina) ' })).toBe('Español (América Latina)')
     expect(languageOf(undefined)).toBeUndefined()
+  })
+
+  it('reads a title by name only, never as a tag', () => {
+    for (const title of ['SDH', 'PCM', 'UK', 'SD', 'Alt']) expect(languageOf({ language: 'und', title })).toBeUndefined()
   })
 })
 
