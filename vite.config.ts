@@ -107,6 +107,8 @@ export default defineConfig({
           name: 'unit',
           include: ['tests/**/*.test.{ts,tsx}'],
           exclude: ['tests/**/*.browser.test.{ts,tsx}'],
+          // the audio tests run real analysis: 0.7 to 1.1 s here, 6.3 to 6.4 s on GitHub's runner (2026-10-26)
+          testTimeout: 30_000,
         },
       },
       {
