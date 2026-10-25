@@ -243,6 +243,30 @@ describe('a player served with expose, to a mirror', () => {
     expect(requests).toBe(1)
   })
 
+  it('keeps to its fullscreen prop over a mirror that takes the fullscreen', async () => {
+    const request = vi.fn()
+    const { port1, port2 } = new MessageChannel()
+    const container = sized()
+    await render(<MediaPlayer media={createFakeRemoteMedia()} expose={{ transport: port1 }} fullscreen={{ active: false, request }} />, { container })
+    await ready(container)
+    const mirror = mediaPlayer(port2, { fullscreen: true })
+    let requests = 0
+    mirror.addEventListener('fullscreenrequest', () => { requests++ })
+    try {
+      await mirror.ready
+      mirror.fullscreen = true
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      expect(button(container).getAttribute('aria-pressed')).toBe('false')
+
+      await pressButton(container)
+      await expect.poll(() => request.mock.calls.length, { timeout: 3000 }).toBe(1)
+      expect(requests).toBe(0)
+      expect(requestFullscreen).not.toHaveBeenCalled()
+    } finally {
+      mirror.destroy()
+    }
+  })
+
   it('control: a mirror that does not take the fullscreen leaves it to the player', async () => {
     const { container, port } = await serve(OPENING)
     const mirror = mediaPlayer(port)
