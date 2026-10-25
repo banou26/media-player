@@ -81,7 +81,7 @@ export const usePlayback = (
   // null, and the effect below returns before touching them in that case.
   const {
     read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '',
-    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, autoplay = false, chapters,
+    jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize, autoplay = false, chapters,
     seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS,
   } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
 
@@ -342,6 +342,7 @@ export const usePlayback = (
           jassubWasmUrl,
           jassubLegacyWasmUrl,
           defaultFontUrl,
+          cjkFontUrl,
           bufferSize,
           audioStreamIndex,
           onReady: () => {
@@ -402,6 +403,6 @@ export const usePlayback = (
     // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
     player, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
-    jassubLegacyWasmUrl, defaultFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
+    jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
   ])
 }

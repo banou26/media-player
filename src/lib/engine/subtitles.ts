@@ -44,6 +44,14 @@ export type SubtitleRendererOptions = {
    * given on `workerFetched`.
    */
   defaultFontUrl?: string
+  /**
+   * Noto Sans JP, `@banou/media-player/noto-sans-jp.otf`, for Japanese text the file's own fonts cannot draw.
+   *
+   * Fetched only once a line on the selected track holds CJK text, after `defaultFontUrl`. It draws only the
+   * glyphs `liberation sans` lacks, so a url that fails to load leaves those as boxes and changes nothing
+   * else. May be relative, as `defaultFontUrl`.
+   */
+  cjkFontUrl?: string
   onStreams?: (streams: SubtitleStream[]) => void
 }
 
@@ -62,6 +70,16 @@ const workerFetched = (url: string | undefined) =>
   url === undefined ? undefined : new URL(url, document.baseURI).toString()
 
 const convertTimestamp = (ms: number) => new Date(ms).toISOString().slice(11, 22)
+
+/**
+ * jassub's libass has no system font fallback (`ASS_FONTPROVIDER_NONE`): a glyph the style's face lacks
+ * is looked for in the default family and nowhere else, and `liberation sans` has no CJK at all. Releases
+ * set song lyrics in a Latin-only font and rely on the player's fallback, so without the CJK face a line
+ * of hiragana draws as a row of empty boxes. That face carries `liberation sans` as a second family name
+ * (scripts/cjk-font.py), and libass takes the first face of a family that has the glyph, so it is loaded
+ * after the default face and is never made the default itself.
+ */
+const CJK_TEXT = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/
 
 /**
  * How many styles libass keeps in front of the ones the file declares.
@@ -153,6 +171,9 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const wasmUrl = workerFetched(options.wasmUrl)!
   const legacyWasmUrl = workerFetched(options.legacyWasmUrl)
   const defaultFontUrl = workerFetched(options.defaultFontUrl)
+  const cjkFontUrl = workerFetched(options.cjkFontUrl)
+  let cjkFontRequested = false
+  let defaultFontLoaded: Promise<unknown> = Promise.resolve()
   let jassub: JASSUB | undefined
   let attachments: [string, Uint8Array][] = []
   const headers = new Map<number, SubtitleHeaderPart>()
@@ -307,10 +328,20 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
      */
     if (defaultFontUrl) {
       onRenderer((renderer) => {
-        void Promise.resolve(renderer.addFonts([defaultFontUrl])).then(repaint, rendererFailed)
+        defaultFontLoaded = Promise.resolve(renderer.addFonts([defaultFontUrl])).then(repaint, rendererFailed)
       })
     }
     repaint()
+  }
+
+  const loadCjkFontFor = (events: ASSEvent[]) => {
+    if (!cjkFontUrl || cjkFontRequested || !events.some((event) => CJK_TEXT.test(event.Text))) return
+    cjkFontRequested = true
+    onRenderer(async (renderer) => {
+      await defaultFontLoaded
+      await renderer.addFonts([cjkFontUrl])
+      repaint()
+    })
   }
 
   const pushAttachments = (incoming: Attachment[]) => {
@@ -348,6 +379,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     if (!incoming.length) return
     // one hop for the whole burst rather than one per event
     onRenderer((renderer) => Promise.all(incoming.map((event) => renderer.createEvent(event))))
+    loadCjkFontFor(incoming)
     repaint()
   }
 
@@ -365,6 +397,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       }
       return Promise.all(calls)
     })
+    loadCjkFontFor(events)
     // outside the callback so that turning subtitles OFF while paused clears the picture too
     repaint()
   }
