@@ -131,7 +131,11 @@ type CommonOptions = {
    * the player does not own the report waits for the source's switch to succeed.
    */
   onPreferredAudioLanguageChange?: (language: string) => void
-  /** As `onPreferredAudioLanguageChange`, for the subtitles menu, with null for subtitles turned off. */
+  /**
+   * As `onPreferredAudioLanguageChange`, for the subtitles menu, with null for subtitles turned off. A track that names
+   * no language reports only when it turns subtitles on, by its title or label (else `und`), so the next media starts
+   * with them on too.
+   */
   onPreferredSubtitleLanguageChange?: (language: string | null) => void
 }
 
@@ -224,7 +228,8 @@ export type MediaPlayerLocalOptions =
     preferredAudioLanguage?: string
     /**
      * As `preferredAudioLanguage`, for subtitles, where signs and songs or forced tracks count as partial and a file
-     * with none starts on its first track. null starts every file with subtitles off.
+     * with none starts on its first track. null starts every file with subtitles off, and a preference that names no
+     * language starts on the track titled as it is.
      */
     preferredSubtitleLanguage?: string | null
   }
@@ -282,7 +287,8 @@ export type MediaPlayerRemoteOptions =
 
 export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
 
-const labelOf = (selection: DelegatedSelection, id: string) => selection.options.find((option) => option.id === id)?.label
+// a label is read as a name, never as a tag
+const trackOf = (selection: DelegatedSelection, id: string) => ({ title: selection.options.find((option) => option.id === id)?.label })
 
 const afterSwitch = (result: void | Promise<void>, then: () => void) => result instanceof Promise ? result.then(then) : then()
 
@@ -472,8 +478,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       selectedSubtitleTrack: subtitles.selectedId ?? undefined,
       selectSubtitleTrack: (id) => {
         const picked = id == null ? null : String(id)
+        const track = picked === null ? undefined : trackOf(subtitles, picked)
+        const wasOff = subtitles.selectedId === null
         return afterSwitch(subtitles.select(picked), () => {
-          const language = picked === null ? null : languageOf({ language: labelOf(subtitles, picked) })
+          const language = picked === null ? null : languageOf(track) ?? (wasOff ? track?.title : undefined)
           if (language !== undefined) reports.current.subtitles?.(language)
         })
       },
@@ -487,7 +495,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       audioTracks: audio.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
       selectedAudioTrack: audio.selectedId ?? undefined,
       selectAudioTrack: (id) => afterSwitch(audio.select(String(id)), () => {
-        const language = languageOf({ language: labelOf(audio, String(id)) })
+        const language = languageOf(trackOf(audio, String(id)))
         if (language !== undefined) reports.current.audio?.(language)
       }),
     })

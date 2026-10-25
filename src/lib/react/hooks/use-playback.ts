@@ -174,12 +174,14 @@ export const usePlayback = (
   // that comes back is one of its own stream indices.
   const selectSubtitleTrack = useCallback((id: string | number | undefined) => {
     const streamIndex = typeof id === 'number' ? id : undefined
+    const wasOff = player.selectedSubtitleTrack === undefined
     subtitleChoiceFor.current = sizeRef.current
     player.setSourceState({ selectedSubtitleTrack: streamIndex })
     controllerRef.current?.selectSubtitleStream(streamIndex)
+    const stream = streams.current.subtitles.find((subtitle) => subtitle.streamIndex === streamIndex)
     const language = streamIndex === undefined
       ? null
-      : languageOf(streams.current.subtitles.find((stream) => stream.streamIndex === streamIndex))
+      : languageOf(stream) ?? (wasOff ? stream?.title?.trim() || 'und' : undefined)
     if (language !== undefined) onSubtitleLanguageRef.current?.(language)
   }, [player])
 

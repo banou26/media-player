@@ -14,6 +14,8 @@ import { readSurface } from './subtitle-surface.fixture'
  * English (green) and Japanese (blue). See ensureLanguagesFixture in scripts/fixture.mjs.
  */
 const FIXTURE = '/languages.mkv'
+/** The same streams over seven seconds, plus a white subtitle track tagged und and titled SDH. */
+const UND_FIXTURE = '/languages-und.mkv'
 
 const sized = () => {
   const container = document.createElement('div')
@@ -22,8 +24,8 @@ const sized = () => {
   return { container }
 }
 
-const httpSource = async () => {
-  const head = await fetch(FIXTURE, { method: 'HEAD' })
+const httpSource = async (fixture = FIXTURE) => {
+  const head = await fetch(fixture, { method: 'HEAD' })
   const size = Number(head.headers.get('content-length'))
   if (!head.ok || !size) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
   return {
@@ -31,7 +33,7 @@ const httpSource = async () => {
     read: async (offset: number, length: number) => {
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
-      const res = await fetch(FIXTURE, { headers: { range: `bytes=${offset}-${end}` } })
+      const res = await fetch(fixture, { headers: { range: `bytes=${offset}-${end}` } })
       return res.arrayBuffer()
     },
   }
@@ -88,9 +90,9 @@ const openAudio = async (root: Element) => {
   await expect.poll(() => rowsOf(root).length, { timeout: 5_000 }).toBeGreaterThan(2)
 }
 
-const mount = async (props: Local) => {
-  const screen = await render(<MediaPlayer {...await httpSource()} {...playerAssets} {...props} />, sized())
-  await expect.element(screen.getByText('0:06'), { timeout: 30_000 }).toBeInTheDocument()
+const mount = async (props: Local, fixture = FIXTURE) => {
+  const screen = await render(<MediaPlayer {...await httpSource(fixture)} {...playerAssets} {...props} />, sized())
+  await expect.element(screen.getByText(fixture === FIXTURE ? '0:06' : '0:07'), { timeout: 30_000 }).toBeInTheDocument()
   return screen.container
 }
 
@@ -147,12 +149,58 @@ describe('preferred languages, on a file the player plays', () => {
     expect(ticked(root)).toBe('Japanese')
     await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('blue')
   })
+  it('keeps a pick for its own file, so the next file starts in the preferred languages', async () => {
+    const preferences = { preferredAudioLanguage: 'Japanese', preferredSubtitleLanguage: 'en' }
+    const screen = await render(<MediaPlayer {...await httpSource()} {...playerAssets} {...preferences} />, sized())
+    await expect.element(screen.getByText('0:06'), { timeout: 30_000 }).toBeInTheDocument()
+    const root = screen.container
+    await openSubtitles(root)
+    click(row(root, 'Japanese'))
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('blue')
+    await openAudio(root)
+    click(row(root, 'English'))
+    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    await openAudio(root)
+    expect(ticked(root)).toBe('English')
+
+    const next = await httpSource(UND_FIXTURE)
+    await screen.rerender(<MediaPlayer {...next} {...playerAssets} {...preferences} />)
+    await expect.element(screen.getByText('0:07'), { timeout: 30_000 }).toBeInTheDocument()
+    await openAudio(root)
+    await expect.poll(() => ticked(root), { timeout: 10_000 }).toBe('Japanese')
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('English (Full Subtitles)')
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('green')
+  })
+
+  it('reports a track that names no language only when it turns subtitles on', async () => {
+    const subtitles: (string | null)[] = []
+    const root = await mount({
+      preferredSubtitleLanguage: null,
+      onPreferredSubtitleLanguageChange: (language) => { subtitles.push(language) },
+    }, UND_FIXTURE)
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('Disable')
+    click(row(root, 'SDH'))
+    await openSubtitles(root)
+    click(row(root, 'English (Full Subtitles)'))
+    // from a language, a pick that names none keeps the saved one
+    await openSubtitles(root)
+    click(row(root, 'SDH'))
+    expect(subtitles).toEqual(['SDH', 'eng'])
+  })
+
+  it('starts on the track titled as a preference that names no language', async () => {
+    const root = await mount({ preferredSubtitleLanguage: 'SDH' }, UND_FIXTURE)
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('SDH')
+  })
 })
 
 describe('preferred languages, on a media the player does not own', () => {
   const tracks = (select: DelegatedTracks['selection']['select'], offLabel?: string): DelegatedTracks => ({
     selection: {
-      options: [{ id: 'a', label: 'English' }, { id: 'b', label: 'Español (América Latina)' }, { id: 'c', label: 'Signs' }],
+      options: [{ id: 'a', label: 'English' }, { id: 'b', label: 'Español (América Latina)' }, { id: 'c', label: 'SDH' }],
       selectedId: 'a',
       offLabel,
       select,
@@ -187,13 +235,47 @@ describe('preferred languages, on a media the player does not own', () => {
     click(row(root, 'Off'))
     fail()
     await expect.poll(() => !!root.querySelector('.track-list .failed'), { timeout: 2_000 }).toBe(true)
-    // a label that names no language is no preference
-    click(row(root, 'Signs'))
+    // with subtitles on, a label that names no language keeps the saved one
+    click(row(root, 'SDH'))
     await expect.poll(() => !root.querySelector('.track-list'), { timeout: 2_000 }).toBe(true)
     expect(subtitles).toEqual(['Español (América Latina)'])
 
     await openAudio(root)
     click(row(root, 'Español (América Latina)'))
+    await expect.poll(() => audio, { timeout: 2_000 }).toEqual(['Español (América Latina)'])
+  })
+
+  it('reports subtitles turned off, a label naming no language that turns them on, and audio once it has switched', async () => {
+    const subtitles: (string | null)[] = []
+    const audio: string[] = []
+    let settle = () => {}
+    const media = createFakeRemoteMedia()
+    const player = (selectedId: string | null) => (
+      <MediaPlayer
+        media={media}
+        subtitles={{ selection: { ...tracks(() => Promise.resolve(), 'Off').selection, selectedId } }}
+        audioTracks={tracks(() => new Promise<void>((resolve) => { settle = resolve }))}
+        onPreferredSubtitleLanguageChange={(language) => { subtitles.push(language) }}
+        onPreferredAudioLanguageChange={(language) => { audio.push(language) }}
+      />
+    )
+    const screen = await render(player('a'), sized())
+    const root = screen.container
+    await openSubtitles(root)
+    click(row(root, 'Off'))
+    await expect.poll(() => subtitles, { timeout: 2_000 }).toEqual([null])
+
+    // the host hands a new selection once its source has switched
+    await screen.rerender(player(null))
+    await openSubtitles(root)
+    click(row(root, 'SDH'))
+    await expect.poll(() => subtitles, { timeout: 2_000 }).toEqual([null, 'SDH'])
+
+    await openAudio(root)
+    click(row(root, 'Español (América Latina)'))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(audio).toEqual([])
+    settle()
     await expect.poll(() => audio, { timeout: 2_000 }).toEqual(['Español (América Latina)'])
   })
 })

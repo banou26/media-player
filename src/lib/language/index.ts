@@ -86,16 +86,16 @@ const isPartial = ({ language = '', title = '' }: LanguageTrack) => {
 }
 
 /**
- * The index of the track to play for a preferred language (a tag or a name, as `languageOf` gives it), or -1 when no
- * track is in that language. A full track wins over a signs, songs, forced or commentary one, then the track named
- * exactly as the preference, then the one in the same region or script, then the first.
+ * The index of the track to play for a preferred language (a tag or a name, as `languageOf` gives it), else of the
+ * track titled exactly as the preference, or -1 when there is neither. A full track wins over a signs, songs, forced
+ * or commentary one, then the track named exactly as the preference, then the one in the same region or script, then
+ * the first.
  */
 export const preferredTrack = (preference: string, tracks: readonly LanguageTrack[]): number => {
   const wanted = parseLanguage(preference)
-  if (!wanted) return -1
   let best = -1
   let bestScore = 0
-  tracks.forEach((track, index) => {
+  if (wanted) tracks.forEach((track, index) => {
     const found = parseLanguage(track.language) ?? parseName(track.title)
     if (found?.language !== wanted.language) return
     const named = languageOf(track)
@@ -108,7 +108,7 @@ export const preferredTrack = (preference: string, tracks: readonly LanguageTrac
       bestScore = score
     }
   })
-  return best
+  return best !== -1 ? best : tracks.findIndex(({ title }) => !!title?.trim() && key(title) === key(preference))
 }
 
 /**
@@ -124,6 +124,6 @@ export const preferredSelection = (
   if (preference === undefined) return undefined
   if (preference === null) return selection.offLabel && selection.selectedId !== null ? null : undefined
   const options = selection.options.filter((option) => !option.disabled)
-  const id = options[preferredTrack(preference, options.map(({ label }) => ({ language: label })))]?.id
+  const id = options[preferredTrack(preference, options.map(({ label }) => ({ title: label })))]?.id
   return id !== undefined && id !== selection.selectedId ? id : undefined
 }
