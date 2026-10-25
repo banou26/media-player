@@ -164,8 +164,8 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     if (hosts.get(id)?.delete(port)) tellHost(id)
     try { port.onmessage = null; port.close() } catch {}
   }
-  const post = (id: string, update: PlayerUpdate, only?: MessagePort) => {
-    for (const port of only ? [only] : [...listeners(id)]) {
+  const post = (id: string, update: PlayerUpdate, to: Iterable<MessagePort> = listeners(id)) => {
+    for (const port of [...to]) {
       // posting to a port whose peer is gone is silently dropped, which is exactly what a vanished
       // embedder deserves; a port that throws is one this document already closed
       try { port.postMessage(update) } catch { drop(id, port) }
@@ -176,11 +176,13 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     return media ? snapshotOf(media, players.get(id)?.chapters) : undefined
   }
   const announce = (id: string, event: PlayerEvent) => {
+    // a press of the fullscreen is for the mirrors that took it over: another one toggling too would undo it
+    const to = event === 'fullscreenrequest' ? hosts.get(id) : ports.get(id)
     // nobody listening is the ordinary case for a player nobody mirrors, and `timeupdate` alone is
     // four snapshots a second for the life of the document
-    if (!ports.get(id)?.size) return
+    if (!to?.size) return
     const snapshot = snapshotAt(id)
-    if (snapshot) post(id, { event, snapshot })
+    if (snapshot) post(id, { event, snapshot }, to)
   }
 
   const service: PlayerService = {
@@ -211,7 +213,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       // its answer is missed. Nothing at all when no player has that id: the mirror waits, and hears
       // this the moment one is served.
       const snapshot = snapshotAt(id)
-      if (snapshot) post(id, { event: 'loadstart', snapshot }, port)
+      if (snapshot) post(id, { event: 'loadstart', snapshot }, [port])
     },
     set: (id, name, value) => {
       if (name === 'fullscreen') {

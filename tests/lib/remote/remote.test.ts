@@ -866,6 +866,23 @@ describe('a player served with what is around its media', () => {
     expect(told.at(-1)).toBe(null)
   })
 
+  it('a press of the fullscreen reaches the mirror that took it over, and no other mirror of that player', async () => {
+    const { served } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const claiming = mediaPlayer(port2, { fullscreen: true })
+    const plain = mediaPlayer(port2)
+    open.push(claiming.destroy, plain.destroy)
+    const heard = { claiming: 0, plain: 0 }
+    claiming.addEventListener('fullscreenrequest', () => { heard.claiming++ })
+    plain.addEventListener('fullscreenrequest', () => { heard.plain++ })
+    await Promise.all([claiming.ready, plain.ready])
+
+    served.dispatchEvent(new Event('fullscreenrequest'))
+    await settled()
+    expect(heard).toEqual({ claiming: 1, plain: 0 })
+  })
+
   it('a mirror that took it over takes it over again in the state it holds, once the player is served anew', async () => {
     const { served, told } = servedPlayer()
     const { port1, port2 } = new MessageChannel()
