@@ -22,6 +22,10 @@
       "types": "./dist/language/index.d.ts",
       "import": "./dist/language/index.js"
     },
+    "./chapters": {
+      "types": "./dist/chapters/index.d.ts",
+      "import": "./dist/chapters/index.js"
+    },
     "./volume-normalizer-worklet.js": "./dist/volume-normalizer-worklet.js",
     "./noto-sans-jp.otf": "./src/lib/assets/noto-sans-jp.otf",
     "./package.json": "./package.json"

@@ -32,6 +32,7 @@ export default defineConfig({
         'engine/index': 'src/lib/engine/index.ts',
         'remote/index': 'src/lib/remote/index.ts',
         'language/index': 'src/lib/language/index.ts',
+        'chapters/index': 'src/lib/chapters/index.ts',
       },
       fileName: (_format, name) => `${name}.js`,
       formats: ['es'],
