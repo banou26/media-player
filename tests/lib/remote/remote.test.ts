@@ -941,6 +941,23 @@ describe('a player served with what is around its media', () => {
     expect(told.at(-1)).toBe(true)
   })
 
+  it('a mirror that took it over takes it over again in the state it holds, once the document reconnects', async () => {
+    const before = servedPlayer()
+    const after = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const closing = new AbortController()
+    exposePlayer(fakeMedia(), { transport: port1, player: before.served, signal: closing.signal })
+    const player = mediaPlayer(port2, { fullscreen: true })
+    open.push(player.destroy)
+    await player.ready
+    player.fullscreen = true
+    await settled()
+
+    closing.abort()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: after.served }))
+    await expect.poll(() => after.told).toEqual([null, true])
+  })
+
   it('a player another one replaces on its id is given its fullscreen back', async () => {
     const first = servedPlayer()
     const second = servedPlayer()
