@@ -10,6 +10,7 @@ import { usePlayer } from '../player'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import BurnInHint from './burn-in-hint'
+import { HostKeepsFullscreen } from './tooltip-display'
 import SkipChapter from './skip-chapter'
 
 const AUTO_HIDE_DELAY = 3_000
@@ -310,7 +311,11 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
           {item}
         </div>
       ))}
-      {controls === false ? null : <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} />}
+      {controls === false ? null : (
+        <HostKeepsFullscreen value={!!fullscreen}>
+          <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} />
+        </HostKeepsFullscreen>
+      )}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
       <SkipChapter />

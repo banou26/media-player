@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { TooltipRefProps } from 'react-tooltip'
 
-import { useEffect, useRef } from 'react'
+import { createContext, useContext, useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
 import { PlacesType, Tooltip } from 'react-tooltip'
 
@@ -78,6 +78,9 @@ const watchPointer = () => {
   }
 }
 
+/** Whether the host page keeps the player's fullscreen: the `fullscreen` prop, or a mirror that took it over. */
+export const HostKeepsFullscreen = createContext(false)
+
 interface TooltipDisplayProps {
   id: string
   toolTipText: ReactNode
@@ -103,6 +106,7 @@ export const TooltipDisplay = ({
 }: TooltipDisplayProps) => {
   const anchor = useRef<HTMLDivElement>(null)
   const tooltip = useRef<TooltipRefProps>(null)
+  const hostKeepsFullscreen = useContext(HostKeepsFullscreen)
 
   /**
    * Close on a fullscreen transition, unless the pointer really is still on the anchor.
@@ -124,6 +128,12 @@ export const TooltipDisplay = ({
    * That is the same test chrome.tsx's onMouseOut makes when relatedTarget comes back null. The rect
    * is already the post-transition one when fullscreenchange fires, where matches(':hover') is not,
    * which is why the pointer is tracked rather than asked for.
+   *
+   * A host that keeps the fullscreen fullscreens an element of its own document, so a player in a
+   * frame hears no fullscreenchange (measured 2026-10-26, Chromium) and the chip stayed through any
+   * later pointer move. Its window resizes with the frame, after the move, so that is what this
+   * listens to then. The host's `active` would not do: across origins it comes by a message, and no
+   * rule orders a message against the frame's new size.
    */
   useEffect(() => {
     const untrack = watchPointer()
@@ -138,11 +148,13 @@ export const TooltipDisplay = ({
     // as string so the prefixed name checks against the DOM lib's event map.
     const changeEvents: string[] = ['fullscreenchange', 'webkitfullscreenchange']
     for (const type of changeEvents) document.addEventListener(type, closeIfPointerLeft)
+    if (hostKeepsFullscreen) window.addEventListener('resize', closeIfPointerLeft)
     return () => {
       untrack()
       for (const type of changeEvents) document.removeEventListener(type, closeIfPointerLeft)
+      window.removeEventListener('resize', closeIfPointerLeft)
     }
-  }, [])
+  }, [hostKeepsFullscreen])
 
   return (
     <>
