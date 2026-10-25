@@ -525,28 +525,22 @@ const colourScript = (colour) => [
   '',
 ].join('\n')
 
-/**
- * Audio in English, a Japanese commentary and Japanese, the last in opus where the others are aac, so the codec the
- * remuxer picked says which stream it plays. Subtitles in English signs and songs (red), full English (green) and
- * Japanese (blue), in that order.
- */
-export const ensureLanguagesFixture = async () => {
-  if (await exists(LANGUAGES_FIXTURE_PATH)) return LANGUAGES_FIXTURE_PATH
+const makeLanguagesFixture = async (path, { duration, untitled = false }) => {
+  if (await exists(path)) return path
   await mkdir(PUBLIC_DIR, { recursive: true })
 
-  const scripts = ['&H000000FF', '&H0000FF00', '&H00FF0000'].map((colour, index) => ({
-    path: `${LANGUAGES_FIXTURE_PATH}.${index}.ass`,
-    script: colourScript(colour),
-  }))
-  for (const { path, script } of scripts) await writeFile(path, script)
+  const colours = ['&H000000FF', '&H0000FF00', '&H00FF0000', ...untitled ? ['&H00FFFFFF'] : []]
+  const scripts = colours.map((colour, index) => ({ file: `${path}.${index}.ass`, script: colourScript(colour) }))
+  for (const { file, script } of scripts) await writeFile(file, script)
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',
-    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=6',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
-    '-f', 'lavfi', '-i', 'sine=frequency=550:duration=6',
-    '-f', 'lavfi', '-i', 'sine=frequency=660:duration=6',
-    ...scripts.flatMap(({ path }) => ['-i', path]),
-    '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:a', '-map', '4:s', '-map', '5:s', '-map', '6:s',
+    '-f', 'lavfi', '-i', `testsrc=size=320x240:rate=24:duration=${duration}`,
+    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${duration}`,
+    '-f', 'lavfi', '-i', `sine=frequency=550:duration=${duration}`,
+    '-f', 'lavfi', '-i', `sine=frequency=660:duration=${duration}`,
+    ...scripts.flatMap(({ file }) => ['-i', file]),
+    '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:a',
+    ...scripts.flatMap((_, index) => ['-map', `${4 + index}:s`]),
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
     '-c:a:0', 'aac', '-c:a:1', 'aac', '-c:a:2', 'libopus',
     '-c:s', 'copy',
@@ -556,11 +550,28 @@ export const ensureLanguagesFixture = async () => {
     '-metadata:s:s:0', 'language=eng', '-metadata:s:s:0', 'title=Signs & Songs',
     '-metadata:s:s:1', 'language=eng', '-metadata:s:s:1', 'title=Full Subtitles',
     '-metadata:s:s:2', 'language=jpn',
-    LANGUAGES_FIXTURE_PATH,
+    ...untitled ? ['-metadata:s:s:3', 'language=und', '-metadata:s:s:3', 'title=SDH'] : [],
+    path,
   ])
-  for (const { path } of scripts) await rm(path, { force: true })
-  return LANGUAGES_FIXTURE_PATH
+  for (const { file } of scripts) await rm(file, { force: true })
+  return path
 }
+
+/**
+ * Audio in English, a Japanese commentary and Japanese, the last in opus where the others are aac, so the codec the
+ * remuxer picked says which stream it plays. Subtitles in English signs and songs (red), full English (green) and
+ * Japanese (blue), in that order.
+ */
+export const ensureLanguagesFixture = () => makeLanguagesFixture(LANGUAGES_FIXTURE_PATH, { duration: 6 })
+
+export const LANGUAGES_UND_FIXTURE = 'languages-und.mkv'
+export const LANGUAGES_UND_FIXTURE_PATH = PUBLIC_DIR + LANGUAGES_UND_FIXTURE
+
+/**
+ * The same streams over seven seconds, so a second file of another size, plus a fourth subtitle track (white) tagged
+ * und and titled SDH, which names no language.
+ */
+export const ensureLanguagesUndFixture = () => makeLanguagesFixture(LANGUAGES_UND_FIXTURE_PATH, { duration: 7, untitled: true })
 
 export const LOUD_FIXTURE = 'loud-tone.mkv'
 export const LOUD_FIXTURE_PATH = PUBLIC_DIR + LOUD_FIXTURE
@@ -898,7 +909,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensureLanguagesFixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensureLanguagesFixture, ensureLanguagesUndFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

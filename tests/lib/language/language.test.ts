@@ -17,7 +17,11 @@ describe('preferredTrack', () => {
     expect(preferredTrack('und', tags('und', 'eng'))).toBe(-1)
     expect(preferredTrack('zxx', tags('zxx'))).toBe(-1)
     expect(preferredTrack('mul', tags('mul'))).toBe(-1)
-    expect(preferredTrack('Signs & Songs', [{ language: 'eng', title: 'Signs & Songs' }])).toBe(-1)
+  })
+
+  it('finds the track titled as a preference that names no language', () => {
+    expect(preferredTrack('Signs & Songs', [{ language: 'jpn' }, { language: 'eng', title: 'Signs & Songs' }])).toBe(1)
+    expect(preferredTrack('SDH', [{ language: 'eng', title: 'Signs' }, { language: 'und', title: 'SDH' }])).toBe(1)
   })
 
   it('reads the title when the tag says nothing', () => {
@@ -83,6 +87,11 @@ describe('preferredSelection', () => {
     expect(preferredSelection(selection, undefined)).toBeUndefined()
     expect(preferredSelection(selection, 'fr')).toBeUndefined()
     expect(preferredSelection(selection, 'Japanese')).toBeUndefined()
+  })
+
+  it('names the option labelled as a preference that names no language', () => {
+    const indonesian = { ...selection, options: [...selection.options, { id: 'id', label: 'Bahasa Indonesia' }] }
+    expect(preferredSelection(indonesian, 'Bahasa Indonesia')).toBe('id')
   })
 
   it('skips a disabled option', () => {
