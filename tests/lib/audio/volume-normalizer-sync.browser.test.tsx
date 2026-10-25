@@ -249,10 +249,9 @@ describe('the normalizer in step with the media, live', () => {
     const until = (time: number) => expect.poll(() => video.currentTime, { timeout: 30_000, interval: 5 }).toBeGreaterThanOrEqual(time)
     // six seconds played from the start, before the first loud sound, for the ahead stage to match the audio
     await until(6)
-    // a few ms either side of an onset, after the analysis of the whole file, except 0.1 s before the click 46 s back:
-    // its audio is still buffered and comes back before the cut the worklet let go of is sent again, and is barely cut
-    // until that lands (HOR-681, open)
-    for (const time of [10.1234 - 0.003, 14.5678 + 0.005, 22.2468 - 0.001, 26.7531 + 0.06 - 0.002, 50.7654 - 0.002, 6.3337 - 0.1]) {
+    // a few ms either side of an onset, after the analysis of the whole file, the last one 46 s back into audio still
+    // buffered, which Chrome plays sooner than a cut can be computed under load
+    for (const time of [10.1234 - 0.003, 14.5678 + 0.005, 22.2468 - 0.001, 26.7531 + 0.06 - 0.002, 50.7654 - 0.002, 6.3337 - 0.003]) {
       await seek(time, 1300)
     }
     // a pause in the middle of the 1 s burst

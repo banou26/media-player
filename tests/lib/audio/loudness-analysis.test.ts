@@ -76,12 +76,12 @@ describe('the cut computed ahead', () => {
   })
 })
 
-/** The audio of [from, to) s, pushed into a run in pieces of uneven length, as decoded audio arrives. */
-const feed = (analysis: ReturnType<typeof createAnalysis>, from: number, to: number) => {
+/** The audio of [from, to) s, `offset` s later, pushed into a run in pieces of uneven length, as decoded audio arrives. */
+const feed = (analysis: ReturnType<typeof createAnalysis>, from: number, to: number, offset = 0) => {
   let piece = 0
   for (let at = Math.round(from * RATE); at < Math.round(to * RATE);) {
     const frames = Math.min([1024, 960, 4096, 2048][piece++ % 4]!, Math.round(to * RATE) - at)
-    analysis.push([signal.left.slice(at, at + frames), signal.right.slice(at, at + frames)], frames, RATE, at / RATE)
+    analysis.push([signal.left.slice(at, at + frames), signal.right.slice(at, at + frames)], frames, RATE, offset + at / RATE)
     at += frames
   }
 }
@@ -145,6 +145,29 @@ describe('the analysis, as the file is read', () => {
     sent.length = 0
     analysis.setPlayhead(50.76)
     expect(sent).toEqual([5, 4])
+  })
+
+  it('keeps the 60 blocks it sent nearest the playhead, 560 to 570 s behind it and the 30 to 40 s sent ahead', () => {
+    const { blocks, toWorklet } = collect()
+    const analysis = createAnalysis({ toWorklet })
+    analysis.startRun(0, 0, true)
+    for (let lap = 0; lap < 11; lap++) feed(analysis, 0, 60, lap * 60)
+    analysis.endRun(true)
+    for (let time = 0; time <= 600; time += 5) analysis.setPlayhead(time)
+    const held = () => [...blocks.keys()].sort((a, b) => a - b)
+    const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => from + k)
+    expect(held()).toEqual(range(4, 63))
+    expect([...blocks.values()].reduce((bytes, { gain, finger }) => bytes + gain.byteLength + finger.byteLength, 0)).toBe(4_800_000)
+    // 555 s back is held with its cut, and the seek there keeps the audio it played up to
+    expect(blocks.get(4)!.gain.some((v) => v < -3), 'block 4 held, with its cut').toBe(true)
+    analysis.setPlayhead(45)
+    expect(held()).toEqual(range(3, 62))
+    analysis.setPlayhead(600)
+    expect(held()).toEqual(range(4, 63))
+    // the control: 565 s back is past what it keeps, so that block is sent again and the farthest let go of
+    expect(blocks.has(3)).toBe(false)
+    analysis.setPlayhead(35)
+    expect(held()).toEqual(range(2, 61))
   })
 
   it('fills the file in out of order, around the playhead first, and ends with what reading it in order gives', () => {
