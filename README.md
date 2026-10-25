@@ -206,6 +206,10 @@ ninety seconds in each half of the runtime is the opening and the ending. Nothin
 fifteen seconds is ever offered, and a disc that is mostly themes offers nothing, because there the
 themes are what is being watched.
 
+The same guess is published on its own, for a page that has to know what a chapter is without loading the player:
+`classifyChapters(chapters)` from `@banou/media-player/chapters`, which imports nothing else of the player, gives
+`'opening'`, `'ending'` or undefined for each chapter.
+
 ### Picture in picture keeps the subtitles
 
 Subtitles are painted by jassub onto a canvas over the video, and picture in picture takes a video
@@ -253,6 +257,29 @@ picture in picture a click on it calls the media's `exitPictureInPicture`.
 A finger never rests on the control before it presses, so a tap cannot arm it. The control is offered
 only where the primary pointer hovers (`(hover: hover) and (pointer: fine)`), and a touch hides it
 until a pointer that hovers moves again.
+
+### Fullscreen kept by the host page
+
+A page that fullscreens an element of its own around the player, so that fullscreen outlasts the player in it, passes
+`fullscreen`:
+
+```tsx
+<div ref={stage}>
+  <MediaPlayer
+    {...source}
+    fullscreen={{
+      active: stageIsFullscreen,
+      request: () => document.fullscreenElement ? document.exitFullscreen() : stage.current!.requestFullscreen(),
+    }}
+  />
+</div>
+```
+
+The player then calls no `requestFullscreen`. The button, `f` and a double click each call `request` once, during the
+press's own event, so the page's `requestFullscreen` has the press's activation, and the button and
+`shortcuts="player"` follow `active`, which the page keeps up to date from its `fullscreenchange`. Without the prop
+the player fullscreens itself. A player in another document hands its fullscreen over through
+[`<MediaPlayer expose>`](#layout), to a mirror that asks for it.
 
 ### The volume normalizer
 
@@ -388,6 +415,18 @@ its published name so it stays an honest consumer.
   `emptied` and then the new state, the way an element would. Hand a remote player to a second
   `<MediaPlayer media={player}>` after `ready`. A document served with no frame around it serves
   nobody; `exposePlayer(media)` does the same without React.
+
+  A `<MediaPlayer expose>` also carries its chapters, as `player.chapters` with a `chapterschange` event after each
+  change (a bare element has none), and hands its fullscreen to a mirror made with `fullscreen: true`: the far
+  player's button, `f` and double click then fire one `fullscreenrequest` on the mirror each, within the press's
+  activation, and show `player.fullscreen` as this page sets it, until `destroy()` gives the fullscreen back.
+
+  ```ts
+  const player = mediaPlayer(iframe, { origin, fullscreen: true })
+  player.addEventListener('fullscreenrequest', () => document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen())
+  document.addEventListener('fullscreenchange', () => { player.fullscreen = !!document.fullscreenElement })
+  player.addEventListener('chapterschange', () => console.log(player.chapters))
+  ```
 - `src/lib/react/` the player component, its chrome, and the hooks.
 
 Built by `vite.lib.config.ts` into `dist/`, which is what npm publishes.
