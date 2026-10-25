@@ -147,7 +147,8 @@ describe('the analysis, as the file is read', () => {
     expect(sent).toEqual([5, 4])
   })
 
-  it('keeps the 60 blocks it sent nearest the playhead, 560 to 570 s behind it and the 30 to 40 s sent ahead', () => {
+  // it analyses eleven minutes of audio: 2.3 s here, 6.4 s on GitHub's runner, past vitest's 5 s (2026-10-26)
+  it('keeps the 60 blocks it sent nearest the playhead, 560 to 570 s behind it and the 30 to 40 s sent ahead', { timeout: 30_000 }, () => {
     const { blocks, toWorklet } = collect()
     const analysis = createAnalysis({ toWorklet })
     analysis.startRun(0, 0, true)
