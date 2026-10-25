@@ -570,14 +570,17 @@ export const mediaPlayer = (
     update: ({ event, snapshot }) => {
       const first = !answered
       answered = true
+      const chapters = JSON.stringify(state.chapters)
       Object.assign(state, snapshot)
       // a write the far side has not taken yet is the caller's intent, and outranks what the far
       // side is still reporting, first snapshot or any later one
       for (const [name, value] of pending) (state as Record<Writable, unknown>)[name] = value
-      if (!first) { dispatch(event); return }
       // told as an element would tell it on load, so a store attached before this catches up
-      for (const sync of syncEventsFor(state)) dispatch(sync)
-      settleReady()
+      const events = first ? syncEventsFor(state) : [event]
+      // a switch or a reconnect empties the chapters with an `emptied` or a catch-up, which say nothing of them
+      if (!events.includes('chapterschange') && JSON.stringify(state.chapters) !== chapters) events.push('chapterschange')
+      for (const each of events) dispatch(each)
+      if (first) settleReady()
     },
   })
 

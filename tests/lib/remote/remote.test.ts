@@ -10,6 +10,7 @@ import { expose } from 'osra'
 import { exposePlayer, mediaPlayer, PLAYER_CHANNEL } from '../../../src/lib/remote/index'
 import type { ServedPlayer } from '../../../src/lib/remote/index'
 import type { PlayerService, PlayerUpdate } from '../../../src/lib/remote/protocol'
+import { EMPTY_SNAPSHOT } from '../../../src/lib/remote/protocol'
 import type { MediaChapter } from '../../../src/lib/engine'
 
 /** A media that answers like an element and records what was done to it. */
@@ -829,6 +830,46 @@ describe('a player served with what is around its media', () => {
     served.dispatchEvent(new Event('chapterschange'))
     await settled()
     expect(heard).toEqual(['Opening,Episode', 'Opening,Episode,Ending'])
+  })
+
+  it('a mirror hears the chapters go when the player that had them is replaced by one with none', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: servedPlayer(OPENING).served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    const heard: number[] = []
+    player.addEventListener('chapterschange', () => heard.push(player.chapters.length))
+
+    stopFirst()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: servedPlayer().served }))
+    await settled()
+    expect(player.chapters).toEqual([])
+    expect(heard).toEqual([0])
+  })
+
+  it('a mirror hears the chapters go when the document it reconnects to has none', async () => {
+    const { port1, port2 } = new MessageChannel()
+    // a document that reloads says no `emptied` on its way out: the new one only answers the subscribe
+    const farDocument = (chapters: MediaChapter[], signal: AbortSignal) => expose<unknown>({
+      subscribe: (_: string, port: MessagePort) => { port.postMessage({ event: 'loadstart', snapshot: { ...EMPTY_SNAPSHOT, chapters } }) },
+      set: () => {},
+      call: async () => {},
+    }, { transport: port1, key: PLAYER_CHANNEL, unregisterSignal: signal })
+    const before = new AbortController()
+    farDocument(OPENING, before.signal)
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    expect(player.chapters).toEqual(OPENING)
+    const heard: number[] = []
+    player.addEventListener('chapterschange', () => heard.push(player.chapters.length))
+
+    before.abort()
+    const after = new AbortController()
+    open.push(() => after.abort())
+    farDocument([], after.signal)
+    await expect.poll(() => heard).toEqual([0])
   })
 
   it('a mirror that takes fullscreen over still mirrors a bare element, which has no chapters', async () => {
