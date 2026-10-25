@@ -135,7 +135,8 @@ export default defineConfig({
        * Firefox for the files that pin a Gecko behaviour, which the browser project also runs in Chromium as
        * the control. CI installs playwright's Firefox. Elsewhere it is opt-in: MEDIA_PLAYER_FIREFOX names a
        * playwright Firefox build, and on NixOS an ffmpeg lib directory has to be on LD_LIBRARY_PATH, without
-       * which Firefox has no H.264 (measured 2026-10-11, Firefox 151).
+       * which Firefox has no H.264 (measured 2026-10-11, Firefox 151), and for audio a libpulseaudio one, without
+       * which an AudioContext stays suspended after a click (measured 2026-10-26, Firefox 157).
        */
       ...(process.env.CI || process.env.MEDIA_PLAYER_FIREFOX
         ? [{

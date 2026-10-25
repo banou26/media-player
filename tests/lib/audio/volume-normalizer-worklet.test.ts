@@ -68,11 +68,34 @@ const blocks = (() => {
 })()
 
 /**
+ * A worker that has analysed the whole reference, told the playhead every render quantum, whose messages reach the
+ * worklet `latency` s after it sends them: a block took 21 to 43 ms to compute under load (HOR-888, 2026-10-23).
+ */
+const lateWorker = (latency: number) => {
+  const queue: { due: number, message: BlockMessage }[] = []
+  let now = 0
+  const analysis = createAnalysis({ toWorklet: (message) => queue.push({ due: now + latency * RATE, message }) })
+  analysis.startRun(0, 0, true)
+  for (let at = 0; at < reference[0]!.length; at += 4096) {
+    const planes = reference.map((x) => x.slice(at, at + 4096))
+    analysis.push(planes, planes[0]!.length, RATE, at / RATE)
+  }
+  analysis.endRun(true)
+  analysis.flushBlocks()
+  return (playhead: number, frame: number) => {
+    now = frame
+    analysis.setPlayhead(playhead)
+    const due = queue.findIndex(({ due }) => due > frame)
+    return queue.splice(0, due < 0 ? queue.length : due).map(({ message }) => message)
+  }
+}
+
+/**
  * Plays the signal into a processor one render quantum at a time, as a context would: the context's frame starts
  * `lag` frames in, the main thread's clock pairs come every 50 ms, and an output sample's truth is the cut asked at
  * the reference time of the input sample it came from.
  */
-const rig = ({ lag = 0, analysis = true } = {}) => {
+const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: boolean, worker?: ReturnType<typeof lateWorker> } = {}) => {
   const Processor = registered.Processor!
   const node = new Processor({ processorOptions: {} })
   const port = { onmessage: null as null | ((event: { data: unknown }) => void), close() {} }
@@ -90,14 +113,14 @@ const rig = ({ lag = 0, analysis = true } = {}) => {
   const record: { time: number, reference: number, applied: number, asked: number, handover: number }[] = []
   const history = new Map<number, { index: number, time: number } | null>()
   const deliver = () => {
-    for (const message of blocks(position / RATE)) port.onmessage?.({ data: message })
+    for (const message of worker ? worker(position / RATE, frame) : blocks(position / RATE)) port.onmessage?.({ data: message })
   }
   const quantum = () => {
     if (sinceClock >= 2400) {
       node.port.onmessage({ data: { media: position / RATE, ctx: frame / RATE, rate: 1, paused } })
       sinceClock = 0
     }
-    if (connected && sinceBlocks >= 12_000) {
+    if (connected && (worker || sinceBlocks >= 12_000)) {
       deliver()
       sinceBlocks = 0
     }
@@ -220,6 +243,18 @@ describe('the worklet against the media time', () => {
     expect(node.doubt).toBe(false)
     expect((node.offset! - before) * 1000).toBeCloseTo(12, 0)
     expect(short(record, 47, 50)).toEqual([])
+  })
+
+  it('cuts a seek 34 s back from its first sample, with the worker slow to send a block again', () => {
+    const { record, start, playTo, seek } = rig({ worker: lateWorker(0.03) })
+    start(5)
+    playTo(56)
+    // into the gunshot at 22.25 s
+    seek(22.26)
+    playTo(23)
+    expect(short(record, 22, 23)).toEqual([])
+    // the control: what it had to cut there
+    expect(record.filter(({ time, asked }) => time > 22.26 && time < 22.5 && asked < -6).length).toBeGreaterThan(5000)
   })
 
   // the matches of an Opus run under load, in seconds, against 6.5 ms where its audio was (HOR-888, 2026-10-23)

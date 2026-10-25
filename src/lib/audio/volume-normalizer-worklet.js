@@ -21,6 +21,13 @@ const BINS_PER_SECOND = 1000
 // the analysis's unit of work and of what the worklet holds: 10 s of 1 ms bins
 const BLOCK_BINS = 10_000
 /*
+ * The blocks the worklet keeps, those it was sent nearest the playhead, 4.8 MB of cut and fingerprint: as it plays,
+ * the 30 to 40 s sent ahead of it and 560 to 570 s behind. Under load Chrome plays a seek into audio it still has
+ * buffered before a block let go of is computed again: kept only 20 to 30 s behind and 30 to 40 s ahead, 3 to 32 ms of
+ * such a seek played on the live stage alone, in 51 of 75 seeks 24 to 44 s away on 4 loaded CPUs (HOR-681, 2026-10-25).
+ */
+const KEPT_BLOCKS = 60
+/*
  * How far a cut reaches from the audio that asks for it, in bins. The slow stage reads 1.85 s ahead and 1.65 s
  * behind, and its exponential attack (0.3 s, backward) and release (0.5 s, forward) fall under 0.01 dB of a 20 dB cut
  * within 2.3 s and 3.8 s, so 8 s of context on either side gives the cut the whole file would.
@@ -433,7 +440,8 @@ export const audioSamplesOf = (fragment, track) => {
 /**
  * The analysis: 1 ms bins of whatever audio it is given, the normal level learned from them, and the cut for the
  * blocks around the playhead. `toWorklet` takes `{ block, gain, finger }` (10 s of bins from `block * 10` s, NaN where
- * the cut or the audio is not known) and `{ drop }`; `toPage` takes the coverage reports the page schedules reads on.
+ * the cut or the audio is not known) and `{ drop }` for each block past the 60 sent nearest the playhead, which is all
+ * the worklet keeps; `toPage` takes the coverage reports the page schedules reads on.
  * Separate from the worker's messages so a test can drive it with decoded audio.
  */
 export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
@@ -557,13 +565,8 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
   const update = () => {
     timer = undefined
     const level = normal()
-    const here = Math.floor(playhead * BINS_PER_SECOND / BLOCK_BINS)
-    for (const block of [...sent.keys()]) {
-      if (block >= here - 2 && block <= here + 4) continue
-      sent.delete(block)
-      toWorklet({ drop: block })
-    }
     if (!Number.isFinite(level)) return
+    const here = Math.floor(playhead * BINS_PER_SECOND / BLOCK_BINS)
     // the playhead's own block first: under load each took 21 to 43 ms, and sent after the one before it, a seek's
     // cut over HTTP reached the worklet 64 to 75 ms after the seek, its audio 72 to 83 ms (HOR-888, 2026-10-23)
     for (const block of [here, here - 1, here + 1, here + 2, here + 3]) {
@@ -576,6 +579,11 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
       const { gain, finger } = computeBlock(block, level)
       sent.set(block, { known, level })
       toWorklet({ block, gain, finger }, [gain.buffer, finger.buffer])
+    }
+    const nearest = [...sent.keys()].sort((a, b) => Math.abs(a - here) - Math.abs(b - here))
+    for (const block of nearest.slice(KEPT_BLOCKS)) {
+      sent.delete(block)
+      toWorklet({ drop: block })
     }
   }
   const schedule = () => { timer ??= setTimeout(update, 250) }
