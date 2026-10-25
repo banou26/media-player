@@ -2,6 +2,8 @@ import type { MockInstance } from 'vitest'
 import type { MediaChapter } from '../../../src/lib/engine'
 import type { HostFullscreen } from '../../../src/lib/react/video-player'
 
+import { useEffect, useState } from 'react'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
@@ -122,6 +124,60 @@ describe('a player whose host keeps the fullscreen', () => {
     await userEvent.keyboard('f')
     expect(request).toHaveBeenCalledTimes(1)
     expect(requestFullscreen).not.toHaveBeenCalled()
+  })
+})
+
+describe('a framed player whose host fullscreens the stage around the frame', () => {
+  const frame = window.frameElement as HTMLIFrameElement
+  const stage = frame.parentElement!
+  const host = frame.ownerDocument
+  const styles = [frame, stage].map((element) => [element, element.getAttribute('style')] as const)
+  afterEach(async () => {
+    if (host.fullscreenElement) await host.exitFullscreen()
+    for (const [element, style] of styles) {
+      if (style === null) element.removeAttribute('style')
+      else element.setAttribute('style', style)
+    }
+  })
+
+  const Host = ({ media }: { media: ReturnType<typeof createFakeRemoteMedia> }) => {
+    const [active, setActive] = useState(false)
+    useEffect(() => {
+      const sync = () => setActive(host.fullscreenElement === stage)
+      host.addEventListener('fullscreenchange', sync)
+      return () => host.removeEventListener('fullscreenchange', sync)
+    }, [])
+    const request = () => { if (host.fullscreenElement) void host.exitFullscreen(); else void stage.requestFullscreen() }
+    return <MediaPlayer media={media} fullscreen={{ active, request }} />
+  }
+
+  const showing = () => !!document.querySelector('.react-tooltip.react-tooltip__show')
+
+  it('closes the tooltip of the button that the fullscreen moved from under the pointer', async () => {
+    // smaller than the screen, so that going fullscreen moves the button
+    stage.style.width = '900px'
+    stage.style.height = '500px'
+    frame.style.width = '100%'
+    frame.style.height = '100%'
+    const container = document.createElement('div')
+    container.className = MOUNTED
+    container.style.cssText = 'position: fixed; inset: 0; width: 100vw; height: 100vh;'
+    document.body.append(container)
+    await render(<Host media={createFakeRemoteMedia()} />, { container })
+    await ready(container)
+
+    const before = button(container).getBoundingClientRect()
+    const offset = frame.getBoundingClientRect()
+    const [x, y] = [offset.left + before.left + before.width / 2, offset.top + before.top + before.height / 2]
+    await mouseTo(x - 2, y - 2)
+    await mouseTo(x, y)
+    await expect.poll(showing, { timeout: 5000 }).toBe(true)
+    await click(x, y)
+    await expect.poll(() => host.fullscreenElement, { timeout: 3000 }).toBe(stage)
+    await expect.poll(() => button(container).getBoundingClientRect().left, { timeout: 3000 }).not.toBe(before.left)
+    expect(document.fullscreenElement, 'the player fullscreened itself, so this is not the host case').toBeNull()
+
+    await expect.poll(showing, { timeout: 3000 }).toBe(false)
   })
 })
 
