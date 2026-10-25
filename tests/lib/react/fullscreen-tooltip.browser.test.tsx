@@ -85,3 +85,29 @@ describe('a tooltip on a control that going fullscreen relays', () => {
     expect(showing(), 'a tooltip the pointer is still on was closed anyway').toBe(true)
   })
 })
+
+describe('a tooltip in a player whose host keeps the fullscreen', () => {
+  const shrunk = async (fullscreen?: { active: boolean, request: () => void }) => {
+    const { container } = sized()
+    const screen = await render(<MediaPlayer media={createFakeRemoteMedia()} fullscreen={fullscreen} />, { container })
+    const anchor = await openTooltip(screen)
+    const before = anchor.getBoundingClientRect()
+    container.style.height = '160px'
+    expect(anchor.getBoundingClientRect().top, 'the control did not actually move, so this proves nothing').not.toBe(before.top)
+    return anchor
+  }
+
+  // a frame around the player hears no fullscreenchange when the host fullscreens it, only its window resizing
+  it('closes on a resize when the control moved out from under the pointer', async () => {
+    await shrunk({ active: false, request: () => {} })
+    window.dispatchEvent(new Event('resize'))
+    await expect.poll(showing, { timeout: 5000 }).toBe(false)
+  })
+
+  it('control: a player that keeps its own fullscreen leaves the tooltip to fullscreenchange, as before', async () => {
+    await shrunk()
+    window.dispatchEvent(new Event('resize'))
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(showing()).toBe(true)
+  })
+})
