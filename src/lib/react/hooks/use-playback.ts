@@ -1,4 +1,4 @@
-import type { PlaybackController, PlaybackOutput } from '../../engine'
+import type { AudioStream, PlaybackController, PlaybackOutput, SubtitleStream } from '../../engine'
 import type { PlaybackErrorEntry } from '../source-feature'
 import type { MediaPlayerLocalOptions } from '../video-player'
 
@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isMediaElementError, startPlayback } from '../../engine'
 import { usePlayer } from '../player'
 import { toNamedTracks } from '../../utils/track-label'
+import { languageOf, preferredTrack } from '../../language'
 
 /**
  * A wedged element is rebuilt, however many times it takes.
@@ -39,6 +40,13 @@ const SEEK_PREPARE_BUDGET_MS = 500
  * completes at all would otherwise leave the clock reading a time the picture never reached.
  */
 const SEEK_DISPLAY_LIMIT_MS = 15_000
+
+/** The subtitle stream a media starts on: the first in the preferred language, else the first; none when it is off. */
+const preferredSubtitle = (preference: string | null | undefined, subtitles: SubtitleStream[]) => {
+  if (preference === null) return undefined
+  const index = preference === undefined ? 0 : preferredTrack(preference, subtitles)
+  return subtitles[Math.max(index, 0)]?.streamIndex
+}
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
@@ -95,9 +103,10 @@ export const usePlayback = (
   const chaptersRef = useRef(chapters)
   chaptersRef.current = chapters
 
-  // The track the viewer picked, which is what a restart is keyed on. Distinct from the store's
-  // `selectedAudioStream`, which is whatever is playing right now.
-  const [audioStreamIndex, setAudioStreamIndex] = useState<number | undefined>(undefined)
+  // The track the viewer picked for this media, which is what a restart is keyed on. Distinct from the store's
+  // `selectedAudioTrack`, which is whatever is playing right now.
+  const [audioChoice, setAudioChoice] = useState<{ size: number, streamIndex: number }>()
+  const audioStreamIndex = audioChoice && audioChoice.size === size ? audioChoice.streamIndex : undefined
 
   /**
    * Bumped to rebuild the pipeline after the media element itself has failed.
@@ -138,12 +147,22 @@ export const usePlayback = (
    * deliberately not, since a streaming consumer passes a fresh closure several times a second.
    */
   const resumeRef = useRef<{ time: number, size: number } | null>(null)
-  // The renderer turns the first track on by itself, so the menu has to mirror that or it shows
-  // "Disable" ticked over subtitles that are visibly on screen.
-  const subtitleChoiceMade = useRef(false)
+  // The size of the media the viewer picked subtitles for: until then each pipeline starts on the preferred track.
+  const subtitleChoiceFor = useRef<number>(undefined)
+  const sizeRef = useRef(size)
+  sizeRef.current = size
+  const streams = useRef<{ audio: AudioStream[], subtitles: SubtitleStream[] }>({ audio: [], subtitles: [] })
 
   const readRef = useRef(read)
   readRef.current = read
+  const preferredAudioRef = useRef(options?.preferredAudioLanguage)
+  preferredAudioRef.current = options?.preferredAudioLanguage
+  const preferredSubtitleRef = useRef(options?.preferredSubtitleLanguage)
+  preferredSubtitleRef.current = options?.preferredSubtitleLanguage
+  const onAudioLanguageRef = useRef(options?.onPreferredAudioLanguageChange)
+  onAudioLanguageRef.current = options?.onPreferredAudioLanguageChange
+  const onSubtitleLanguageRef = useRef(options?.onPreferredSubtitleLanguageChange)
+  onSubtitleLanguageRef.current = options?.onPreferredSubtitleLanguageChange
   const onSeekRef = useRef(options?.onSeek)
   onSeekRef.current = options?.onSeek
   const onPlaybackErrorRef = useRef(options?.onPlaybackError)
@@ -155,9 +174,13 @@ export const usePlayback = (
   // that comes back is one of its own stream indices.
   const selectSubtitleTrack = useCallback((id: string | number | undefined) => {
     const streamIndex = typeof id === 'number' ? id : undefined
-    subtitleChoiceMade.current = true
+    subtitleChoiceFor.current = sizeRef.current
     player.setSourceState({ selectedSubtitleTrack: streamIndex })
     controllerRef.current?.selectSubtitleStream(streamIndex)
+    const language = streamIndex === undefined
+      ? null
+      : languageOf(streams.current.subtitles.find((stream) => stream.streamIndex === streamIndex))
+    if (language !== undefined) onSubtitleLanguageRef.current?.(language)
   }, [player])
 
   /**
@@ -252,9 +275,11 @@ export const usePlayback = (
   }, [player, seekPrepareBudgetMs])
 
   const selectAudioTrack = useCallback((id: string | number) => {
-    if (typeof id !== 'number') return
+    if (typeof id !== 'number' || sizeRef.current === undefined) return
     player.setSourceState({ selectedAudioTrack: id })
-    setAudioStreamIndex(id)
+    setAudioChoice({ size: sizeRef.current, streamIndex: id })
+    const language = languageOf(streams.current.audio.find((stream) => stream.streamIndex === id))
+    if (language !== undefined) onAudioLanguageRef.current?.(language)
   }, [player])
 
   // Subscribed rather than read off the store, because it is a no-op until the media element
@@ -345,6 +370,10 @@ export const usePlayback = (
           cjkFontUrl,
           bufferSize,
           audioStreamIndex,
+          chooseAudioStream: (audio) => {
+            const preference = preferredAudioRef.current
+            return preference === undefined ? undefined : audio[preferredTrack(preference, audio)]?.streamIndex
+          },
           onReady: () => {
             if (cancelled) return
             player.setSourceState({ ready: true })
@@ -360,16 +389,18 @@ export const usePlayback = (
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
           onSeek: (fraction) => onSeekRef.current?.(fraction),
           onOutput: (output) => onOutputRef.current?.(output),
-          onSubtitleStreams: (streams) => {
+          onSubtitleStreams: (subtitles) => {
             if (cancelled) return
+            streams.current.subtitles = subtitles
             player.setSourceState({
-              subtitleTracks: toNamedTracks(streams),
-              ...subtitleChoiceMade.current ? {} : { selectedSubtitleTrack: streams[0]?.streamIndex },
+              subtitleTracks: toNamedTracks(subtitles),
+              ...subtitleChoiceFor.current === size ? {} : { selectedSubtitleTrack: preferredSubtitle(preferredSubtitleRef.current, subtitles) },
             })
           },
-          onAudioStreams: (streams, selected) => {
+          onAudioStreams: (audio, selected) => {
             if (cancelled) return
-            player.setSourceState({ audioTracks: toNamedTracks(streams), selectedAudioTrack: selected })
+            streams.current.audio = audio
+            player.setSourceState({ audioTracks: toNamedTracks(audio), selectedAudioTrack: selected })
           },
         })
         if (cancelled) {
@@ -383,9 +414,9 @@ export const usePlayback = (
           indexes: controller.indexes,
           chapters: chaptersRef.current ?? controller.chapters,
         })
-        // a track chosen before this pipeline existed has to be re-applied to the new renderer
+        // the renderer starts on the first track, so the one the store holds (off included) is applied to it
         const chosen = player.selectedSubtitleTrack
-        if (typeof chosen === 'number') controller.selectSubtitleStream(chosen)
+        controller.selectSubtitleStream(typeof chosen === 'number' ? chosen : undefined)
       } catch (error) {
         fail(error)
       }

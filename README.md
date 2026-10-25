@@ -167,7 +167,8 @@ chrome at once.
 Play and pause, seek with a preview thumbnail and a keyframe-accurate scrub, chapters on the seekbar,
 an offer to skip an opening or ending, volume on a log curve, mute, playback speed, audio track
 selection, subtitle track selection, picture in picture, fullscreen, and keyboard shortcuts. Nothing
-is persisted: volume, speed and track choices start at their defaults every load.
+is persisted: volume and speed start at their defaults every load, and tracks at the
+[preferred languages](#preferred-languages) you pass, or the file's defaults.
 
 The shortcuts (Space or `k`, `f`, `m`, the arrow keys, and `<` and `>` to pause and step one frame back or forward)
 listen on the whole page, and leave Ctrl, Cmd and Alt combinations to the browser. The frame steps need a media
@@ -294,6 +295,29 @@ on the page's next click, tap or key press, and the video plays as it always did
 (`createMediaElementSource` in `@banou/ponyfill/web-audio`), since a routed element loses its volume and mute there.
 The refusal comes when routing would, once the switch is on and the AudioContext runs: until then the switch reads as
 available, and from then on it reads Unavailable, with the element never routed and playing as it always did.
+
+### Preferred languages
+
+Pass the languages to start a file in, and save what the viewer picks:
+
+```tsx
+<MediaPlayer
+  {...source}
+  preferredAudioLanguage={saved.audio}
+  preferredSubtitleLanguage={saved.subtitles}
+  onPreferredAudioLanguageChange={(audio) => save({ ...saved, audio })}
+  onPreferredSubtitleLanguageChange={(subtitles) => save({ ...saved, subtitles })}
+/>
+```
+
+A preference is a tag or a name (`ja`, `ja-JP`, `jpn`, `Japanese`, `English (US)`), and a pick is reported the way the
+track names its language, its tag or else its title, or null for subtitles off. A file starts on its full track in the
+preferred language, never a commentary or a signs and songs track when a full one exists, and on its default when it has
+nothing in that language. What the viewer picks wins for that file.
+
+A media the player does not own reports picks the same way, by the option's label once the source's `select`
+resolves, and its host applies the preference to its own tracks: `preferredSelection(selection, preference)`, from
+`@banou/media-player/language`, names the option to select, and imports nothing else of the player.
 
 ## Layout
 

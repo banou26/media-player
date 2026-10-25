@@ -58,6 +58,11 @@ export type PlaybackOptions = {
   cjkFontUrl?: string
   bufferSize?: number
   audioStreamIndex?: number
+  /**
+   * Picks the audio stream from the file's own when `audioStreamIndex` names none, undefined for the default. A pick
+   * other than the default makes the remuxer again before anything plays, since libav fixes its stream when it is made.
+   */
+  chooseAudioStream?: (streams: AudioStream[]) => number | undefined
   onReady?: () => void
   onError?: (error: unknown) => void
   onRecovered?: () => void
@@ -159,19 +164,20 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
   const {
     videoElement, subtitleContainer, read, length, publicPath, libavWorkerUrl,
     jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
-    audioStreamIndex, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
+    audioStreamIndex, chooseAudioStream, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
     onAudioStreams, onOutput,
   } = options
 
-  const remuxer = await makeRemuxer({
+  const make = (streamIndex: number | undefined) => makeRemuxer({
     publicPath,
     workerUrl: libavWorkerUrl,
     workerOptions: { type: 'module' },
     bufferSize,
     length,
-    audioStreamIndex,
+    audioStreamIndex: streamIndex,
     read,
   })
+  let remuxer = await make(audioStreamIndex)
 
   const teardown: (() => void)[] = []
   let destroyed = false
@@ -185,11 +191,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
   teardown.push(() => terminateRemuxer(remuxer))
 
   try {
-    const metadata = await remuxer.init()
+    let metadata = await remuxer.init()
+    const chosen = audioStreamIndex ?? chooseAudioStream?.(metadata.audioStreams ?? [])
+    if (audioStreamIndex === undefined && chosen !== undefined && chosen !== metadata.audioStreams?.[0]?.streamIndex) {
+      terminateRemuxer(remuxer)
+      remuxer = await make(chosen)
+      metadata = await remuxer.init()
+    }
 
     const audioStreams = metadata.audioStreams ?? []
-    const selectedAudio = audioStreams.some((s) => s.streamIndex === audioStreamIndex)
-      ? audioStreamIndex!
+    const selectedAudio = audioStreams.some((s) => s.streamIndex === chosen)
+      ? chosen!
       : audioStreams[0]?.streamIndex ?? -1
     onAudioStreams?.(audioStreams, selectedAudio)
 
