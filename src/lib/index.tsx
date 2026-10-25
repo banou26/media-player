@@ -2,6 +2,7 @@
 
 export { MediaPlayer, default } from './react/video-player'
 export type {
+  HostFullscreen,
   MediaPlayerOptions,
   MediaPlayerLocalOptions,
   MediaPlayerRemoteOptions,
