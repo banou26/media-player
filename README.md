@@ -346,7 +346,9 @@ it has one.
 
 A media the player does not own reports picks the same way, by the option's label once the source's `select`
 resolves, and its host applies the preference to its own tracks: `preferredSelection(selection, preference)`, from
-`@banou/media-player/language`, names the option to select, and imports nothing else of the player.
+`@banou/media-player/language`, names the option to select, and imports nothing else of the player. `languageTag(pick)`
+from the same module gives a pick's BCP 47 tag (`jpn` gives `ja`, `Português (Brasil)` gives `pt-BR`), or undefined for
+one naming no language, for code that reads tags.
 
 ## Layout
 

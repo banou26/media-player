@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { languageOf, preferredSelection, preferredTrack } from '../../../src/lib/language'
+import { languageOf, languageTag, preferredSelection, preferredTrack } from '../../../src/lib/language'
 
 const tags = (...languages: string[]) => languages.map((language) => ({ language }))
 
@@ -69,6 +69,19 @@ describe('languageOf', () => {
 
   it('reads a title by name only, never as a tag', () => {
     for (const title of ['SDH', 'PCM', 'UK', 'SD', 'Alt']) expect(languageOf({ language: 'und', title })).toBeUndefined()
+  })
+})
+
+describe('languageTag', () => {
+  it.each([
+    ['jpn', 'ja'], ['ja-JP', 'ja-JP'], ['en_US', 'en-US'], ['Japanese', 'ja'], ['日本語', 'ja'], ['German', 'de'],
+    ['Português (Brasil)', 'pt-BR'], ['English (UK)', 'en-GB'], ['es-419', 'es-419'], ['zh-Hant', 'zh-Hant'],
+  ])('tags %s as %s', (text, tag) => {
+    expect(languageTag(text)).toBe(tag)
+  })
+
+  it('tags nothing that names no language', () => {
+    for (const text of ['und', 'zxx', 'mul', 'Signs & Songs', 'Full Subtitles', '', ' ', undefined]) expect(languageTag(text), String(text)).toBeUndefined()
   })
 })
 
