@@ -19,6 +19,7 @@
       "import": "./dist/remote/index.js"
     },
     "./volume-normalizer-worklet.js": "./dist/volume-normalizer-worklet.js",
+    "./noto-sans-jp.otf": "./src/lib/assets/noto-sans-jp.otf",
     "./package.json": "./package.json"
   },
   "files": [

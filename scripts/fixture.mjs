@@ -454,6 +454,57 @@ export const ensureHeaderFixture = async () => {
   return HEADER_FIXTURE_PATH
 }
 
+export const CJK_FIXTURE = 'subtitle-cjk.mkv'
+export const CJK_FIXTURE_PATH = PUBLIC_DIR + CJK_FIXTURE
+
+/**
+ * Four bands of a quarter of the picture each: the same Latin line in Arial, which the file does not carry,
+ * and in Liberation Sans, then two lines of different kana in Liberation Sans, the way releases set song
+ * lyrics. Placed at whole pixels in a script at the picture's own size, so two rows drawn from the same
+ * glyphs are pixel for pixel identical.
+ */
+export const CJK_HEADER = [
+  '[Script Info]',
+  'ScriptType: v4.00+',
+  'PlayResX: 1920',
+  'PlayResY: 1080',
+  '',
+  '[V4+ Styles]',
+  'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  'Style: Lyrics,Liberation Sans,80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1',
+  'Style: Plain,Arial,80,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1',
+  '',
+  '[Events]',
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Plain,,0,0,0,,{\\pos(200,90)}Hello there',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Lyrics,,0,0,0,,{\\pos(200,360)}Hello there',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Lyrics,,0,0,0,,{\\pos(200,630)}あいうえお',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Lyrics,,0,0,0,,{\\pos(200,900)}かきくけこ',
+  '',
+].join('\n')
+
+export const ensureCjkFixture = async () => {
+  if (await exists(CJK_FIXTURE_PATH)) return CJK_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const subs = CJK_FIXTURE_PATH + '.ass'
+  await writeFile(subs, CJK_HEADER)
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-i', subs,
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'aac',
+    '-c:s', 'copy',
+    '-map', '0:v', '-map', '1:a', '-map', '2:s',
+    '-metadata:s:s:0', 'language=jpn',
+    CJK_FIXTURE_PATH,
+  ])
+  await rm(subs, { force: true })
+  return CJK_FIXTURE_PATH
+}
+
 export const LOUD_FIXTURE = 'loud-tone.mkv'
 export const LOUD_FIXTURE_PATH = PUBLIC_DIR + LOUD_FIXTURE
 
@@ -790,7 +841,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

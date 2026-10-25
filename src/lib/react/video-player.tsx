@@ -148,6 +148,8 @@ export type MediaPlayerLocalOptions =
     jassubLegacyWasmUrl?: string
     /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
     defaultFontUrl?: string
+    /** `@banou/media-player/noto-sans-jp.otf`, the face for CJK text, fetched once the selected track shows some. */
+    cjkFontUrl?: string
     bufferSize?: number
     /**
      * How long a seek waits for its own data before the playhead moves anyway, in ms. Default 500.

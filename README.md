@@ -25,6 +25,7 @@ import MediaPlayer from '@banou/media-player'
   jassubWasmUrl={jassubWasmUrl}
   jassubLegacyWasmUrl={jassubLegacyWasmUrl}
   defaultFontUrl={defaultFontUrl}
+  cjkFontUrl={cjkFontUrl}
   title="episode.mkv"
   autoplay
 />
@@ -92,6 +93,12 @@ only one does not fail everywhere: it fails on exactly the browsers that pick th
 reads as a browser bug rather than a missing asset. Serve both.
 
 `libavWorkerUrl` (`libav-wasm/build/worker.js`) is named individually and still copies fine.
+
+`cjkFontUrl` is this package's own `noto-sans-jp.otf` (`import cjkFontUrl from
+'@banou/media-player/noto-sans-jp.otf?no-inline&url'`), Noto Sans JP cut to the JIS X 0208 kanji. jassub's libass has no
+system font fallback, so without it Japanese in a style whose font has no Japanese, which is how releases set song
+lyrics, draws as empty boxes. It is fetched only once the selected track shows CJK text, after `defaultFontUrl`,
+and draws only the glyphs that face lacks.
 
 `normalizerWorkletUrl` is this package's own `dist/volume-normalizer-worklet.js`, one plain module with no imports
 that copies fine or imports as a url; see [the volume normalizer](#the-volume-normalizer).

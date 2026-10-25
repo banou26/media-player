@@ -55,6 +55,7 @@ export type PlaybackOptions = {
   /** jassub's non-SIMD build; without it subtitles fail rather than degrade on Safari before 16.4 */
   jassubLegacyWasmUrl?: string
   defaultFontUrl?: string
+  cjkFontUrl?: string
   bufferSize?: number
   audioStreamIndex?: number
   onReady?: () => void
@@ -157,7 +158,7 @@ export const terminateRemuxer = (remuxer: { worker: Worker, destroy: () => Promi
 export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackController> => {
   const {
     videoElement, subtitleContainer, read, length, publicPath, libavWorkerUrl,
-    jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
+    jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
     onAudioStreams, onOutput,
   } = options
@@ -199,6 +200,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       wasmUrl: jassubWasmUrl,
       legacyWasmUrl: jassubLegacyWasmUrl,
       defaultFontUrl,
+      cjkFontUrl,
       onStreams: onSubtitleStreams,
     })
     teardown.push(() => subtitles.destroy())
