@@ -505,6 +505,63 @@ export const ensureCjkFixture = async () => {
   return CJK_FIXTURE_PATH
 }
 
+export const LANGUAGES_FIXTURE = 'languages.mkv'
+export const LANGUAGES_FIXTURE_PATH = PUBLIC_DIR + LANGUAGES_FIXTURE
+
+/** One full-screen block in a colour of its own, so a frame says which subtitle track is drawn. */
+const colourScript = (colour) => [
+  '[Script Info]',
+  'ScriptType: v4.00+',
+  'PlayResX: 320',
+  'PlayResY: 240',
+  '',
+  '[V4+ Styles]',
+  'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+  `Style: Default,Liberation Sans,40,${colour},${colour},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1`,
+  '',
+  '[Events]',
+  'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
+  'Dialogue: 0,0:00:00.00,0:00:20.00,Default,,0,0,0,,{\\p1}m 0 0 l 320 0 320 240 0 240{\\p0}',
+  '',
+].join('\n')
+
+/**
+ * Audio in English, a Japanese commentary and Japanese, the last in opus where the others are aac, so the codec the
+ * remuxer picked says which stream it plays. Subtitles in English signs and songs (red), full English (green) and
+ * Japanese (blue), in that order.
+ */
+export const ensureLanguagesFixture = async () => {
+  if (await exists(LANGUAGES_FIXTURE_PATH)) return LANGUAGES_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+
+  const scripts = ['&H000000FF', '&H0000FF00', '&H00FF0000'].map((colour, index) => ({
+    path: `${LANGUAGES_FIXTURE_PATH}.${index}.ass`,
+    script: colourScript(colour),
+  }))
+  for (const { path, script } of scripts) await writeFile(path, script)
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'testsrc=size=320x240:rate=24:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=550:duration=6',
+    '-f', 'lavfi', '-i', 'sine=frequency=660:duration=6',
+    ...scripts.flatMap(({ path }) => ['-i', path]),
+    '-map', '0:v', '-map', '1:a', '-map', '2:a', '-map', '3:a', '-map', '4:s', '-map', '5:s', '-map', '6:s',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a:0', 'aac', '-c:a:1', 'aac', '-c:a:2', 'libopus',
+    '-c:s', 'copy',
+    '-metadata:s:a:0', 'language=eng', '-metadata:s:a:0', 'title=English',
+    '-metadata:s:a:1', 'language=jpn', '-metadata:s:a:1', 'title=Commentary',
+    '-metadata:s:a:2', 'language=jpn',
+    '-metadata:s:s:0', 'language=eng', '-metadata:s:s:0', 'title=Signs & Songs',
+    '-metadata:s:s:1', 'language=eng', '-metadata:s:s:1', 'title=Full Subtitles',
+    '-metadata:s:s:2', 'language=jpn',
+    LANGUAGES_FIXTURE_PATH,
+  ])
+  for (const { path } of scripts) await rm(path, { force: true })
+  return LANGUAGES_FIXTURE_PATH
+}
+
 export const LOUD_FIXTURE = 'loud-tone.mkv'
 export const LOUD_FIXTURE_PATH = PUBLIC_DIR + LOUD_FIXTURE
 
@@ -841,7 +898,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensureLanguagesFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

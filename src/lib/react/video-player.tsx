@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import type { MediaChapter } from '../engine'
 import type { DownloadedRange, VolumeNormalizerControl } from './source-feature'
-import type { DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
+import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
 import type { ExposePlayerOptions } from '../remote'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -18,6 +18,7 @@ import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture
 import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
 import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
+import { languageOf } from '../language'
 
 /**
  * The source, read a range at a time: the player never downloads the whole file. Both fields travel
@@ -122,6 +123,16 @@ type CommonOptions = {
    */
   onSeek?: (fraction: number) => void
   onPlaybackError?: (error: unknown) => void
+
+  /**
+   * The viewer picked an audio track in the settings menu, named by its language as the file or the source names it:
+   * its tag (`jpn`, `en-US`), else its title or label (`Japanese`). What an app saves to pass back as
+   * `preferredAudioLanguage`; the player saves nothing. A track that names no language reports nothing, and on a media
+   * the player does not own the report waits for the source's switch to succeed.
+   */
+  onPreferredAudioLanguageChange?: (language: string) => void
+  /** As `onPreferredAudioLanguageChange`, for the subtitles menu, with null for subtitles turned off. */
+  onPreferredSubtitleLanguageChange?: (language: string | null) => void
 }
 
 /**
@@ -204,6 +215,18 @@ export type MediaPlayerLocalOptions =
     normalizeVolume?: boolean
     /** The viewer flipped the switch, to `normalizeVolume`: what an app saves to pass back as `normalizeVolume`. */
     onNormalizeVolumeChange?: (normalizeVolume: boolean) => void
+
+    /**
+     * The language a file starts its audio in, as `onPreferredAudioLanguageChange` reported it or as any tag or name
+     * (`ja`, `jpn`, `Japanese`). Its full track wins over a commentary, and a file with none plays its default. A
+     * track the viewer picks wins for that file. Read when a file starts, so a change applies from the next one.
+     */
+    preferredAudioLanguage?: string
+    /**
+     * As `preferredAudioLanguage`, for subtitles, where signs and songs or forced tracks count as partial and a file
+     * with none starts on its first track. null starts every file with subtitles off.
+     */
+    preferredSubtitleLanguage?: string | null
   }
 
 /**
@@ -258,6 +281,10 @@ export type MediaPlayerRemoteOptions =
   }
 
 export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
+
+const labelOf = (selection: DelegatedSelection, id: string) => selection.options.find((option) => option.id === id)?.label
+
+const afterSwitch = (result: void | Promise<void>, then: () => void) => result instanceof Promise ? result.then(then) : then()
 
 const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, children?: ReactNode }) => {
   // Narrowed on the field that carries the difference: a remote arm brings its own media and, by
@@ -434,15 +461,22 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // the document, and it renders the result itself.
   const subtitles = remote?.subtitles?.selection
   const audio = remote?.audioTracks?.selection
-  // `select` is published as-is rather than wrapped, so its promise reaches the menu: the menu is the
-  // only place that can hold the popover open, keep the tick off an unfinished switch, and show a
-  // failure, and a promise nothing awaits is an unhandled rejection.
+  // `select`'s promise reaches the menu, which is the only place that can hold the popover open, keep the tick off an
+  // unfinished switch, and show a failure, and a promise nothing awaits is an unhandled rejection.
+  const reports = useRef({ audio: options.onPreferredAudioLanguageChange, subtitles: options.onPreferredSubtitleLanguageChange })
+  reports.current = { audio: options.onPreferredAudioLanguageChange, subtitles: options.onPreferredSubtitleLanguageChange }
   useEffect(() => {
     if (!subtitles) return
     setSourceState({
       subtitleTracks: subtitles.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
       selectedSubtitleTrack: subtitles.selectedId ?? undefined,
-      selectSubtitleTrack: (id) => subtitles.select(id == null ? null : String(id)),
+      selectSubtitleTrack: (id) => {
+        const picked = id == null ? null : String(id)
+        return afterSwitch(subtitles.select(picked), () => {
+          const language = picked === null ? null : languageOf({ language: labelOf(subtitles, picked) })
+          if (language !== undefined) reports.current.subtitles?.(language)
+        })
+      },
       subtitleOffLabel: subtitles.offLabel,
     })
   }, [setSourceState, subtitles])
@@ -452,7 +486,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({
       audioTracks: audio.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
       selectedAudioTrack: audio.selectedId ?? undefined,
-      selectAudioTrack: (id) => audio.select(String(id)),
+      selectAudioTrack: (id) => afterSwitch(audio.select(String(id)), () => {
+        const language = languageOf({ language: labelOf(audio, String(id)) })
+        if (language !== undefined) reports.current.audio?.(language)
+      }),
     })
   }, [setSourceState, audio])
 
