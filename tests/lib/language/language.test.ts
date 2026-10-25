@@ -76,6 +76,7 @@ describe('languageTag', () => {
   it.each([
     ['jpn', 'ja'], ['ja-JP', 'ja-JP'], ['en_US', 'en-US'], ['Japanese', 'ja'], ['日本語', 'ja'], ['German', 'de'],
     ['Português (Brasil)', 'pt-BR'], ['English (UK)', 'en-GB'], ['es-419', 'es-419'], ['zh-Hant', 'zh-Hant'],
+    ['English (CC)', 'en'], ['English (HI)', 'en'], ['English (AD)', 'en'],
   ])('tags %s as %s', (text, tag) => {
     expect(languageTag(text)).toBe(tag)
   })
