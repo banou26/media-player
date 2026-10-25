@@ -80,6 +80,16 @@ const parseLanguage = (text: string | undefined) => {
 export const languageOf = (track: LanguageTrack | undefined): string | undefined =>
   parseLanguage(track?.language) ? track!.language!.trim() : parseName(track?.title) ? track!.title!.trim() : undefined
 
+/**
+ * The BCP 47 tag of the language `text` names, as a tag (`jpn`, `en_US`) or a name (`Japanese`, `Português (Brasil)`),
+ * with its region or script when it names one: `ja`, `en-US`, `pt-BR`. Undefined for a text naming no language (`und`,
+ * `Signs & Songs`), so a preference `languageOf` saved can be handed to code that reads tags.
+ */
+export const languageTag = (text: string | undefined): string | undefined => {
+  const found = parseLanguage(text)
+  return found && (found.variant ? `${found.language}-${found.variant}` : found.language)
+}
+
 const isPartial = ({ language = '', title = '' }: LanguageTrack) => {
   const text = `${language} ${title}`
   return PARTIAL.test(text) && !FULL.test(text)
