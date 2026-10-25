@@ -1,6 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode, Ref } from 'react'
 import type { ViewportBox } from '../source-feature'
+import type { HostFullscreen } from '../video-player'
 
 import { Children, Fragment, isValidElement, useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
@@ -133,10 +134,12 @@ export type ChromeProps = {
   /** False draws no control bar at all, leaving the picture, the title and the overlay. */
   controls?: boolean
   shortcuts?: 'window' | 'player'
+  /** Fullscreen kept by the host: a press calls its `request` instead of fullscreening the player. */
+  fullscreen?: HostFullscreen
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -268,7 +271,8 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
     if (lastPointerType.current !== 'mouse') return
     if (pausedBeforeClick.current) player.pause()
     else void player.play().catch(() => {})
-    void player.toggleFullscreen()
+    if (fullscreen) fullscreen.request()
+    else void player.toggleFullscreen()
   }
 
   // relatedTarget alone is not enough: the browser fires mouseout with a null one while the pointer
@@ -306,7 +310,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
           {item}
         </div>
       ))}
-      {controls === false ? null : <ControlBar shortcuts={shortcuts} root={root} />}
+      {controls === false ? null : <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} />}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
       <SkipChapter />

@@ -11,15 +11,16 @@
 // which is the only shape that satisfies a synchronous media over an asynchronous boundary.
 
 import type { Message, ReceiveHandler, Remote, Transport } from 'osra'
+import type { MediaChapter } from '../engine'
 import type { PlayerMedia } from '../react/media'
 import type { Callable, PlayerEvent, PlayerService, PlayerSnapshot, PlayerUpdate, Writable } from './protocol'
 
 import { expose } from 'osra'
 
-import { CALLABLE, DEFAULT_PLAYER_ID, EMPTY_SNAPSHOT, PLAYER_CHANNEL, PLAYER_EVENTS, snapshotOf, syncEventsFor, toTimeRanges, WRITABLE } from './protocol'
+import { CALLABLE, DEFAULT_PLAYER_ID, EMPTY_SNAPSHOT, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS, snapshotOf, syncEventsFor, toTimeRanges, WRITABLE } from './protocol'
 
 export type { PlayerEvent, PlayerSnapshot, PlayerUpdate } from './protocol'
-export { DEFAULT_PLAYER_ID, PLAYER_CHANNEL, PLAYER_EVENTS } from './protocol'
+export { DEFAULT_PLAYER_ID, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS } from './protocol'
 
 /** How long a peer has to answer its handshake before the mirror stops waiting on it and moves on. */
 const HANDSHAKE_MS = 10_000
@@ -77,6 +78,19 @@ export type ExposePlayerOptions = {
    * and a channel that closed in between would drop every embedder listening to the others.
    */
   signal?: AbortSignal
+  /** What `<MediaPlayer expose>` serves beside its media. A document serving a bare element leaves it out. */
+  player?: ServedPlayer
+}
+
+/**
+ * The player around a served media, as `<MediaPlayer expose>` passes it: its chapters, sent with every snapshot and
+ * announced on its `chapterschange`, and its fullscreen, which a mirror made with `fullscreen: true` takes over. While
+ * one has it, `onHostFullscreen` is told the state that mirror sets, and null once none has it; the player then
+ * dispatches `fullscreenrequest` for each press of its fullscreen, which reaches the mirror.
+ */
+export type ServedPlayer = EventTarget & {
+  readonly chapters: MediaChapter[]
+  onHostFullscreen: (active: boolean | null) => void
 }
 
 /**
@@ -138,10 +152,16 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   // connection for the document, however many players it has: a second player must not take the
   // first's embedder away, which is what one shared `current` did.
   const medias = new Map<string, PlayerMedia>()
+  const players = new Map<string, ServedPlayer>()
   const ports = new Map<string, Set<MessagePort>>()
   const listeners = (id: string) => ports.get(id) ?? ports.set(id, new Set()).get(id)!
+  // the ports whose mirror took the player's fullscreen over, and the state they last set
+  const hosts = new Map<string, Set<MessagePort>>()
+  const hostActive = new Map<string, boolean>()
+  const tellHost = (id: string) => players.get(id)?.onHostFullscreen(hosts.get(id)?.size ? hostActive.get(id) ?? false : null)
   const drop = (id: string, port: MessagePort) => {
     ports.get(id)?.delete(port)
+    if (hosts.get(id)?.delete(port)) tellHost(id)
     try { port.onmessage = null; port.close() } catch {}
   }
   const post = (id: string, update: PlayerUpdate, only?: MessagePort) => {
@@ -153,7 +173,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   }
   const snapshotAt = (id: string) => {
     const media = medias.get(id)
-    return media ? snapshotOf(media) : undefined
+    return media ? snapshotOf(media, players.get(id)?.chapters) : undefined
   }
   const announce = (id: string, event: PlayerEvent) => {
     // nobody listening is the ordinary case for a player nobody mirrors, and `timeupdate` alone is
@@ -164,7 +184,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   }
 
   const service: PlayerService = {
-    subscribe: (id, port) => {
+    subscribe: (id, port, options) => {
       // The peer's arguments, so they are checked: osra revives a plain object as a plain object and
       // a function as a callable, and either would sit in this set being posted to for ever.
       // Refused LOUDLY: a mirror whose subscribe was dropped in silence waits for ever, and a caller
@@ -176,6 +196,12 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       const set = listeners(id)
       if (set.size >= MAX_SUBSCRIBERS) throw new RangeError('too many embedders for this player')
       set.add(port)
+      const fullscreen = (options as { fullscreen?: unknown } | undefined)?.fullscreen
+      if (typeof fullscreen === 'boolean') {
+        ;(hosts.get(id) ?? hosts.set(id, new Set()).get(id)!).add(port)
+        hostActive.set(id, fullscreen)
+        tellHost(id)
+      }
       // A mirror says goodbye on its own port when it closes, and the port is dropped here. Without
       // it a closed mirror's port stays in this set for the document's life and every event is
       // posted to it, one more dead port per mirror that ever connected.
@@ -188,6 +214,13 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (snapshot) post(id, { event: 'loadstart', snapshot }, port)
     },
     set: (id, name, value) => {
+      if (name === 'fullscreen') {
+        // only for an id a mirror took over: the id is the peer's, and the map would otherwise grow with it
+        if (typeof value !== 'boolean' || !hosts.get(id)?.size) return
+        hostActive.set(id, value)
+        tellHost(id)
+        return
+      }
       const media = medias.get(id)
       if (!media || !WRITABLE.includes(name)) return
       try { (media as unknown as Record<Writable, unknown>)[name] = value } catch {}
@@ -222,6 +255,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     for (const [player, set] of ports) for (const port of [...set]) drop(player, port)
     ports.clear()
     medias.clear()
+    players.clear()
   }, { once: true })
 
   expose<unknown>(service, {
@@ -234,18 +268,31 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   const channel: Channel = {
     serve: (media, served) => {
       const player = served.id ?? DEFAULT_PLAYER_ID
-      const handlers = PLAYER_EVENTS.map(event => [event, () => { if (medias.get(player) === media) announce(player, event) }] as const)
-      for (const [event, handler] of handlers) media.addEventListener(event, handler)
+      const around = served.player
+      const handlers = [
+        ...PLAYER_EVENTS.map(event => [media, event] as const),
+        ...around ? SERVED_EVENTS.map(event => [around, event] as const) : [],
+      ].map(([target, event]) => [target, event, () => { if (medias.get(player) === media) announce(player, event) }] as const)
+      for (const [target, event, handler] of handlers) target.addEventListener(event, handler)
       const replaced = medias.has(player)
+      const previous = players.get(player)
+      if (previous && previous !== around) previous.onHostFullscreen(null)
       medias.set(player, media)
+      if (around) players.set(player, around)
+      else players.delete(player)
+      tellHost(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
       if (replaced) post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
-      for (const event of syncEventsFor(snapshotOf(media))) announce(player, event)
+      for (const event of syncEventsFor(snapshotAt(player)!)) announce(player, event)
       const stop = () => {
-        for (const [event, handler] of handlers) media.removeEventListener(event, handler)
+        for (const [target, event, handler] of handlers) target.removeEventListener(event, handler)
         if (medias.get(player) !== media) return
         medias.delete(player)
+        if (around && players.get(player) === around) {
+          players.delete(player)
+          around.onHostFullscreen(null)
+        }
         post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
       }
       // this call's own signal stops this media AND closes the channel: it is the release for the
@@ -277,6 +324,13 @@ export type MediaPlayerHandle =
   & Readonly<Required<Pick<PlayerMedia, 'src' | 'currentSrc' | 'ended' | 'buffered' | 'seekable' | 'error' | 'videoWidth' | 'videoHeight'>>>
   & Required<Pick<PlayerMedia, Writable>>
   & {
+    /** The far player's chapters, empty for a bare element. A `chapterschange` event follows each change. */
+    readonly chapters: MediaChapter[]
+    /**
+     * With the `fullscreen` option, whether this page shows the far player fullscreen: its button and its `'player'`
+     * shortcuts follow it. Set it on every change. Without the option it stays here.
+     */
+    fullscreen: boolean
     /**
      * Settles once the far side has first answered with its state; reads before that answer the
      * empty defaults. Stays pending for as long as nobody answers, and rejects with an AbortError on
@@ -333,6 +387,12 @@ export type MediaPlayerHandleOptions = {
   channel?: string
   /** closes the mirror: `ready` rejects with an AbortError and nothing more is heard */
   signal?: AbortSignal
+  /**
+   * Take the far player's fullscreen over, when it is a `<MediaPlayer expose>`: its button, `f` and double click then
+   * call no `requestFullscreen` and fire one `fullscreenrequest` on the handle each, inside the press's activation,
+   * and show the handle's `fullscreen`. Released on `destroy()`. A bare element ignores it.
+   */
+  fullscreen?: boolean
 }
 
 /**
@@ -349,11 +409,13 @@ type Subscriber = {
   /** the connection was replaced: whatever was asked of the old one will never be answered */
   reset: () => void
   port?: MessagePort
+  /** the fullscreen state to take the player's fullscreen over with, for a mirror that does */
+  fullscreen?: () => boolean
 }
 
 type Link = {
   attach: (subscriber: Subscriber) => () => void
-  set: (id: string, name: Writable, value: number | boolean) => Promise<unknown> | undefined
+  set: (id: string, name: Writable | 'fullscreen', value: number | boolean) => Promise<unknown> | undefined
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -389,7 +451,10 @@ const linkTo = (target: HTMLIFrameElement | Window | Transport, options: MediaPl
     // A peer that connects and then stops answering must not wedge the loop: osra leaves this
     // pending for ever if the far document was navigated away mid-handshake, and the next peer would
     // never be reached. A refusal lands here too, and takes the port with it.
-    await withDeadline(() => service!.subscribe(subscriber.id, port2)).catch(error => {
+    const fullscreen = subscriber.fullscreen
+    await withDeadline(() => fullscreen
+      ? service!.subscribe(subscriber.id, port2, { fullscreen: fullscreen() })
+      : service!.subscribe(subscriber.id, port2)).catch(error => {
       unhook(subscriber)
       throw error
     })
@@ -494,9 +559,11 @@ export const mediaPlayer = (
   const pending = new Map<Writable, number | boolean>()
   // whether the far side has said anything about THIS player yet, which is what `ready` means
   let answered = false
+  let fullscreen = false
 
   const detach = linkTo(target, options).attach({
     id: playerId,
+    fullscreen: options.fullscreen ? () => fullscreen : undefined,
     reset: () => { answered = false; settleAll() },
     update: ({ event, snapshot }) => {
       const first = !answered
@@ -523,6 +590,7 @@ export const mediaPlayer = (
   for (const name of ['duration', 'paused', 'ended', 'seeking', 'readyState', 'src', 'currentSrc', 'error', 'videoWidth', 'videoHeight'] as const) readable(name)
   readable('buffered', toTimeRanges)
   readable('seekable', toTimeRanges)
+  readable('chapters')
 
   // Writes move the mirror at once, so a read in the same tick sees them (the seek bar reads its own
   // write back), and go out to be applied for real. Before the far side has answered they still go
@@ -547,6 +615,14 @@ export const mediaPlayer = (
       enumerable: true,
     })
   }
+  Object.defineProperty(player, 'fullscreen', {
+    get: () => fullscreen,
+    set: (value: boolean) => {
+      fullscreen = !!value
+      if (options.fullscreen) void after(() => link.set(playerId, 'fullscreen', fullscreen))
+    },
+    enumerable: true,
+  })
 
   const call = (name: Callable) => ready.then(() => {
     if (signal.aborted) throw abortError()

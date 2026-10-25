@@ -8,7 +8,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expose } from 'osra'
 
 import { exposePlayer, mediaPlayer, PLAYER_CHANNEL } from '../../../src/lib/remote/index'
+import type { ServedPlayer } from '../../../src/lib/remote/index'
 import type { PlayerService, PlayerUpdate } from '../../../src/lib/remote/protocol'
+import type { MediaChapter } from '../../../src/lib/engine'
 
 /** A media that answers like an element and records what was done to it. */
 const fakeMedia = () => {
@@ -798,5 +800,124 @@ describe('a player whose play() resolves without playing', () => {
 
     expect(await player.autoplay()).toEqual({ muted: false })
     expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+})
+
+/** What `<MediaPlayer expose>` serves beside its media, recording what the channel tells it. */
+const servedPlayer = (chapters: MediaChapter[] = []) => {
+  const told: (boolean | null)[] = []
+  const served = Object.assign(new EventTarget(), { chapters, onHostFullscreen: (active: boolean | null) => { told.push(active) } })
+  return { served: served as ServedPlayer & { chapters: MediaChapter[] }, told }
+}
+
+const OPENING: MediaChapter[] = [{ start: 0, end: 90, title: 'Opening' }, { start: 90, end: 120, title: 'Episode' }]
+
+describe('a player served with what is around its media', () => {
+  it('sends its chapters, and each change of them with an event', async () => {
+    const { served } = servedPlayer(OPENING)
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    const heard: string[] = []
+    player.addEventListener('chapterschange', () => heard.push(player.chapters.map(({ title }) => title).join()))
+    await player.ready
+    expect(player.chapters).toEqual(OPENING)
+    expect(heard, 'the catch-up did not tell the chapters it carried').toEqual(['Opening,Episode'])
+
+    served.chapters = [...OPENING, { start: 110, end: 120, title: 'Ending' }]
+    served.dispatchEvent(new Event('chapterschange'))
+    await settled()
+    expect(heard).toEqual(['Opening,Episode', 'Opening,Episode,Ending'])
+  })
+
+  it('a mirror that takes fullscreen over still mirrors a bare element, which has no chapters', async () => {
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1 }))
+    const player = mediaPlayer(port2, { fullscreen: true })
+    open.push(player.destroy)
+    await player.ready
+    expect(player.chapters).toEqual([])
+    player.fullscreen = true
+    await settled()
+    expect(player.fullscreen).toBe(true)
+  })
+
+  it('a mirror made with fullscreen takes it over, sets it, hears its requests and gives it back when it goes', async () => {
+    const { served, told } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const player = mediaPlayer(port2, { fullscreen: true })
+    let requests = 0
+    player.addEventListener('fullscreenrequest', () => { requests++ })
+    await player.ready
+    expect(told).toEqual([null, false])
+
+    player.fullscreen = true
+    await settled()
+    expect(told.at(-1)).toBe(true)
+
+    served.dispatchEvent(new Event('fullscreenrequest'))
+    await settled()
+    expect(requests).toBe(1)
+
+    player.destroy()
+    await settled()
+    expect(told.at(-1)).toBe(null)
+  })
+
+  it('a mirror that took it over takes it over again in the state it holds, once the player is served anew', async () => {
+    const { served, told } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: served })
+    const player = mediaPlayer(port2, { fullscreen: true })
+    open.push(player.destroy)
+    await player.ready
+    player.fullscreen = true
+    await settled()
+
+    stopFirst()
+    expect(told.at(-1)).toBe(null)
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    await settled()
+    expect(told.at(-1)).toBe(true)
+  })
+
+  it('a player another one replaces on its id is given its fullscreen back', async () => {
+    const first = servedPlayer()
+    const second = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: first.served }))
+    const player = mediaPlayer(port2, { fullscreen: true })
+    open.push(player.destroy)
+    await player.ready
+    expect(first.told.at(-1)).toBe(false)
+
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(first.told.at(-1)).toBe(null)
+    expect(second.told.at(-1)).toBe(false)
+  })
+
+  it('a mirror without the option takes nothing over, and what it sets stays with it', async () => {
+    const { served, told } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    player.fullscreen = true
+    await settled()
+    expect(told.every(active => active === null)).toBe(true)
+  })
+
+  it('a state written for a player no mirror took over is not heard', async () => {
+    const { served, told } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    const before = told.length
+    await service.set('default', 'fullscreen', true)
+    await service.set('elsewhere', 'fullscreen', true)
+    expect(told.length).toBe(before)
   })
 })

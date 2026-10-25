@@ -1,5 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { RefObject } from 'react'
+import type { HostFullscreen } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
@@ -160,7 +161,11 @@ const style = css`
 `
 
 export const ControlBar = (
-  { shortcuts = 'window', root }: { shortcuts?: 'window' | 'player', root: RefObject<HTMLDivElement | null> },
+  { shortcuts = 'window', root, fullscreen: host }: {
+    shortcuts?: 'window' | 'player'
+    root: RefObject<HTMLDivElement | null>
+    fullscreen?: HostFullscreen
+  },
 ) => {
   const player = usePlayer()
   const paused = usePlayer((state) => state.paused)
@@ -168,7 +173,11 @@ export const ControlBar = (
   const duration = usePlayer((state) => state.duration)
   // a seek in flight reads as its destination, so the clock answers the click at once
   const seekingTo = usePlayer((state) => state.seekingTo)
-  const fullscreen = usePlayer((state) => state.fullscreen)
+  const ownFullscreen = usePlayer((state) => state.fullscreen)
+  const fullscreen = host ? host.active : ownFullscreen
+  // through a ref, so the key listener below is not re-added for a host's inline object on every render
+  const latestHost = useRef(host)
+  latestHost.current = host
   const hideUI = usePlayer((state) => state.hideUI)
   const togglePictureInPicture = usePlayer((state) => state.togglePictureInPicture)
   const pictureInPictureMode = usePlayer((state) => state.pictureInPictureMode)
@@ -207,6 +216,11 @@ export const ControlBar = (
   // Opening, once pressed) leaves the focus on the body, and the shortcuts stay with the player through that
   const engaged = useRef(false)
 
+  const toggleFullscreen = useCallback(() => {
+    if (latestHost.current) latestHost.current.request()
+    else void player.toggleFullscreen()
+  }, [player])
+
   useEffect(() => {
     const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
     // the path, not ev.target, which a shadow root around the player retargets to its host
@@ -220,11 +234,12 @@ export const ControlBar = (
       // layouts, as Ctrl and Alt
       if ((ev.ctrlKey || ev.metaKey || ev.altKey) && !ev.getModifierState('AltGraph')) return
       const fromPlayer = root.current?.contains(target ?? null) || (target === document.body && engaged.current)
-      if (shortcuts === 'player' && !player.fullscreen && !fromPlayer) return
+      const fullscreen = latestHost.current ? latestHost.current.active : player.fullscreen
+      if (shortcuts === 'player' && !fullscreen && !fromPlayer) return
 
       let shouldPreventDefault = true
       // space would otherwise reach the browser's own shortcut
-      if (ev.key === 'f') player.toggleFullscreen()
+      if (ev.key === 'f') toggleFullscreen()
       else if (ev.key === 'k') player.togglePaused()
       else if (ev.key === ' ') player.togglePaused()
       else if (ev.key === 'm') player.toggleMuted()
@@ -258,7 +273,7 @@ export const ControlBar = (
       window.removeEventListener('pointerdown', engage, true)
       window.removeEventListener('focusin', engage, true)
     }
-  }, [player, modifyVolume, requestSeek, stepFrame, shortcuts, root])
+  }, [player, modifyVolume, requestSeek, stepFrame, shortcuts, root, toggleFullscreen])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
@@ -436,7 +451,7 @@ export const ControlBar = (
               <button
                 className='full-screen'
                 type='button'
-                onClick={() => player.toggleFullscreen()}
+                onClick={toggleFullscreen}
                 aria-label='Full screen'
                 aria-pressed={fullscreen}
               >

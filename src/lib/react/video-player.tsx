@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { MediaChapter } from '../engine'
 import type { DownloadedRange, VolumeNormalizerControl } from './source-feature'
 import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
-import type { ExposePlayerOptions } from '../remote'
+import type { ExposePlayerOptions, ServedPlayer } from '../remote'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
@@ -31,6 +31,20 @@ import { languageOf } from '../language'
 export type MediaPlayerSource =
   | { read: (offset: number, size: number) => Promise<ArrayBuffer>, size: number, readsDownload?: boolean }
   | { read?: undefined, size?: undefined, readsDownload?: undefined }
+
+/**
+ * Fullscreen kept by the host page rather than by the player, for a page that fullscreens an element of its own around
+ * the player, so that fullscreen outlasts the player in it.
+ */
+export type HostFullscreen = {
+  /** Whether the host shows the player fullscreen: the button shows it, and the `'player'` shortcuts follow it. */
+  active: boolean
+  /**
+   * The viewer pressed fullscreen (the button, `f` or a double click): the host enters or leaves it. Called once per
+   * press, during that press's event, so the host's own `requestFullscreen` has the press's activation.
+   */
+  request: () => void
+}
 
 /** Shared by both arms: nothing here depends on who owns the media. */
 type CommonOptions = {
@@ -87,6 +101,13 @@ type CommonOptions = {
    * is fullscreen, so Space and the arrow keys keep scrolling the page and pressing its buttons everywhere else.
    */
   shortcuts?: 'window' | 'player'
+
+  /**
+   * Hand fullscreen to the host page: the player then never calls `requestFullscreen`, each press of its fullscreen
+   * calls `request` once, and the button and the `'player'` shortcuts follow `active`. Read by value, so it may be
+   * written inline. Without it the player fullscreens itself.
+   */
+  fullscreen?: HostFullscreen
 
   /**
    * The app's own content over the video: a download readout, a badge, a logo, anything the player
@@ -332,6 +353,12 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // Imported lazily, so `osra` is a dependency of `@banou/media-player/remote` and not of every app
   // that renders a player without ever exposing one.
   const { expose } = options
+  // What `expose` serves beside the media, the same object for the player's life. Its `onHostFullscreen` is how a
+  // mirror made with `fullscreen: true` takes the fullscreen over.
+  const [embedderFullscreen, setEmbedderFullscreen] = useState<boolean | null>(null)
+  const [served] = useState<ServedPlayer & { chapters: MediaChapter[] }>(
+    () => Object.assign(new EventTarget(), { chapters: [], onHostFullscreen: setEmbedderFullscreen }),
+  )
   const exposeOptions = expose === true ? {} : expose || undefined
   const latestExpose = useRef(exposeOptions)
   latestExpose.current = exposeOptions
@@ -345,11 +372,24 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     import('../remote')
       .then(({ exposePlayer }) => {
         if (dropped) return
-        stop = exposePlayer(media, latestExpose.current ?? {})
+        stop = exposePlayer(media, { ...latestExpose.current, player: served })
       })
       .catch(() => {})
     return () => { dropped = true; stop?.() }
   }, [media, !!expose, exposeId, exposeOrigin, exposeChannel])
+
+  // by value, since a caller's inline `chapters` is a new array on every render
+  const playerChapters = usePlayer((state) => state.chapters)
+  const chaptersKey = JSON.stringify(playerChapters)
+  useEffect(() => {
+    served.chapters = playerChapters
+    served.dispatchEvent(new Event('chapterschange'))
+  }, [chaptersKey])
+
+  const fullscreen = options.fullscreen ?? (embedderFullscreen === null ? undefined : {
+    active: embedderFullscreen,
+    request: () => served.dispatchEvent(new Event('fullscreenrequest')),
+  })
 
   // one per file, as `size` is the source's identity everywhere here
   const tap = useMemo(() => createPlaybackTap(), [size])
@@ -529,6 +569,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       overlay={options.overlay}
       controls={options.controls}
       shortcuts={options.shortcuts}
+      fullscreen={fullscreen}
     >
       {children}
     </Chrome>
