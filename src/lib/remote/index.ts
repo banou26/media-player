@@ -577,7 +577,7 @@ export const mediaPlayer = (
       for (const [name, value] of pending) (state as Record<Writable, unknown>)[name] = value
       // told as an element would tell it on load, so a store attached before this catches up
       const events = first ? syncEventsFor(state) : [event]
-      // a switch or a reconnect empties the chapters with an `emptied` or a catch-up, which say nothing of them
+      // told for any update that changes them: a catch-up or a switch's `emptied` brings chapters with no word of them
       if (!events.includes('chapterschange') && JSON.stringify(state.chapters) !== chapters) events.push('chapterschange')
       for (const each of events) dispatch(each)
       if (first) settleReady()
