@@ -117,6 +117,7 @@ export default defineConfig({
           name: 'browser',
           include: ['tests/**/*.browser.test.{ts,tsx}'],
           exclude: ['tests/**/*.autoplay.browser.test.{ts,tsx}'],
+          setupFiles: ['tests/park-pointer.ts'],
           browser: browser(),
         },
       },
