@@ -157,6 +157,15 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
 
+  // the player's height, which the menus are capped by (popoverStyle)
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => element.style.setProperty('--mp-height', `${entry!.contentRect.height}px`))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
   /*
    * With nothing loaded the chrome never hides, and anything already hidden comes back.
    *

@@ -35,7 +35,7 @@ ${popoverStyle}
   /* Wider than a track menu and taller, because these rows are sentences rather than labels, and a
      decoder message that has been ellipsized is not worth copying. */
   width: 420px;
-  max-height: min(300px, calc(100cqh - 100% - 16px));
+  max-height: min(300px, calc(var(--mp-height, 100cqh) - 100% - 16px));
 
   /* track-menu's header is a left-aligned label row; here it carries a control too, so the two
      ends go to the two ends */

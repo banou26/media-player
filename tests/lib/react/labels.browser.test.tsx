@@ -2,11 +2,13 @@ import type { DelegatedTracks } from '../../../src/lib/react/media'
 import type { PlaybackErrorEntry, SourceState } from '../../../src/lib/react/source-feature'
 
 import { describe, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { usePlayer } from '../../../src/lib/react/player'
 import { labelledError } from '../../../src/lib/labels'
+import { LANGUAGES } from '../../../src/lib/react/labels'
 import { playerAssets } from '../../../src/asset-urls'
 import { createFakeRemoteMedia } from './remote-media.fixture'
 
@@ -380,4 +382,66 @@ describe('a player given a language', () => {
     // es-419 itself writes 0.5
     expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x'])
   }, 30_000)
+})
+
+/** Each element of the chrome that leaves the player's box or scrolls its own text sideways. */
+const overflowing = (root: HTMLElement) => {
+  const box = root.getBoundingClientRect()
+  const outside = (element: Element) => {
+    const { left, right, top, bottom } = element.getBoundingClientRect()
+    return left < box.left - 0.5 || right > box.right + 0.5 || top < box.top - 0.5 || bottom > box.bottom + 0.5
+  }
+  const scrolls = (element: Element) => element.scrollWidth > element.clientWidth + 1
+  const named = (element: Element) => `${element.className || element.tagName} "${element.textContent}"`
+  const bar = root.querySelector('.control-bar .actions')!
+  const [left, right] = [bar.querySelector('.left')!, bar.querySelector('.right')!]
+  return [
+    ...scrolls(bar) ? [`the bar's row: ${named(bar)}`] : [],
+    ...left.getBoundingClientRect().right > right.getBoundingClientRect().left ? ['the two ends of the bar meet'] : [],
+    ...[...root.querySelectorAll('.control-bar button, .popover, .skip-chapter, .react-tooltip__show')].filter(outside).map((element) => `outside the player: ${named(element)}`),
+    ...[...root.querySelectorAll('.popover > div')].filter(scrolls).map((element) => `scrolls: ${named(element)}`),
+  ]
+}
+
+describe('at a phone\'s width', () => {
+  it.each(['en', ...LANGUAGES])('%s keeps the bar, its menus, its tooltips, the errors and the skip offer inside the player', async (language) => {
+    await page.viewport(390, 844)
+    try {
+      const { root, media } = await mount({ language, width: 390, height: 220 })
+      if (language !== 'en') await translated(root)
+      const found: string[] = []
+      const look = (state: string) => found.push(...overflowing(root).map((problem) => `${state}: ${problem}`))
+      look('at rest')
+      for (const id of ['play', 'sound', 'subtitles', 'settings', 'full-screen']) await tooltip(root, id, () => look(`${id} tooltip`))
+      store.set!({ volumeNormalizer: { enabled: true, available: false, setEnabled: () => {} } })
+      media.playbackRate = 1.25
+      media.dispatchEvent(new Event('ratechange'))
+      button(root, 'settings').click()
+      await settle()
+      look('settings menu')
+      row(root, 'menu', 2).click()
+      await settle()
+      look('speed menu')
+      button(root, 'settings').click()
+      button(root, 'subtitles').click()
+      await settle()
+      look('subtitles menu')
+      button(root, 'subtitles').click()
+      // enough rows to reach the panel's cap
+      store.set!({ playbackErrors: [...ERRORS, ...ERRORS, ...ERRORS] })
+      await expect.poll(() => !!button(root, 'errors'), { timeout: 5_000 }).toBe(true)
+      button(root, 'errors').click()
+      await settle()
+      look('errors panel')
+      button(root, 'errors').click()
+      for (const time of [15, 75]) {
+        media.advanceTo(time)
+        await expect.poll(() => getComputedStyle(root.querySelector('button.skip-chapter') ?? document.body).visibility, { timeout: 5_000 }).toBe('visible')
+        look(`skip offer at ${time}`)
+      }
+      expect(found).toEqual([])
+    } finally {
+      await page.viewport(1280, 720)
+    }
+  }, 60_000)
 })
