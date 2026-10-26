@@ -65,6 +65,7 @@
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
+    "@formatjs/cli": "^6.16.35",
     "@types/node": "^22.20.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
