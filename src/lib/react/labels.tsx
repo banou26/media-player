@@ -76,17 +76,32 @@ const load = (language: string, catalogue: string) => {
 export type Labels = {
   /** `label` in the player's language, with its values filled in. */
   format: <L extends Label>(label: L, ...values: LabelValues<L>) => string
-  /** A number as the player's language writes it. */
+  /** A number as `locale` writes it, as English does when it is undefined. */
   number: (value: number, options?: Intl.NumberFormatOptions) => string
-  /** The language the labels are shown in, as the player was given it: `en` when none serves it, undefined when it was given none. */
+  /**
+   * The tag the player was given, which its numbers and track languages are written in even when no catalogue serves
+   * it: `en` when Intl cannot read it, undefined when it was given none.
+   */
   locale: string | undefined
 }
 
-const labelsOf = (intl: IntlShape | undefined, language: string | undefined): Labels => ({
-  format: (label, ...[values]) => intl ? intl.formatMessage({ id: label, defaultMessage: label }, values) : fill(label, values),
-  number: (value, options) => new Intl.NumberFormat(intl?.locale ?? 'en', options).format(value),
-  locale: intl?.locale ?? (language ? 'en' : undefined),
-})
+// a tag Intl cannot read makes every formatter given it throw
+const readable = (tag: string) => {
+  try {
+    return Intl.getCanonicalLocales(tag)[0]
+  } catch {
+    return undefined
+  }
+}
+
+const labelsOf = (intl: IntlShape | undefined, language: string | undefined): Labels => {
+  const locale = language ? readable(language) ?? 'en' : undefined
+  return {
+    format: (label, ...[values]) => intl ? intl.formatMessage({ id: label, defaultMessage: label }, values) : fill(label, values),
+    number: (value, options) => new Intl.NumberFormat(locale ?? 'en', options).format(value),
+    locale,
+  }
+}
 
 const ENGLISH = labelsOf(undefined, undefined)
 const LabelsContext = createContext(ENGLISH)
