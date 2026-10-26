@@ -8,6 +8,8 @@ import { Check, Copy, TriangleAlert } from 'lucide-react'
 import { fonts } from '../../utils/fonts'
 import { formatTime } from '../../utils/time'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import { popoverStyle, useTrackMenu } from './track-menu'
 
@@ -138,6 +140,7 @@ export const formatErrors = (errors: PlaybackErrorEntry[]) =>
  */
 export const ErrorsAction = () => {
   const errors = usePlayer((state) => state.playbackErrors)
+  const { format } = useLabels()
   const { open, toggle, containerRef } = useTrackMenu()
   const [copied, setCopied] = useState(false)
 
@@ -158,7 +161,7 @@ export const ErrorsAction = () => {
   }
 
   // counted in failures rather than in rows, because a row that says ×40 is forty of them
-  const label = `Playback errors (${countErrors(errors)})`
+  const label = format(LABELS.errors, { count: countErrors(errors) })
 
   return (
     <div css={style} ref={containerRef}>
@@ -184,19 +187,18 @@ export const ErrorsAction = () => {
             {/* `no-hover` because the header is a label with a control in it, not a row to click */}
             <div className='back no-hover'>
               <span>{label}</span>
-              <button className='copy' type='button' onClick={copy} aria-label='Copy the errors'>
+              <button className='copy' type='button' onClick={copy} aria-label={format(LABELS.copyErrors)}>
                 {copied ? <Check /> : <Copy />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
+                <span>{format(copied ? LABELS.copied : LABELS.copy)}</span>
               </button>
             </div>
             {errors.map((entry, index) => (
               <div className='entry no-hover' key={`${entry.at}-${index}`}>
                 <span className='when'>
-                  {clock(entry.at)}
                   {/* the span, so a row that is still growing is distinguishable from one that stopped */}
-                  {entry.count > 1 ? ` to ${clock(entry.lastAt)}` : ''}
-                  {mediaTime(entry.atMediaTime) ? ` at ${mediaTime(entry.atMediaTime)}` : ''}
-                  {entry.recovered ? ' recovered' : ''}
+                  {entry.count > 1 ? format(LABELS.errorSpan, { start: clock(entry.at), end: clock(entry.lastAt) }) : clock(entry.at)}
+                  {mediaTime(entry.atMediaTime) ? ` ${format(LABELS.errorAt, { time: mediaTime(entry.atMediaTime)! })}` : ''}
+                  {entry.recovered ? ` ${format(LABELS.recovered)}` : ''}
                   {entry.count > 1 ? <span className='count'>{`×${entry.count}`}</span> : null}
                 </span>
                 <span className='what'>{entry.message}</span>

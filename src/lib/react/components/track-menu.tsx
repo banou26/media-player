@@ -6,6 +6,8 @@ import { css } from '@emotion/react'
 import { ChevronLeft } from 'lucide-react'
 
 import { fonts } from '../../utils/fonts'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 
 /**
  * The popover surface and the track rows, shared by every menu in the control bar.
@@ -166,6 +168,7 @@ export const TrackMenu = (
     failed?: boolean
   }
 ) => {
+  const { format } = useLabels()
   const busy = pending !== undefined
   const row = (id: string | number | null, label: string, className?: string) => {
     const isPending = busy && pending === id
@@ -190,7 +193,7 @@ export const TrackMenu = (
         {onBack ? <ChevronLeft /> : null}
         <span>{title}</span>
       </div>
-      {failed ? <div className="no-hover failed">Could not switch. Try again.</div> : null}
+      {failed ? <div className="no-hover failed">{format(LABELS.switchFailed)}</div> : null}
       {offLabel ? row(null, offLabel) : null}
       {tracks.map(({ id, label }) => row(id, label, 'description'))}
     </div>

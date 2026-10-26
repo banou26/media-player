@@ -4,6 +4,7 @@ import { makeRemuxer } from 'libav-wasm'
 
 import { getTimeRanges, updateSourceBuffer } from './source-buffer'
 import { createSubtitleRenderer } from './subtitles'
+import { labelledError } from '../labels'
 import type { SubtitleStream } from './subtitles'
 
 export type { AudioStream }
@@ -219,10 +220,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     if (metadata.attachments?.length) subtitles.pushAttachments(metadata.attachments)
 
     // an unparseable codec is an empty string, which isTypeSupported would accept as audio-only
-    if (!metadata.info.output.videoMimeType) throw new Error('The video codec in this file could not be identified')
+    if (!metadata.info.output.videoMimeType) throw labelledError('The video codec in this file could not be identified')
     const codecs = [metadata.info.output.videoMimeType, metadata.info.output.audioMimeType].filter(Boolean).join(',')
     const mime = `video/mp4; codecs="${codecs}"`
-    if (!MediaSource.isTypeSupported(mime)) throw new Error(`This browser cannot play the codecs in this file: ${codecs}`)
+    if (!MediaSource.isTypeSupported(mime)) throw labelledError('This browser cannot play the codecs in this file: {codecs}', { codecs })
 
     const mediaSource = new MediaSource()
     const mediaSourceUrl = URL.createObjectURL(mediaSource)
@@ -252,7 +253,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     })
 
     const sourceBuffer = await new Promise<SourceBuffer>((resolve, reject) => {
-      const timeout = setTimeout(() => { cleanup(); reject(new Error('The MediaSource never opened')) }, SOURCE_OPEN_TIMEOUT)
+      const timeout = setTimeout(() => { cleanup(); reject(labelledError('The MediaSource never opened')) }, SOURCE_OPEN_TIMEOUT)
       const cleanup = () => {
         clearTimeout(timeout)
         mediaSource.removeEventListener('sourceopen', onSourceOpen)
@@ -272,7 +273,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           reject(error)
         }
       }
-      const onFail = () => { cleanup(); reject(new Error('The MediaSource closed before a SourceBuffer could be created')) }
+      const onFail = () => { cleanup(); reject(labelledError('The MediaSource closed before a SourceBuffer could be created')) }
       mediaSource.addEventListener('sourceopen', onSourceOpen, { once: true })
       mediaSource.addEventListener('sourceclose', onFail, { once: true })
       mediaSource.addEventListener('error', onFail, { once: true })
@@ -326,7 +327,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       // and never told to.
       if (outstandingError && !terminal) return
       outstandingError = true
-      onError?.(cancelled ? new Error('Reading the video file failed', { cause: error }) : error)
+      onError?.(cancelled ? labelledError('Reading the video file failed', undefined, { cause: error }) : error)
     }
 
     const evict = async (tight = false) => {

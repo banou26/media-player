@@ -4,6 +4,7 @@ import { css } from '@emotion/react'
 
 import { TooltipDisplay } from './tooltip-display'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
 import { useDragValue } from '../hooks/use-drag-value'
 import { logToLinearVolume } from '../../utils/volume-utils'
 
@@ -58,6 +59,7 @@ type VolumeSliderType = {
 }
 
 export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
+  const { number } = useLabels()
   const volume = usePlayer((state) => state.volume)
   const muted = usePlayer((state) => state.muted)
 
@@ -132,7 +134,7 @@ export const VolumeSlider = ({ value, onChange }: VolumeSliderType) => {
       }
       toolTipText={
         <div className='volume-value'>
-          {displayVolumePercent}%
+          {number(displayVolumePercent / 100, { style: 'percent' })}
         </div>
       }
     />

@@ -4,6 +4,8 @@ import { css } from '@emotion/react'
 import { ChevronLeft, ChevronRight, Settings } from 'lucide-react'
 
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import PlaybackSlider from './playback-slider'
 import { TrackMenu, popoverStyle, useTrackMenu } from './track-menu'
@@ -104,6 +106,8 @@ ${popoverStyle}
 
 `
 
+const SPEEDS = [0.5, 1, 1.5, 2]
+
 enum PopoverContent {
   Default,
   PlaybackRate,
@@ -113,6 +117,7 @@ enum PopoverContent {
 
 export const SettingsAction = () => {
   const player = usePlayer()
+  const { format, number } = useLabels()
   const playbackRate = usePlayer((state) => state.playbackRate)
   const audioTracks = usePlayer((state) => state.audioTracks)
   const selectedAudioTrack = usePlayer((state) => state.selectedAudioTrack)
@@ -159,17 +164,13 @@ export const SettingsAction = () => {
             className='settings'
             type='button'
             onClick={toggle}
-            aria-label='Settings'
+            aria-label={format(LABELS.settings)}
             aria-expanded={open}
           >
             <Settings />
           </button>
         }
-        toolTipText={
-          <span>
-            Settings
-          </span>
-        }
+        toolTipText={<span>{format(LABELS.settings)}</span>}
       />
       {
         open && popoverContent === PopoverContent.Default && (
@@ -183,7 +184,7 @@ export const SettingsAction = () => {
             {audioTracks.length > 1
               ? (
                 <div onClick={changePopoverContent(PopoverContent.Audio)}>
-                  <div>Audio</div>
+                  <div>{format(LABELS.audio)}</div>
                   <div>
                     <ChevronRight />
                   </div>
@@ -193,7 +194,7 @@ export const SettingsAction = () => {
             {qualityRows > 1
               ? (
                 <div onClick={changePopoverContent(PopoverContent.Quality)}>
-                  <div>Quality</div>
+                  <div>{format(LABELS.quality)}</div>
                   <div>
                     {qualityLabel ? <span className='secondary'>{qualityLabel}</span> : null}
                     <ChevronRight />
@@ -202,14 +203,12 @@ export const SettingsAction = () => {
               )
               : null}
             <div onClick={changePopoverContent(PopoverContent.PlaybackRate)}>
-              <div>Playback speed</div>
+              <div>{format(LABELS.playbackSpeed)}</div>
               <div>
                 <span className='secondary'>
-                  {
-                    playbackRate === 1
-                      ? '(Default)'
-                      : playbackRate.toFixed(2)
-                  }
+                  {playbackRate === 1
+                    ? format(LABELS.defaultSpeed)
+                    : number(playbackRate, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
                 <ChevronRight />
               </div>
@@ -225,11 +224,11 @@ export const SettingsAction = () => {
                     if (volumeNormalizer.available) volumeNormalizer.setEnabled(!volumeNormalizer.enabled)
                   }}
                 >
-                  <div>Normalize volume</div>
+                  <div>{format(LABELS.normalizeVolume)}</div>
                   <div>
                     {volumeNormalizer.available
                       ? <span className={volumeNormalizer.enabled ? 'switch on' : 'switch'} />
-                      : <span className='secondary'>Unavailable</span>}
+                      : <span className='secondary'>{format(LABELS.unavailable)}</span>}
                   </div>
                 </div>
               )
@@ -242,24 +241,17 @@ export const SettingsAction = () => {
           <div className='popover playback-rate'>
             <div className="back" onClick={changePopoverContent(PopoverContent.Default)}>
               <ChevronLeft />
-              <span>Playback speed</span>
+              <span>{format(LABELS.playbackSpeed)}</span>
             </div>
             <div className="slider no-hover">
               <PlaybackSlider />
             </div>
             <div className="options no-hover">
-              <div onClick={() => setPlaybackRate(0.5)}>
-                0.5x
-              </div>
-              <div onClick={() => setPlaybackRate(1)}>
-                1x
-              </div>
-              <div onClick={() => setPlaybackRate(1.5)}>
-                  1.5x
-              </div>
-              <div onClick={() => setPlaybackRate(2)}>
-                2x
-              </div>
+              {SPEEDS.map((rate) => (
+                <div key={rate} onClick={() => setPlaybackRate(rate)}>
+                  {format(LABELS.speed, { rate: number(rate) })}
+                </div>
+              ))}
             </div>
           </div>
         )
@@ -267,7 +259,7 @@ export const SettingsAction = () => {
       {
         open && popoverContent === PopoverContent.Audio && (
           <TrackMenu
-            title='Audio'
+            title={format(LABELS.audio)}
             tracks={audioTracks}
             selected={selectedAudioTrack}
             onSelect={chooseAudio}
@@ -280,7 +272,7 @@ export const SettingsAction = () => {
       {
         open && popoverContent === PopoverContent.Quality && quality && (
           <TrackMenu
-            title='Quality'
+            title={format(LABELS.quality)}
             tracks={quality.options}
             selected={quality.selectedId ?? undefined}
             onSelect={chooseQuality}

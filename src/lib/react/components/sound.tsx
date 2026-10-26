@@ -6,6 +6,8 @@ import { css } from '@emotion/react'
 import { Volume1, Volume2, VolumeX } from 'lucide-react'
 
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import { fonts } from '../../utils/fonts'
 import VolumeSlider from './volume-slider'
@@ -83,6 +85,7 @@ export type SoundProps = {
 
 export const Sound = ({ ref }: SoundProps) => {
   const player = usePlayer()
+  const { format } = useLabels()
   const volume = usePlayer((state) => state.volume)
   const muted = usePlayer((state) => state.muted)
 
@@ -107,7 +110,7 @@ export const Sound = ({ ref }: SoundProps) => {
             ref={ref}
             // A static name with the state on `aria-pressed`. Renaming a control when it is activated
             // announces the state twice and breaks the expectation that a control keeps its name.
-            aria-label='Mute'
+            aria-label={format(LABELS.mute)}
             aria-pressed={muted || volume === 0}
           >
             {muted || volume === 0
@@ -119,7 +122,7 @@ export const Sound = ({ ref }: SoundProps) => {
           </button>
         }
         toolTipText={
-          <span>{muted ? 'Unmute (m)' : 'Mute (m)'}</span>
+          <span>{format(muted ? LABELS.unmuteKey : LABELS.muteKey)}</span>
         }
       />
       <div className='volume-slider-container'>

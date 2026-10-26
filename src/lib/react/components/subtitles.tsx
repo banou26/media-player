@@ -3,6 +3,8 @@ import { css } from '@emotion/react'
 import { Captions, CaptionsOff } from 'lucide-react'
 
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import { TrackMenu, popoverStyle, useTrackMenu } from './track-menu'
 
@@ -33,6 +35,7 @@ ${popoverStyle}
  * on a source that owns its own player it is slow enough to be a considered act.
  */
 export const SubtitlesAction = () => {
+  const { format } = useLabels()
   const subtitleTracks = usePlayer((state) => state.subtitleTracks)
   const selectedSubtitleTrack = usePlayer((state) => state.selectedSubtitleTrack)
   const selectSubtitleTrack = usePlayer((state) => state.selectSubtitleTrack)
@@ -58,23 +61,23 @@ export const SubtitlesAction = () => {
             className='subtitles'
             type='button'
             onClick={toggle}
-            aria-label='Subtitles'
+            aria-label={format(LABELS.subtitles)}
             aria-expanded={open}
             aria-pressed={on}
           >
             {on ? <Captions className='captions' /> : <CaptionsOff className='captions-off' />}
           </button>
         }
-        toolTipText={<span>Subtitles</span>}
+        toolTipText={<span>{format(LABELS.subtitles)}</span>}
       />
       {
         open && (
           <TrackMenu
-            title='Subtitles'
+            title={format(LABELS.subtitles)}
             tracks={subtitleTracks}
             selected={selectedSubtitleTrack}
             onSelect={(id) => runSelect(id ?? null, () => selectSubtitleTrack(id))}
-            offLabel={subtitleOffLabel ?? 'Disable'}
+            offLabel={subtitleOffLabel ?? format(LABELS.subtitlesOff)}
             pending={pending}
             failed={failed}
           />

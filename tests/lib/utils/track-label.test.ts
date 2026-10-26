@@ -1,6 +1,10 @@
+import type { Labels } from '../../../src/lib/react/labels'
+
+import { createIntl } from '@formatjs/intl'
 import { describe, expect, it } from 'vitest'
 
 import { labelTracks, toNamedTracks } from '../../../src/lib/utils/track-label'
+import french from '../../../src/lib/locales/fr.json'
 
 const track = (streamIndex: number, language: string, title = '') => ({ streamIndex, language, title })
 
@@ -62,5 +66,23 @@ describe('toNamedTracks', () => {
 
   it('is empty for no tracks rather than throwing', () => {
     expect(toNamedTracks([])).toEqual([])
+  })
+})
+
+describe('in the language of the labels', () => {
+  const intl = createIntl({ locale: 'fr-CA', defaultLocale: 'en', messages: french })
+  const labels: Labels = {
+    format: (label, ...[values]) => intl.formatMessage({ id: label, defaultMessage: label }, values),
+    number: (value) => intl.formatNumber(value),
+    locale: intl.locale,
+  }
+
+  it('names a language, and a track with no name, in it', () => {
+    expect(labelTracks([track(0, 'jpn'), track(3, '', '')], labels).map(({ label }) => label)).toEqual(['japonais', 'Piste 3'])
+  })
+
+  it('control: without them, English for the browser\'s language here', () => {
+    expect(navigator.language).toMatch(/^en/)
+    expect(toNamedTracks([track(0, 'jpn'), track(3, '', '')])).toEqual([{ id: 0, label: 'Japanese' }, { id: 3, label: 'Track 3' }])
   })
 })

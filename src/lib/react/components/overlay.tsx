@@ -1,9 +1,13 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
+import type { Labels } from '../labels'
+import type { LabelledError } from '../../labels'
 
 import { css, keyframes } from '@emotion/react'
 
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { fonts } from '../../utils/fonts'
 
 /**
@@ -102,12 +106,21 @@ const errorStyle = css`
   pointer-events: none;
 `
 
-const errorMessage = (error: unknown) =>
-  error instanceof Error
-    ? error.message
-    : typeof error === 'string' ? error : 'Playback failed'
+const KNOWN: ReadonlySet<string> = new Set(Object.values(LABELS))
+
+const isLabelled = (error: unknown): error is LabelledError =>
+  error instanceof Error && KNOWN.has((error as Partial<LabelledError>).label ?? '')
+
+// a failure the engine labelled is shown in the player's language, any other as it was thrown
+const errorMessage = (error: unknown, { format }: Labels) =>
+  isLabelled(error)
+    ? (format as (label: string, values?: LabelledError['values']) => string)(error.label, error.values)
+    : error instanceof Error
+      ? error.message
+      : typeof error === 'string' ? error : format(LABELS.failed)
 
 export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivElement | null) => void }) => {
+  const labels = useLabels()
   const title = usePlayer((state) => state.title)
   const hideUI = usePlayer((state) => state.hideUI)
   const playbackError = usePlayer((state) => state.playbackError)
@@ -140,7 +153,7 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
         ? <div css={loadingStyle} />
         : undefined}
       {playbackError
-        ? <div css={errorStyle}>{errorMessage(playbackError)}</div>
+        ? <div css={errorStyle}>{errorMessage(playbackError, labels)}</div>
         : undefined}
       <div className="subtitles" ref={onSubtitleRef} css={style} />
     </>

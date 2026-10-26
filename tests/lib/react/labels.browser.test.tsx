@@ -6,6 +6,8 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { usePlayer } from '../../../src/lib/react/player'
+import { labelledError } from '../../../src/lib/labels'
+import { playerAssets } from '../../../src/asset-urls'
 import { createFakeRemoteMedia } from './remote-media.fixture'
 
 /**
@@ -47,11 +49,12 @@ const tracks = (options: { id: string, label: string }[], selectedId: string | n
 })
 
 /** The player under test, its media, and a rerender with the host's fullscreen on or off. */
-const mount = async ({ width, height, pictureInPicture = true }: { width?: number, height?: number, pictureInPicture?: boolean } = {}) => {
+const mount = async ({ language, width, height, pictureInPicture = true }: { language?: string, width?: number, height?: number, pictureInPicture?: boolean } = {}) => {
   const media = createFakeRemoteMedia({ duration: DURATION })
   const player = (active: boolean) => (
     <MediaPlayer
       media={media}
+      {...language ? { language } : {}}
       subtitles={tracks([{ id: 'en', label: 'English' }], 'en', { select: () => Promise.reject(new Error('refused')) })}
       audioTracks={tracks([{ id: 'ja', label: 'Japanese' }, { id: 'en', label: 'English' }], 'ja')}
       quality={tracks([{ id: '1080', label: '1080p' }, { id: '720', label: '720p' }], null, { offLabel: 'Auto' })}
@@ -69,13 +72,20 @@ const mount = async ({ width, height, pictureInPicture = true }: { width?: numbe
 
 const button = (root: ParentNode, name: string) => root.querySelector(`button.${name}`) as HTMLButtonElement
 
-/** What a tooltip says once its control is hovered. */
-const tooltip = async (root: ParentNode, id: string) => {
+/**
+ * What a tooltip says once its control is hovered, `look` run while it shows. The pointer is placed on the control
+ * first: with the fullscreen kept by the host, a tooltip closes on a resize of the window unless the pointer is on it,
+ * and a viewport change made by an earlier case can arrive late.
+ */
+const tooltip = async (root: ParentNode, id: string, look?: () => void) => {
   const anchor = root.querySelector(`[data-tooltip-id="${id}"]`) as HTMLElement
   const shown = () => document.querySelector(`.react-tooltip__show[id="${id}"]`)
+  const { left, top, width, height } = anchor.getBoundingClientRect()
+  window.dispatchEvent(new PointerEvent('pointermove', { clientX: left + width / 2, clientY: top + height / 2, bubbles: true, pointerType: 'mouse' }))
   anchor.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
   await expect.poll(() => shown()?.textContent ?? '', { timeout: 5_000 }).not.toBe('')
   const text = shown()!.textContent!
+  look?.()
   anchor.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))
   await expect.poll(() => !!shown(), { timeout: 5_000 }).toBe(false)
   return text
@@ -84,8 +94,8 @@ const tooltip = async (root: ParentNode, id: string) => {
 const rows = (root: ParentNode, popover: string) =>
   [...root.querySelectorAll(`.popover.${popover} > div`)].map((row) => row.textContent ?? '')
 
-const rowNamed = (root: ParentNode, popover: string, text: string) =>
-  [...root.querySelectorAll(`.popover.${popover} > div`)].find((row) => row.textContent?.startsWith(text)) as HTMLElement
+const row = (root: ParentNode, popover: string, index: number) =>
+  root.querySelectorAll<HTMLElement>(`.popover.${popover} > div`)[index]!
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
@@ -124,7 +134,7 @@ const walk = async ({ root, media, fullscreen }: Awaited<ReturnType<typeof mount
   button(root, 'subtitles').click()
   await expect.poll(() => rows(root, 'track-list').length, { timeout: 5_000 }).toBeGreaterThan(0)
   see('subtitles menu', rows(root, 'track-list').join(' | '))
-  rowNamed(root, 'track-list', 'English').click()
+  row(root, 'track-list', 2).click()
   await expect.poll(() => !!root.querySelector('.track-list .failed'), { timeout: 5_000 }).toBe(true)
   see('subtitles menu failed', root.querySelector('.track-list .failed')!.textContent)
   button(root, 'subtitles').click()
@@ -132,17 +142,17 @@ const walk = async ({ root, media, fullscreen }: Awaited<ReturnType<typeof mount
   button(root, 'settings').click()
   await expect.poll(() => rows(root, 'menu').length, { timeout: 5_000 }).toBeGreaterThan(0)
   see('settings menu', rows(root, 'menu').join(' | '))
-  rowNamed(root, 'menu', 'Audio')?.click()
+  row(root, 'menu', 0).click()
   await settle()
   see('audio menu', rows(root, 'track-list').join(' | '))
   root.querySelector<HTMLElement>('.popover .back')!.click()
   await settle()
-  rowNamed(root, 'menu', 'Quality')?.click()
+  row(root, 'menu', 1).click()
   await settle()
   see('quality menu', rows(root, 'track-list').join(' | '))
   root.querySelector<HTMLElement>('.popover .back')!.click()
   await settle()
-  root.querySelectorAll<HTMLElement>('.popover.menu > div')[2]!.click()
+  row(root, 'menu', 2).click()
   await settle()
   see('speed menu', root.querySelector('.playback-rate .back')!.textContent)
   see('speed presets', [...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim()).join(' | '))
@@ -185,8 +195,9 @@ const walk = async ({ root, media, fullscreen }: Awaited<ReturnType<typeof mount
     see('errors header', root.querySelector('.error-list .back')!.textContent)
     name('copy')
     see('errors when', [...root.querySelectorAll('.error-list .when')].map((when) => when.textContent).join(' | '))
+    const copy = button(root, 'copy').textContent
     button(root, 'copy').click()
-    await expect.poll(() => root.querySelector('button.copy')?.textContent, { timeout: 5_000 }).not.toBe('Copy')
+    await expect.poll(() => root.querySelector('button.copy')?.textContent, { timeout: 5_000 }).not.toBe(copy)
     see('errors copied', root.querySelector('button.copy')!.textContent)
     button(root, 'errors').click()
   } finally {
@@ -198,6 +209,9 @@ const walk = async ({ root, media, fullscreen }: Awaited<ReturnType<typeof mount
   store.set!({ playbackError: {} })
   await settle()
   see('failed', failure())
+  store.set!({ playbackError: labelledError('This browser cannot play the codecs in this file: {codecs}', { codecs: 'hvc1.1.6.L120.90' }) })
+  await settle()
+  see('engine failed', failure())
   store.set!({ playbackError: null })
 
   return seen
@@ -269,6 +283,7 @@ const ENGLISH: [string, string][] = [
   ['errors when', `${clock(AT)} at 13:39 recovered | ${clock(AT + 60_000)} to ${clock(AT + 120_000)}×40`],
   ['errors copied', 'Copied'],
   ['failed', 'Playback failed'],
+  ['engine failed', 'This browser cannot play the codecs in this file: hvc1.1.6.L120.90'],
 ]
 
 const ENGLISH_BURN_IN: [string, string][] = [
@@ -288,5 +303,81 @@ describe('the labels', () => {
 
   it('of the burn-in picture in picture are its English too', async () => {
     expect(await walkBurnIn(await mount({ pictureInPicture: false }))).toEqual(ENGLISH_BURN_IN)
+  }, 30_000)
+})
+
+const fetched = (pattern: RegExp) => performance.getEntriesByType('resource').some(({ name }) => pattern.test(name))
+const FORMATTER = /@formatjs|intl-messageformat/
+const CATALOGUE = /\/locales\/[\w-]+\.json/
+
+// what a walk in another language shows the same as the English one, by where
+const unchanged = (seen: [string, string][]) => seen.filter(([, text], index) => text === ENGLISH[index]![1]).map(([where]) => where)
+
+// a player given a language shows English until its catalogue has loaded
+const translated = async (root: ParentNode) => {
+  await expect.poll(() => button(root, 'play').getAttribute('aria-label'), { timeout: 10_000 }).not.toBe('Play')
+}
+
+describe('a player given no language', () => {
+  // after the English walks above, in this file's own page: FormatJS and a catalogue come only with a language
+  it('fetched no formatter and no catalogue', () => {
+    expect(fetched(FORMATTER)).toBe(false)
+    expect(fetched(CATALOGUE)).toBe(false)
+  })
+})
+
+describe('a player given a language', () => {
+  it('shows every label in French, but the few French writes as English', async () => {
+    const player = await mount({ language: 'fr' })
+    await translated(player.root)
+    // the control for the test above
+    expect(fetched(FORMATTER) && fetched(CATALOGUE)).toBe(true)
+    const seen = await walk(player)
+    expect(seen.map(([where]) => where)).toEqual(ENGLISH.map(([where]) => where))
+    expect(unchanged(seen)).toEqual(['play name', 'playing play tooltip', 'audio menu'])
+    const shown = Object.fromEntries(seen)
+    expect(shown['settings menu']).toBe('Audio | QualitéAuto | Vitesse de lecture(Normale)')
+    expect(shown['speed presets']).toBe('0,5x | 1x | 1,5x | 2x')
+    expect(shown['volume-slider tooltip']).toBe(new Intl.NumberFormat('fr', { style: 'percent' }).format(1))
+    expect(shown['errors when']).toBe(`${clock(AT)} position 13:39 lecture rétablie | de ${clock(AT + 60_000)} à ${clock(AT + 120_000)}\u00d740`)
+    expect(shown['engine failed']).toBe('Ce navigateur ne peut pas lire les codecs de ce fichier\u00a0: hvc1.1.6.L120.90')
+  }, 60_000)
+
+  it('shows every label in German, but the few German writes as English', async () => {
+    const player = await mount({ language: 'de' })
+    await translated(player.root)
+    const seen = await walk(player)
+    expect(unchanged(seen)).toEqual(['play name', 'playing play tooltip', 'audio menu'])
+    expect(Object.fromEntries(seen)['settings menu']).toBe('Audio | QualitätAuto | Geschwindigkeit(Normal)')
+  }, 60_000)
+
+  it('names a file\'s tracks in it, again when it comes after they were named', async () => {
+    const fixture = '/languages.mkv'
+    const size = Number((await fetch(fixture, { method: 'HEAD' })).headers.get('content-length'))
+    if (!size) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
+    const read = async (offset: number, length: number) =>
+      (await fetch(fixture, { headers: { range: `bytes=${offset}-${Math.min(offset + length, size) - 1}` } })).arrayBuffer()
+    const player = (language?: string) => <MediaPlayer size={size} read={read} {...playerAssets} {...language ? { language } : {}} />
+    const screen = await render(player(), sized())
+    const root = screen.container
+    await expect.poll(() => !!root.querySelector('button.subtitles'), { timeout: 30_000 }).toBe(true)
+    button(root, 'subtitles').click()
+    const tracks = () => rows(root, 'track-list').slice(2).map((track) => track.replace('\u2713', ''))
+    await expect.poll(tracks, { timeout: 5_000 }).toEqual(['English (Signs & Songs)', 'English (Full Subtitles)', 'Japanese'])
+    await screen.rerender(player('fr'))
+    await expect.poll(tracks, { timeout: 10_000 }).toEqual(['anglais (Signs & Songs)', 'anglais (Full Subtitles)', 'japonais'])
+    expect(rows(root, 'track-list').slice(0, 2)).toEqual(['Sous-titres', 'Désactivés'])
+  }, 60_000)
+
+  it('of a region is shown in its language\'s catalogue, with numbers as the region writes them', async () => {
+    const { root } = await mount({ language: 'es-AR' })
+    await translated(root)
+    expect(button(root, 'play').getAttribute('aria-label')).toBe('Reproducir')
+    button(root, 'settings').click()
+    await settle()
+    row(root, 'menu', 2).click()
+    await settle()
+    // es-419 itself writes 0.5
+    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x'])
   }, 30_000)
 })

@@ -10,6 +10,8 @@ import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 import { formatMediaTime } from '../../utils/time'
 import { fonts } from '../../utils/fonts'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import { ProgressBar } from './progress-bar'
 import pictureInPicture from '../../assets/picture-in-picture.svg'
@@ -168,6 +170,7 @@ export const ControlBar = (
   },
 ) => {
   const player = usePlayer()
+  const { format } = useLabels()
   const paused = usePlayer((state) => state.paused)
   const currentTime = usePlayer((state) => state.currentTime)
   const duration = usePlayer((state) => state.duration)
@@ -345,7 +348,7 @@ export const ControlBar = (
                 onClick={() => player.togglePaused()}
                 // This one genuinely changes what it does, so the name changes with it rather than
                 // carrying a pressed state. Replay is a third action, not an on or off.
-                aria-label={ended ? 'Replay' : paused ? 'Play' : 'Pause'}
+                aria-label={format(ended ? LABELS.replay : paused ? LABELS.play : LABELS.pause)}
               >
                 {
                   ended
@@ -357,15 +360,7 @@ export const ControlBar = (
               </button>
             }
             toolTipText={
-              <span>
-                {
-                  ended
-                    ? 'Replay (k)'
-                    : paused
-                      ? 'Play (k)'
-                      : 'Pause (k)'
-                }
-              </span>
+              <span>{format(ended ? LABELS.replayKey : paused ? LABELS.playKey : LABELS.pauseKey)}</span>
             }
           />
           <Sound ref={setVolumeElement}/>
@@ -392,14 +387,14 @@ export const ControlBar = (
                     // Out of picture in picture the click was meant for the host's document, so one
                     // that lands here instead (a key press) has nothing it could do.
                     onClick={passThrough.active ? passThrough.exit : undefined}
-                    aria-label='Picture in picture'
+                    aria-label={format(LABELS.pictureInPicture)}
                     aria-pressed={passThrough.active}
                   >
                     <img src={pictureInPicture} alt='' />
                   </button>
                 }
                 toolTipText={
-                  <span>{passThrough.active ? 'Exit picture in picture' : 'Picture in picture'}</span>
+                  <span>{format(passThrough.active ? LABELS.exitPictureInPicture : LABELS.pictureInPicture)}</span>
                 }
               />
             )
@@ -417,7 +412,7 @@ export const ControlBar = (
                     // Static name with the state on `aria-pressed`, rather than a name that changes
                     // on activation: one announces the state once, the other announces it twice and
                     // renames the control while the pointer is on it.
-                    aria-label={burnIn ? 'Put the subtitles in the video' : 'Picture in picture'}
+                    aria-label={format(burnIn ? LABELS.burnIn : LABELS.pictureInPicture)}
                     aria-pressed={burnIn ? burnedInSubtitles : undefined}
                   >
                     {/* The glyph carries the on state, which is what every other toggle in this bar
@@ -432,13 +427,13 @@ export const ControlBar = (
                 }
                 toolTipText={
                   <span>
-                    {!burnIn
-                      ? 'Picture in picture'
+                    {format(!burnIn
+                      ? LABELS.pictureInPicture
                       : !hasSubtitles
-                          ? 'This file has no subtitles'
+                          ? LABELS.noSubtitles
                           : burnedInSubtitles
-                            ? 'Subtitles are in the picture'
-                            : 'Put the subtitles in the picture'}
+                            ? LABELS.burnedIn
+                            : LABELS.burnInOffer)}
                   </span>
                 }
               />
@@ -452,7 +447,7 @@ export const ControlBar = (
                 className='full-screen'
                 type='button'
                 onClick={toggleFullscreen}
-                aria-label='Full screen'
+                aria-label={format(LABELS.fullScreen)}
                 aria-pressed={fullscreen}
               >
                 {
@@ -463,13 +458,7 @@ export const ControlBar = (
               </button>
             }
             toolTipText={
-              <span>
-                {
-                  fullscreen
-                    ? 'Exit full screen (f)'
-                    : 'Full screen (f)'
-                }
-              </span>
+              <span>{format(fullscreen ? LABELS.exitFullScreenKey : LABELS.fullScreenKey)}</span>
             }
           />
         </div>
