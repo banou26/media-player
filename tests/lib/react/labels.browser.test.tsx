@@ -158,6 +158,7 @@ const walk = async ({ root, media, fullscreen }: Awaited<ReturnType<typeof mount
   await settle()
   see('speed menu', root.querySelector('.playback-rate .back')!.textContent)
   see('speed presets', [...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim()).join(' | '))
+  see('speed readout', root.querySelector('.playback-rate .slider')!.textContent)
   button(root, 'settings').click()
 
   media.playbackRate = 1.25
@@ -272,6 +273,7 @@ const ENGLISH: [string, string][] = [
   ['quality menu', 'Quality | Auto✓ | 1080p | 720p'],
   ['speed menu', 'Playback speed'],
   ['speed presets', '0.5x | 1x | 1.5x | 2x'],
+  ['speed readout', '1.00x'],
   ['settings menu at 1.25', 'Audio | QualityAuto | Playback speed1.25 | Normalize volume'],
   ['settings menu refused', 'Audio | QualityAuto | Playback speed1.25 | Normalize volumeUnavailable'],
   ['opening offer', 'Skip Opening'],
@@ -340,6 +342,7 @@ describe('a player given a language', () => {
     const shown = Object.fromEntries(seen)
     expect(shown['settings menu']).toBe('Audio | QualitéAuto | Vitesse de lecture(Normale)')
     expect(shown['speed presets']).toBe('0,5x | 1x | 1,5x | 2x')
+    expect(shown['speed readout']).toBe('1,00x')
     expect(shown['volume-slider tooltip']).toBe(new Intl.NumberFormat('fr', { style: 'percent' }).format(1))
     expect(shown['errors when']).toBe(`${clock(AT)} position 13:39 lecture rétablie | de ${clock(AT + 60_000)} à ${clock(AT + 120_000)}\u00d740`)
     expect(shown['engine failed']).toBe('Ce navigateur ne peut pas lire les codecs de ce fichier\u00a0: hvc1.1.6.L120.90')

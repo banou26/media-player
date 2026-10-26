@@ -4,6 +4,8 @@ import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
 import { useDragValue } from '../hooks/use-drag-value'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 
 const style = css`
 display: flex;
@@ -62,6 +64,7 @@ width: 100%;
 
 export const PlaybackSlider = () => {
   const player = usePlayer()
+  const { format, number } = useLabels()
   const playbackRate = usePlayer((state) => state.playbackRate)
   const sliderRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -121,7 +124,7 @@ export const PlaybackSlider = () => {
   return (
     <div css={style}>
       <div>
-        {roundedRate.toFixed(2)}x
+        {format(LABELS.speed, { rate: number(roundedRate, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
       </div>
       <div
         className="playback-slider"
