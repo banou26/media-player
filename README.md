@@ -362,9 +362,9 @@ host page shows, for another:
 They are shown in the closest language the player has: Latin American Spanish (`es-419`, for every `es-*`), Brazilian
 Portuguese (`pt-BR`, for every `pt-*`), French, German, Italian, Russian, Japanese, Korean, Simplified and Traditional
 Chinese (`zh-Hans`, `zh-Hant`), Turkish and Polish, else English. The numbers in them are written as the tag writes them
-(`es-AR` gives `0,5x`, `es-419` itself `0.5x`), and track languages are named in it. A language's text is fetched the
-first time a player shows it, with FormatJS (`@formatjs/intl`), and the labels are English until it has arrived. A
-player given no `language`, or one it does not have, fetches neither.
+(`es-AR` gives `0,5x`, `es-419` itself `0.5x`), and track languages are named in it, even when the labels are English
+(`en-DE` gives `0,5x`). A language's text is fetched the first time a player shows it, with FormatJS (`@formatjs/intl`),
+and the labels are English until it has arrived. A player given no `language`, or one it does not have, fetches neither.
 
 Each language is `src/lib/locales/<tag>.json`, keyed by the English of `src/lib/labels.ts`; a unit test holds every
 file to FormatJS's `verify` against that English.

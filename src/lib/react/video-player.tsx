@@ -98,9 +98,10 @@ type CommonOptions = {
   /**
    * The language of the player's own labels (the controls, tooltips, menus, skip offers and failures), a BCP 47 tag
    * such as the host page shows (`fr`, `es-MX`, `zh-TW`). The labels are shown in the closest language the player has,
-   * the numbers in them written as this tag writes them, and track languages named in it. A language's text loads the
-   * first time a player shows it, and the labels are English until it has. Without it, or for a language the player
-   * does not have, they are English and nothing more is loaded; without it, track languages are named in the browser's.
+   * the numbers in them written as this tag writes them, and track languages named in it, even when the labels are
+   * English (`en-DE` writes `0,5x`). A language's text loads the first time a player shows it, and the labels are
+   * English until it has. Without it, or for a language the player does not have, they are English and nothing more is
+   * loaded; without it, track languages are named in the browser's.
    */
   language?: string
 

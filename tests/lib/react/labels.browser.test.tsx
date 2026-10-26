@@ -322,6 +322,21 @@ const translated = async (root: ParentNode) => {
   await expect.poll(() => button(root, 'play').getAttribute('aria-label'), { timeout: 10_000 }).not.toBe('Play')
 }
 
+/** A player of the local file with three subtitle tracks, and a rerender of it in another language. */
+const mountFile = async (language?: string) => {
+  const fixture = '/languages.mkv'
+  const size = Number((await fetch(fixture, { method: 'HEAD' })).headers.get('content-length'))
+  if (!size) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
+  const read = async (offset: number, length: number) =>
+    (await fetch(fixture, { headers: { range: `bytes=${offset}-${Math.min(offset + length, size) - 1}` } })).arrayBuffer()
+  const player = (language?: string) => <MediaPlayer size={size} read={read} {...playerAssets} {...language ? { language } : {}} />
+  const screen = await render(player(language), sized())
+  await expect.poll(() => !!screen.container.querySelector('button.subtitles'), { timeout: 30_000 }).toBe(true)
+  return { root: screen.container, rerender: (language: string) => screen.rerender(player(language)) }
+}
+
+const fileTracks = (root: ParentNode) => rows(root, 'track-list').slice(2).map((track) => track.replace('\u2713', ''))
+
 describe('a player given no language', () => {
   // after the English walks above, in this file's own page: FormatJS and a catalogue come only with a language
   it('fetched no formatter and no catalogue', () => {
@@ -357,22 +372,33 @@ describe('a player given a language', () => {
   }, 60_000)
 
   it('names a file\'s tracks in it, again when it comes after they were named', async () => {
-    const fixture = '/languages.mkv'
-    const size = Number((await fetch(fixture, { method: 'HEAD' })).headers.get('content-length'))
-    if (!size) throw new Error('run `node scripts/fixture.mjs` to generate the test media')
-    const read = async (offset: number, length: number) =>
-      (await fetch(fixture, { headers: { range: `bytes=${offset}-${Math.min(offset + length, size) - 1}` } })).arrayBuffer()
-    const player = (language?: string) => <MediaPlayer size={size} read={read} {...playerAssets} {...language ? { language } : {}} />
-    const screen = await render(player(), sized())
-    const root = screen.container
-    await expect.poll(() => !!root.querySelector('button.subtitles'), { timeout: 30_000 }).toBe(true)
+    const { root, rerender } = await mountFile()
     button(root, 'subtitles').click()
-    const tracks = () => rows(root, 'track-list').slice(2).map((track) => track.replace('\u2713', ''))
-    await expect.poll(tracks, { timeout: 5_000 }).toEqual(['English (Signs & Songs)', 'English (Full Subtitles)', 'Japanese'])
-    await screen.rerender(player('fr'))
-    await expect.poll(tracks, { timeout: 10_000 }).toEqual(['anglais (Signs & Songs)', 'anglais (Full Subtitles)', 'japonais'])
+    await expect.poll(() => fileTracks(root), { timeout: 5_000 }).toEqual(['English (Signs & Songs)', 'English (Full Subtitles)', 'Japanese'])
+    await rerender('fr')
+    await expect.poll(() => fileTracks(root), { timeout: 10_000 }).toEqual(['anglais (Signs & Songs)', 'anglais (Full Subtitles)', 'japonais'])
     expect(rows(root, 'track-list').slice(0, 2)).toEqual(['Sous-titres', 'Désactivés'])
   }, 60_000)
+
+  it('it has no catalogue for names a file\'s tracks in it, the labels in English', async () => {
+    const { root } = await mountFile('sv')
+    button(root, 'subtitles').click()
+    const named = new Intl.DisplayNames(['sv'], { type: 'language' })
+    await expect.poll(() => fileTracks(root), { timeout: 5_000 }).toEqual([`${named.of('en')} (Signs & Songs)`, `${named.of('en')} (Full Subtitles)`, named.of('ja')])
+    expect(rows(root, 'track-list').slice(0, 2)).toEqual(['Subtitles', 'Disable'])
+  }, 60_000)
+
+  it('it has no catalogue for writes the numbers as the tag writes them, the labels in English', async () => {
+    const { root } = await mount({ language: 'en-DE' })
+    button(root, 'settings').click()
+    await settle()
+    row(root, 'menu', 2).click()
+    await settle()
+    expect(root.querySelector('.playback-rate .back')!.textContent).toBe('Playback speed')
+    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x'])
+    button(root, 'settings').click()
+    expect(await tooltip(root, 'volume-slider')).toBe(new Intl.NumberFormat('en-DE', { style: 'percent' }).format(1))
+  }, 30_000)
 
   it('of a region is shown in its language\'s catalogue, with numbers as the region writes them', async () => {
     const { root } = await mount({ language: 'es-AR' })
