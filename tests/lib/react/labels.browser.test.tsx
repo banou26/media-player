@@ -245,7 +245,7 @@ const walkBurnIn = async ({ root }: Awaited<ReturnType<typeof mount>>) => {
   return seen
 }
 
-const clock = (at: number) => new Date(at).toLocaleTimeString()
+const clock = (at: number, locale?: string) => new Date(at).toLocaleTimeString(locale)
 
 const ENGLISH: [string, string][] = [
   ['play name', 'Play'],
@@ -359,7 +359,7 @@ describe('a player given a language', () => {
     expect(shown['speed presets']).toBe('0,5x | 1x | 1,5x | 2x')
     expect(shown['speed readout']).toBe('1,00x')
     expect(shown['volume-slider tooltip']).toBe(new Intl.NumberFormat('fr', { style: 'percent' }).format(1))
-    expect(shown['errors when']).toBe(`${clock(AT)} position 13:39 lecture rétablie | de ${clock(AT + 60_000)} à ${clock(AT + 120_000)}\u00d740`)
+    expect(shown['errors when']).toBe(`${clock(AT, 'fr')} position 13:39 lecture rétablie | de ${clock(AT + 60_000, 'fr')} à ${clock(AT + 120_000, 'fr')}\u00d740`)
     expect(shown['engine failed']).toBe('Ce navigateur ne peut pas lire les codecs de ce fichier\u00a0: hvc1.1.6.L120.90')
   }, 60_000)
 
