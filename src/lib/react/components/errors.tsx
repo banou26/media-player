@@ -103,7 +103,7 @@ ${popoverStyle}
 }
 `
 
-const clock = (at: number) => new Date(at).toLocaleTimeString()
+const clock = (at: number, locale: string | undefined) => new Date(at).toLocaleTimeString(locale)
 
 // the chrome's own formatter, so a position in the log reads exactly like the one on the seekbar
 const mediaTime = (seconds: number | undefined) =>
@@ -140,7 +140,7 @@ export const formatErrors = (errors: PlaybackErrorEntry[]) =>
  */
 export const ErrorsAction = () => {
   const errors = usePlayer((state) => state.playbackErrors)
-  const { format } = useLabels()
+  const { format, locale } = useLabels()
   const { open, toggle, containerRef } = useTrackMenu()
   const [copied, setCopied] = useState(false)
 
@@ -196,7 +196,7 @@ export const ErrorsAction = () => {
               <div className='entry no-hover' key={`${entry.at}-${index}`}>
                 <span className='when'>
                   {/* the span, so a row that is still growing is distinguishable from one that stopped */}
-                  {entry.count > 1 ? format(LABELS.errorSpan, { start: clock(entry.at), end: clock(entry.lastAt) }) : clock(entry.at)}
+                  {entry.count > 1 ? format(LABELS.errorSpan, { start: clock(entry.at, locale), end: clock(entry.lastAt, locale) }) : clock(entry.at, locale)}
                   {mediaTime(entry.atMediaTime) ? ` ${format(LABELS.errorAt, { time: mediaTime(entry.atMediaTime)! })}` : ''}
                   {entry.recovered ? ` ${format(LABELS.recovered)}` : ''}
                   {entry.count > 1 ? <span className='count'>{`×${entry.count}`}</span> : null}
