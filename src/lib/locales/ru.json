@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "Субтитры встроены в изображение",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource закрылся до того, как удалось создать SourceBuffer",
   "The MediaSource never opened": "MediaSource так и не открылся",
+  "The browser rejected a media segment": "Браузер отклонил медиасегмент",
   "The video codec in this file could not be identified": "Не удалось определить видеокодек этого файла",
   "This browser cannot play the codecs in this file: {codecs}": "Этот браузер не может воспроизвести кодеки этого файла: {codecs}",
   "This file has no subtitles": "В этом файле нет субтитров",

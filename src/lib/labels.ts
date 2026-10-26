@@ -51,6 +51,7 @@ export const LABELS = {
   sourceNeverOpened: 'The MediaSource never opened',
   sourceClosed: 'The MediaSource closed before a SourceBuffer could be created',
   readFailed: 'Reading the video file failed',
+  segmentRejected: 'The browser rejected a media segment',
 } as const
 
 export type Label = (typeof LABELS)[keyof typeof LABELS]

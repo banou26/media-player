@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "Altyazılar görüntüye gömülü",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource, SourceBuffer oluşturulamadan kapandı",
   "The MediaSource never opened": "MediaSource hiç açılmadı",
+  "The browser rejected a media segment": "Tarayıcı bir medya segmentini reddetti",
   "The video codec in this file could not be identified": "Bu dosyanın video kodeki belirlenemedi",
   "This browser cannot play the codecs in this file: {codecs}": "Bu tarayıcı bu dosyadaki kodekleri oynatamıyor: {codecs}",
   "This file has no subtitles": "Bu dosyada altyazı yok",

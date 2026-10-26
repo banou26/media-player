@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "Les sous-titres sont incrustés dans l’image",
   "The MediaSource closed before a SourceBuffer could be created": "La MediaSource s’est fermée avant qu’un SourceBuffer puisse être créé",
   "The MediaSource never opened": "La MediaSource ne s’est jamais ouverte",
+  "The browser rejected a media segment": "Le navigateur a refusé un segment multimédia",
   "The video codec in this file could not be identified": "Le codec vidéo de ce fichier n’a pas pu être identifié",
   "This browser cannot play the codecs in this file: {codecs}": "Ce navigateur ne peut pas lire les codecs de ce fichier : {codecs}",
   "This file has no subtitles": "Ce fichier n’a pas de sous-titres",

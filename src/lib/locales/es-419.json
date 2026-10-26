@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "Los subtítulos están en la imagen",
   "The MediaSource closed before a SourceBuffer could be created": "La MediaSource se cerró antes de poder crear un SourceBuffer",
   "The MediaSource never opened": "La MediaSource nunca se abrió",
+  "The browser rejected a media segment": "El navegador rechazó un segmento multimedia",
   "The video codec in this file could not be identified": "No se pudo identificar el códec de video de este archivo",
   "This browser cannot play the codecs in this file: {codecs}": "Este navegador no puede reproducir los códecs de este archivo: {codecs}",
   "This file has no subtitles": "Este archivo no tiene subtítulos",

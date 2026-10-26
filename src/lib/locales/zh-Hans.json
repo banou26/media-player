@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "字幕已嵌入画面",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource 在创建 SourceBuffer 之前已关闭",
   "The MediaSource never opened": "MediaSource 始终未打开",
+  "The browser rejected a media segment": "浏览器拒绝了一个媒体片段",
   "The video codec in this file could not be identified": "无法识别此文件的视频编解码器",
   "This browser cannot play the codecs in this file: {codecs}": "此浏览器无法播放此文件的编解码器：{codecs}",
   "This file has no subtitles": "此文件没有字幕",

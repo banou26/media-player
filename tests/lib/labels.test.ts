@@ -93,6 +93,7 @@ describe('the English', () => {
       .toBe('This browser cannot play the codecs in this file: hvc1.1.6.L120.90,mp4a.40.2')
     expect(labelledError('The MediaSource never opened').message).toBe('The MediaSource never opened')
     expect(labelledError('The MediaSource closed before a SourceBuffer could be created').message).toBe('The MediaSource closed before a SourceBuffer could be created')
+    expect(labelledError('The browser rejected a media segment').message).toBe('The browser rejected a media segment')
     const cause = new Error('the read was cancelled')
     const failed = labelledError('Reading the video file failed', undefined, { cause })
     expect([failed.message, failed.cause, failed.label]).toEqual(['Reading the video file failed', cause, 'Reading the video file failed'])
