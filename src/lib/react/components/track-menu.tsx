@@ -38,9 +38,10 @@ export const popoverStyle = css`
      once subtitles moved out to its own button, and a long track list scrolls at the cap either way. */
   height: max-content;
   /* The room actually above the bar. A short player had the top of the menu clipped by that same
-     \`overflow: hidden\`. With no size container in the ancestry this resolves against the small
-     viewport, so it can only ever shrink the box, never grow it. */
-  max-height: min(160px, calc(100cqh - 100% - 16px));
+     \`overflow: hidden\`. \`--mp-height\` is the player's own height, which the chrome writes: with no
+     size container in the ancestry \`100cqh\` is the small viewport's, and a translated menu whose rows
+     wrap reached the cap and rose 2px past a phone's 220px tall player. */
+  max-height: min(160px, calc(var(--mp-height, 100cqh) - 100% - 16px));
   @media (min-width: 768px) {
     right: calc(16px + env(safe-area-inset-right, 0px));
     width: 250px;
