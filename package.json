@@ -49,6 +49,7 @@
   "author": "Banou26",
   "dependencies": {
     "@banou/ponyfill": "^0.0.12",
+    "@formatjs/intl": "^6.1.4",
     "@videojs/core": "10.0.0-beta.26",
     "@videojs/react": "10.0.0-beta.26",
     "ass-compiler": "^0.1.16",
