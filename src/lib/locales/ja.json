@@ -35,6 +35,7 @@
   "Subtitles are in the picture": "字幕は映像に焼き込まれています",
   "The MediaSource closed before a SourceBuffer could be created": "SourceBuffer を作成する前に MediaSource が閉じました",
   "The MediaSource never opened": "MediaSource が開きませんでした",
+  "The browser rejected a media segment": "ブラウザがメディアセグメントを拒否しました",
   "The video codec in this file could not be identified": "このファイルの動画コーデックを特定できませんでした",
   "This browser cannot play the codecs in this file: {codecs}": "このブラウザではこのファイルのコーデックを再生できません: {codecs}",
   "This file has no subtitles": "このファイルには字幕がありません",

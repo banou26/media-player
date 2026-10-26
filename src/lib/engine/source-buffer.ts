@@ -1,3 +1,5 @@
+import { labelledError } from '../labels'
+
 // appendBuffer, remove and timestampOffset must never overlap an in-flight update, so every op
 // goes through one chain
 
@@ -20,7 +22,7 @@ const waitForUpdate = (sourceBuffer: SourceBuffer) =>
       sourceBuffer.removeEventListener('error', onError)
     }
     const onEnd = () => { cleanup(); resolve() }
-    const onError = (ev: Event) => { cleanup(); reject(new Error('The browser rejected a media segment', { cause: ev })) }
+    const onError = (ev: Event) => { cleanup(); reject(labelledError('The browser rejected a media segment', undefined, { cause: ev })) }
     sourceBuffer.addEventListener('updateend', onEnd, { once: true })
     sourceBuffer.addEventListener('abort', onEnd, { once: true })
     sourceBuffer.addEventListener('error', onError, { once: true })
