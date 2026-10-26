@@ -3,6 +3,8 @@ import { css } from '@emotion/react'
 
 import { fonts } from '../../utils/fonts'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 
 const VISIBLE_MS = 9000
 
@@ -59,6 +61,7 @@ const style = css`
  * control is now the thing to press.
  */
 export const BurnInHint = () => {
+  const { format } = useLabels()
   const burnedInSubtitles = usePlayer((state) => state.burnedInSubtitles)
   const mode = usePlayer((state) => state.pictureInPictureMode)
   const [show, setShow] = useState(false)
@@ -78,7 +81,7 @@ export const BurnInHint = () => {
   return (
     <div css={style} className={show ? 'show' : ''} role='status'>
       <div className='card'>
-        <div className='text'>Now click your browser&apos;s pop out button</div>
+        <div className='text'>{format(LABELS.burnInHint)}</div>
         <div className='arrow' aria-hidden='true'>&rarr;</div>
       </div>
     </div>

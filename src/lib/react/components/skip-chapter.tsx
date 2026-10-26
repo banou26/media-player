@@ -4,6 +4,8 @@ import { css } from '@emotion/react'
 import { fonts } from '../../utils/fonts'
 import { classifyChapters } from '../../utils/chapters'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
 
 /**
  * How far AHEAD of the chapter the offer appears, in seconds.
@@ -26,7 +28,7 @@ const OFFER_MS = 6_000
 /** A jump back by more than this is a seek rather than playback, and re-opens the offer. */
 const SEEK_BACK_S = 1
 
-const LABELS = { opening: 'Skip Opening', ending: 'Skip Ending' } as const
+const OFFERS = { opening: LABELS.skipOpening, ending: LABELS.skipEnding } as const
 
 const style = css`
   position: absolute;
@@ -100,6 +102,7 @@ export const SkipChapter = () => {
    */
   const seekPreview = usePlayer((state) => state.seekPreview)
   const player = usePlayer()
+  const { format } = useLabels()
 
   const kinds = useMemo(() => classifyChapters(chapters), [chapters])
 
@@ -163,7 +166,7 @@ export const SkipChapter = () => {
   return (
     <div css={style} className={show && !seekPreview ? 'show' : ''}>
       <button type='button' className='skip-chapter' onClick={skip}>
-        {LABELS[skippable.kind]}
+        {format(OFFERS[skippable.kind])}
       </button>
     </div>
   )

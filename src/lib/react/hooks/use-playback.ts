@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { isMediaElementError, startPlayback } from '../../engine'
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
 import { toNamedTracks } from '../../utils/track-label'
 import { languageOf, preferredTrack } from '../../language'
 
@@ -169,6 +170,15 @@ export const usePlayback = (
   onPlaybackErrorRef.current = options?.onPlaybackError
   const onOutputRef = useRef(onOutput)
   onOutputRef.current = onOutput
+  const labels = useLabels()
+  const labelsRef = useRef(labels)
+  labelsRef.current = labels
+  // named again when the labels change, as they do when a catalogue arrives after the streams
+  useEffect(() => {
+    const { audio, subtitles } = streams.current
+    if (subtitles.length) player.setSourceState({ subtitleTracks: toNamedTracks(subtitles, labels) })
+    if (audio.length) player.setSourceState({ audioTracks: toNamedTracks(audio, labels) })
+  }, [player, labels])
 
   // The store's ids are opaque, but everything this hook writes into it came from libav, so every id
   // that comes back is one of its own stream indices.
@@ -395,14 +405,14 @@ export const usePlayback = (
             if (cancelled) return
             streams.current.subtitles = subtitles
             player.setSourceState({
-              subtitleTracks: toNamedTracks(subtitles),
+              subtitleTracks: toNamedTracks(subtitles, labelsRef.current),
               ...subtitleChoiceFor.current === size ? {} : { selectedSubtitleTrack: preferredSubtitle(preferredSubtitleRef.current, subtitles) },
             })
           },
           onAudioStreams: (audio, selected) => {
             if (cancelled) return
             streams.current.audio = audio
-            player.setSourceState({ audioTracks: toNamedTracks(audio), selectedAudioTrack: selected })
+            player.setSourceState({ audioTracks: toNamedTracks(audio, labelsRef.current), selectedAudioTrack: selected })
           },
         })
         if (cancelled) {

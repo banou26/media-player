@@ -22,15 +22,18 @@ describe('the package exports', () => {
   })
 })
 
-/** What a module loads when it runs, followed through its relative imports: `import type` and `export type` load nothing. */
-const loads = (file: string, seen = new Set<string>()): Set<string> => {
+/**
+ * What a module loads when it runs, followed through its relative imports: `import type` and `export type` load
+ * nothing. Without `later`, what it loads only through `import()` is left out.
+ */
+const loads = (file: string, seen = new Set<string>(), later = true): Set<string> => {
   const key = relative(ROOT, file)
   if (seen.has(key)) return seen
   seen.add(key)
   const source = readFileSync(file, 'utf8')
   const specifiers = [
     ...source.matchAll(/^\s*(?:import|export)\s+(?!type\b)(?:[^'"]*?\sfrom\s+)?['"]([^'"]+)['"]/gm),
-    ...source.matchAll(/\bimport\(\s*['"]([^'"]+)['"]/g),
+    ...later ? source.matchAll(/\bimport\(\s*['"]([^'"]+)['"]/g) : [],
   ].map(([, specifier]) => specifier!)
   for (const specifier of specifiers) {
     if (!specifier.startsWith('.')) { seen.add(specifier); continue }
@@ -39,7 +42,7 @@ const loads = (file: string, seen = new Set<string>()): Set<string> => {
     if (/\.(?!tsx?$)\w+$/.test(base) && existsSync(base)) { seen.add(relative(ROOT, base)); continue }
     const found = [`${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')].find(existsSync)
     expect(found, `${specifier} from ${key} resolves to no file`).toBeDefined()
-    loads(found!, seen)
+    loads(found!, seen, later)
   }
   return seen
 }
@@ -54,5 +57,16 @@ describe('the chapters subpath', () => {
 
   it('loads the classifier and nothing else', () => {
     expect([...loads(join(ROOT, 'src/lib/chapters/index.ts'))]).toEqual(['src/lib/chapters/index.ts', 'src/lib/utils/chapters.ts'])
+  })
+})
+
+describe('the labels', () => {
+  it('reach FormatJS and the catalogues only through import(), so a player in English loads neither', () => {
+    const entry = join(ROOT, 'src/lib/index.tsx')
+    const all = [...loads(entry)]
+    // control: the walk finds them at all
+    expect(all).toContain('@formatjs/intl')
+    expect(all).toContain('src/lib/locales/fr.json')
+    expect([...loads(entry, new Set(), false)].filter((loaded) => loaded.startsWith('@formatjs') || loaded.includes('/locales/'))).toEqual([])
   })
 })

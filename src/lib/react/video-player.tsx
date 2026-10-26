@@ -18,6 +18,7 @@ import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture
 import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
 import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
+import { LabelsProvider } from './labels'
 import { languageOf } from '../language'
 
 /**
@@ -93,6 +94,15 @@ type CommonOptions = {
    * store's `attach` and does nothing at all until a media arrives.
    */
   controls?: boolean
+
+  /**
+   * The language of the player's own labels (the controls, tooltips, menus, skip offers and failures), a BCP 47 tag
+   * such as the host page shows (`fr`, `es-MX`, `zh-TW`). The labels are shown in the closest language the player has,
+   * the numbers in them written as this tag writes them, and track languages named in it. A language's text loads the
+   * first time a player shows it, and the labels are English until it has. Without it, or for a language the player
+   * does not have, they are English and nothing more is loaded; without it, track languages are named in the browser's.
+   */
+  language?: string
 
   /**
    * Where the keyboard shortcuts listen. `'window'`, the default, takes keys from the whole page, which suits a
@@ -652,7 +662,9 @@ const rootStyle = css`
 export const MediaPlayer = (options: MediaPlayerOptions & { children?: ReactNode }) => (
   <div css={rootStyle}>
     <Player.Provider>
-      <PlayerRoot options={options}>{options.children}</PlayerRoot>
+      <LabelsProvider language={options.language}>
+        <PlayerRoot options={options}>{options.children}</PlayerRoot>
+      </LabelsProvider>
     </Player.Provider>
   </div>
 )

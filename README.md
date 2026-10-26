@@ -350,6 +350,25 @@ resolves, and its host applies the preference to its own tracks: `preferredSelec
 from the same module gives a pick's BCP 47 tag (`jpn` gives `ja`, `Português (Brasil)` gives `pt-BR`), or undefined for
 one naming no language, for code that reads tags.
 
+### Labels in the viewer's language
+
+The controls, tooltips, menus, skip offers and failures are in English. Pass `language`, a BCP 47 tag such as the
+host page shows, for another:
+
+```tsx
+<MediaPlayer {...source} language="fr" />
+```
+
+They are shown in the closest language the player has: Latin American Spanish (`es-419`, for every `es-*`), Brazilian
+Portuguese (`pt-BR`, for every `pt-*`), French, German, Italian, Russian, Japanese, Korean, Simplified and Traditional
+Chinese (`zh-Hans`, `zh-Hant`), Turkish and Polish, else English. The numbers in them are written as the tag writes them
+(`es-AR` gives `0,5x`, `es-419` itself `0.5x`), and track languages are named in it. A language's text is fetched the
+first time a player shows it, with FormatJS (`@formatjs/intl`), and the labels are English until it has arrived. A
+player given no `language`, or one it does not have, fetches neither.
+
+Each language is `src/lib/locales/<tag>.json`, keyed by the English of `src/lib/labels.ts`; a unit test holds every
+file to FormatJS's `verify` against that English.
+
 ## Layout
 
 One package. `src/` is the demo app, `src/lib` is the library it publishes, and the app imports it by
@@ -430,6 +449,7 @@ its published name so it stays an honest consumer.
   player.addEventListener('chapterschange', () => console.log(player.chapters))
   ```
 - `src/lib/react/` the player component, its chrome, and the hooks.
+- `src/lib/labels.ts` the chrome's text in English, and `src/lib/locales/` its other languages.
 
 Built by `vite.lib.config.ts` into `dist/`, which is what npm publishes.
 
