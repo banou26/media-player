@@ -367,8 +367,14 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // What `expose` serves beside the media, the same object for the player's life. Its `onHostFullscreen` is how a
   // mirror made with `fullscreen: true` takes the fullscreen over.
   const [embedderFullscreen, setEmbedderFullscreen] = useState<boolean | null>(null)
-  const [served] = useState<ServedPlayer & { chapters: MediaChapter[] }>(
-    () => Object.assign(new EventTarget(), { chapters: [], onHostFullscreen: setEmbedderFullscreen }),
+  const [endingOffered, setEndingOffered] = useState(true)
+  const [served] = useState<ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean }>(
+    () => Object.assign(new EventTarget(), {
+      chapters: [],
+      endingOffered: true,
+      onHostFullscreen: setEmbedderFullscreen,
+      onEndingOffered: setEndingOffered,
+    }),
   )
   const exposeOptions = expose === true ? {} : expose || undefined
   const latestExpose = useRef(exposeOptions)
@@ -392,10 +398,12 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // by value, since a caller's inline `chapters` is a new array on every render
   const playerChapters = usePlayer((state) => state.chapters)
   const chaptersKey = JSON.stringify(playerChapters)
+  // after the commit, so a mirror that hears the ending is no longer offered finds the button already gone
   useEffect(() => {
     served.chapters = playerChapters
+    served.endingOffered = endingOffered
     served.dispatchEvent(new Event('chapterschange'))
-  }, [chaptersKey])
+  }, [chaptersKey, endingOffered])
 
   const fullscreen = options.fullscreen ?? (embedderFullscreen === null ? undefined : {
     active: embedderFullscreen,
@@ -581,6 +589,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       controls={options.controls}
       shortcuts={options.shortcuts}
       fullscreen={fullscreen}
+      endingOffered={endingOffered}
     >
       {children}
     </Chrome>

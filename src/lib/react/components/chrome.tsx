@@ -137,10 +137,12 @@ export type ChromeProps = {
   shortcuts?: 'window' | 'player'
   /** Fullscreen kept by the host: a press calls its `request` instead of fullscreening the player. */
   fullscreen?: HostFullscreen
+  /** False leaves the last ending out of the skip offer. */
+  endingOffered: boolean
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, endingOffered, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -327,7 +329,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
       )}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
-      <SkipChapter />
+      <SkipChapter endingOffered={endingOffered} />
       {passThrough?.armed && root.current
         ? (
           <div

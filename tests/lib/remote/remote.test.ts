@@ -807,8 +807,14 @@ describe('a player whose play() resolves without playing', () => {
 /** What `<MediaPlayer expose>` serves beside its media, recording what the channel tells it. */
 const servedPlayer = (chapters: MediaChapter[] = []) => {
   const told: (boolean | null)[] = []
-  const served = Object.assign(new EventTarget(), { chapters, onHostFullscreen: (active: boolean | null) => { told.push(active) } })
-  return { served: served as ServedPlayer & { chapters: MediaChapter[] }, told }
+  const asked: boolean[] = []
+  const served = Object.assign(new EventTarget(), {
+    chapters,
+    endingOffered: true,
+    onHostFullscreen: (active: boolean | null) => { told.push(active) },
+    onEndingOffered: (offered: boolean) => { asked.push(offered) },
+  })
+  return { served: served as ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean }, told, asked }
 }
 
 const OPENING: MediaChapter[] = [{ start: 0, end: 90, title: 'Opening' }, { start: 90, end: 120, title: 'Episode' }]
@@ -994,5 +1000,104 @@ describe('a player served with what is around its media', () => {
     await service.set('default', 'fullscreen', true)
     await service.set('elsewhere', 'fullscreen', true)
     expect(told.length).toBe(before)
+  })
+})
+
+describe('the offer of a player\'s last ending', () => {
+  it('a mirror asks the player, and reads only what the player then says', async () => {
+    const { served, asked } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    expect(player.endingOffered).toBe(true)
+
+    player.endingOffered = false
+    await settled()
+    expect(asked).toEqual([false])
+    expect(player.endingOffered, 'before the player said so').toBe(true)
+
+    const heard: boolean[] = []
+    player.addEventListener('chapterschange', () => heard.push(player.endingOffered))
+    served.endingOffered = false
+    served.dispatchEvent(new Event('chapterschange'))
+    await settled()
+    expect(heard).toEqual([false])
+    expect(player.endingOffered).toBe(false)
+
+    player.endingOffered = true
+    await settled()
+    expect(asked).toEqual([false, true])
+  })
+
+  it('a write before the player has answered goes out once it has', async () => {
+    const { served, asked } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    player.endingOffered = false
+    await settled()
+    expect(asked).toEqual([])
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    await player.ready
+    await settled()
+    expect(asked).toEqual([false])
+  })
+
+  it('a bare element stays offering', async () => {
+    const { player, stop } = pair()
+    open.push(stop, player.destroy)
+    await player.ready
+    player.endingOffered = false
+    await settled()
+    expect(player.endingOffered).toBe(true)
+  })
+
+  it('a player older than this, which ignores the write and never says, stays offering', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const { endingOffered: _, ...older } = EMPTY_SNAPSHOT
+    const set = vi.fn()
+    const signal = new AbortController()
+    open.push(() => signal.abort())
+    void expose<unknown>({
+      subscribe: (_: string, port: MessagePort) => { port.postMessage({ event: 'loadstart', snapshot: older }) },
+      set,
+      call: async () => {},
+    }, { transport: port1, key: PLAYER_CHANNEL, unregisterSignal: signal.signal })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    player.endingOffered = false
+    await expect.poll(() => set.mock.calls.length).toBe(1)
+    expect(player.endingOffered).toBe(true)
+  })
+
+  it('the next player on the id starts out offering', async () => {
+    const left = servedPlayer()
+    left.served.endingOffered = false
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: left.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    expect(player.endingOffered).toBe(false)
+
+    stopFirst()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: servedPlayer().served }))
+    await settled()
+    expect(player.endingOffered).toBe(true)
+  })
+
+  it('the peer\'s word is taken only as a boolean, and only for a player that is there', async () => {
+    const { served, asked } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    await service.set('default', 'endingOffered', 0)
+    await service.set('elsewhere', 'endingOffered', false)
+    expect(asked).toEqual([])
+    await service.set('default', 'endingOffered', false)
+    expect(asked).toEqual([false])
   })
 })

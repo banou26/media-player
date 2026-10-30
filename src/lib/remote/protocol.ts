@@ -31,6 +31,8 @@ export type PlayerSnapshot = {
   videoHeight: number
   /** A `<MediaPlayer expose>`'s chapters, empty for a bare element. */
   chapters: MediaChapter[]
+  /** Whether a `<MediaPlayer expose>` offers to skip its last ending. Set after its render, so false means the offer is off the screen. */
+  endingOffered: boolean
 }
 
 /**
@@ -93,7 +95,7 @@ export type PlayerService = {
   /** With `fullscreen`, the mirror takes the player's fullscreen over, in that state, until its port goes. */
   subscribe: (id: string, port: MessagePort, options?: { fullscreen?: boolean }) => void
   /** `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise. */
-  set: (id: string, name: Writable | 'fullscreen', value: number | boolean) => void
+  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered', value: number | boolean) => void
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -124,7 +126,7 @@ const pairs = (ranges: TimeRangesLike | undefined): [number, number][] => {
 }
 
 /** A media as a snapshot. A NaN duration, which a bare element answers before it has metadata, is sent as 0. */
-export const snapshotOf = (media: PlayerMedia, chapters: MediaChapter[] = []): PlayerSnapshot => ({
+export const snapshotOf = (media: PlayerMedia, chapters: MediaChapter[] = [], endingOffered = true): PlayerSnapshot => ({
   currentTime: finite(media.currentTime),
   duration: finite(media.duration),
   paused: media.paused,
@@ -142,6 +144,7 @@ export const snapshotOf = (media: PlayerMedia, chapters: MediaChapter[] = []): P
   videoWidth: media.videoWidth ?? 0,
   videoHeight: media.videoHeight ?? 0,
   chapters,
+  endingOffered,
 })
 
 // NaN only. A live media reports `duration: Infinity` and means it, so sending 0 for it would mirror
@@ -152,7 +155,7 @@ const finite = (value: number): number => Number.isNaN(value) ? 0 : value
 export const EMPTY_SNAPSHOT: PlayerSnapshot = {
   currentTime: 0, duration: 0, paused: true, ended: false, seeking: false, readyState: 0,
   volume: 1, muted: false, playbackRate: 1, src: '', currentSrc: '',
-  buffered: [], seekable: [], error: null, videoWidth: 0, videoHeight: 0, chapters: [],
+  buffered: [], seekable: [], error: null, videoWidth: 0, videoHeight: 0, chapters: [], endingOffered: true,
 }
 
 /** Plain pairs back into the structural `TimeRanges` the player reads. */
