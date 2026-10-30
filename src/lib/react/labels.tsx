@@ -10,9 +10,11 @@ type Catalogue = Readonly<Record<string, string>>
 
 // One chunk per language, fetched with FormatJS by the first player shown in it, so a player in English loads neither.
 const CATALOGUES: Readonly<Record<string, () => Promise<{ default: Catalogue }>>> = {
+  'ar': () => import('../locales/ar.json'),
   'de': () => import('../locales/de.json'),
   'es-419': () => import('../locales/es-419.json'),
   'fr': () => import('../locales/fr.json'),
+  'he': () => import('../locales/he.json'),
   'it': () => import('../locales/it.json'),
   'ja': () => import('../locales/ja.json'),
   'ko': () => import('../locales/ko.json'),

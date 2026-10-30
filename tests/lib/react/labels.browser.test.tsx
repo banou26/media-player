@@ -371,6 +371,18 @@ describe('a player given a language', () => {
     expect(Object.fromEntries(seen)['settings menu']).toBe('Audio | QualitätAuto | Geschwindigkeit(Normal)')
   }, 60_000)
 
+  it.each([
+    ['ar', 'الصوت | الجودةAuto | سرعة التشغيل(عادية)'],
+    ['he', 'שמע | איכותAuto | מהירות הפעלה(רגילה)'],
+  ])('shows every label in %s', async (language, settings) => {
+    const player = await mount({ language })
+    await translated(player.root)
+    const seen = await walk(player)
+    expect(Object.fromEntries(seen)['settings menu']).toBe(settings)
+    // these three are numbers alone, written in the digits the engine's own data gives each language
+    expect(unchanged(seen).filter((where) => !['volume-slider tooltip', 'speed presets', 'speed readout'].includes(where))).toEqual([])
+  }, 60_000)
+
   it('names a file\'s tracks in it, again when it comes after they were named', async () => {
     const { root, rerender } = await mountFile()
     button(root, 'subtitles').click()
