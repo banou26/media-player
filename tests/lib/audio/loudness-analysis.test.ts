@@ -90,7 +90,7 @@ const collect = () => {
   const blocks = new Map<number, { gain: Float32Array, finger: Float32Array }>()
   const toWorklet = (message: BlockMessage) => {
     if ('drop' in message) blocks.delete(message.drop)
-    else blocks.set(message.block, message)
+    else if ('block' in message) blocks.set(message.block, message)
   }
   return { blocks, toWorklet }
 }
