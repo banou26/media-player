@@ -83,14 +83,17 @@ export type ExposePlayerOptions = {
 }
 
 /**
- * The player around a served media, as `<MediaPlayer expose>` passes it: its chapters, sent with every snapshot and
- * announced on its `chapterschange`, and its fullscreen, which a mirror made with `fullscreen: true` takes over. While
- * one has it, `onHostFullscreen` is told the state that mirror sets, and null once none has it; the player then
- * dispatches `fullscreenrequest` for each press of its fullscreen, which reaches the mirror.
+ * The player around a served media, as `<MediaPlayer expose>` passes it: its chapters and whether it offers to skip its
+ * last ending, sent with every snapshot and announced on its `chapterschange`, and its fullscreen, which a mirror made
+ * with `fullscreen: true` takes over. While one has it, `onHostFullscreen` is told the state that mirror sets, and null
+ * once none has it; the player then dispatches `fullscreenrequest` for each press of its fullscreen, which reaches the
+ * mirror. `onEndingOffered` is told what a mirror sets on `endingOffered`.
  */
 export type ServedPlayer = EventTarget & {
   readonly chapters: MediaChapter[]
+  readonly endingOffered: boolean
   onHostFullscreen: (active: boolean | null) => void
+  onEndingOffered: (offered: boolean) => void
 }
 
 /**
@@ -173,7 +176,8 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   }
   const snapshotAt = (id: string) => {
     const media = medias.get(id)
-    return media ? snapshotOf(media, players.get(id)?.chapters) : undefined
+    const around = players.get(id)
+    return media ? snapshotOf(media, around?.chapters, around?.endingOffered) : undefined
   }
   const announce = (id: string, event: PlayerEvent) => {
     // a press of the fullscreen is for the mirrors that took it over: another one toggling too would undo it
@@ -221,6 +225,10 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         if (typeof value !== 'boolean' || !hosts.get(id)?.size) return
         hostActive.set(id, value)
         tellHost(id)
+        return
+      }
+      if (name === 'endingOffered') {
+        if (typeof value === 'boolean') players.get(id)?.onEndingOffered(value)
         return
       }
       const media = medias.get(id)
@@ -334,6 +342,16 @@ export type MediaPlayerHandle =
      */
     fullscreen: boolean
     /**
+     * Whether the far `<MediaPlayer expose>` offers to skip its last ending, as it last said. Set it to false to have
+     * that offer taken away, for a page with something of its own in that corner, and to true to have it back; a
+     * mirror's `destroy()` leaves it as it is, and a new player starts out offering.
+     *
+     * Unlike every other write here this one does NOT move the mirror: a read answers what the far player reports,
+     * from after its render, with a `chapterschange` event following each change. So a false here means the offer is
+     * off the far screen, and a player that cannot take it (a bare element, a version older than this) stays true.
+     */
+    endingOffered: boolean
+    /**
      * Settles once the far side has first answered with its state; reads before that answer the
      * empty defaults. Stays pending for as long as nobody answers, and rejects with an AbortError on
      * `destroy()` or when `signal` aborts.
@@ -417,7 +435,7 @@ type Subscriber = {
 
 type Link = {
   attach: (subscriber: Subscriber) => () => void
-  set: (id: string, name: Writable | 'fullscreen', value: number | boolean) => Promise<unknown> | undefined
+  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered', value: number | boolean) => Promise<unknown> | undefined
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -626,6 +644,11 @@ export const mediaPlayer = (
       fullscreen = !!value
       if (options.fullscreen) void after(() => link.set(playerId, 'fullscreen', fullscreen))
     },
+    enumerable: true,
+  })
+  Object.defineProperty(player, 'endingOffered', {
+    get: () => state.endingOffered,
+    set: (value: boolean) => { void after(() => link.set(playerId, 'endingOffered', value)) },
     enumerable: true,
   })
 

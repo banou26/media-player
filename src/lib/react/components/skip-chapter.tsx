@@ -90,8 +90,10 @@ const style = css`
  * of the pair: the classifier reads titles written by whoever muxed the file, so it is sometimes
  * going to be wrong. Making the offer expire, and never acting on its own, is what makes being wrong
  * cheap. See the classifier for what it matches and the sample it was measured against.
+ *
+ * `endingOffered` false leaves the last ending out, for an embedder that fills this corner itself.
  */
-export const SkipChapter = () => {
+export const SkipChapter = ({ endingOffered }: { endingOffered: boolean }) => {
   const chapters = usePlayer((state) => state.chapters)
   const currentTime = usePlayer((state) => state.currentTime)
   const requestSeek = usePlayer((state) => state.requestSeek)
@@ -104,7 +106,11 @@ export const SkipChapter = () => {
   const player = usePlayer()
   const { format } = useLabels()
 
-  const kinds = useMemo(() => classifyChapters(chapters), [chapters])
+  const kinds = useMemo(() => {
+    const all = classifyChapters(chapters)
+    const left = endingOffered ? -1 : all.lastIndexOf('ending')
+    return all.map((kind, index) => index === left ? undefined : kind)
+  }, [chapters, endingOffered])
 
   /**
    * The chapter worth offering to skip, from a second before it starts until it ends.
