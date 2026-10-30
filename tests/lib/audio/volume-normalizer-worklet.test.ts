@@ -112,13 +112,20 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
   let sinceClock = Infinity
   let sinceBlocks = Infinity
   let connected = analysis
+  // until this frame the main thread says nothing, then it resets for a seek
+  let quietUntil = -1
   const record: { time: number, reference: number, applied: number, asked: number, handover: number }[] = []
   const history = new Map<number, { index: number, time: number } | null>()
   const deliver = () => {
     for (const message of worker ? worker(position / RATE, frame) : blocks(position / RATE)) port.onmessage?.({ data: message })
   }
   const quantum = () => {
-    if (sinceClock >= 2400) {
+    if (quietUntil >= 0 && frame >= quietUntil) {
+      node.port.onmessage({ data: { reset: 'seek' } })
+      quietUntil = -1
+      sinceClock = Infinity
+    }
+    if (sinceClock >= 2400 && quietUntil < 0) {
       node.port.onmessage({ data: { media: position / RATE, ctx: frame / RATE, rate: 1, paused } })
       sinceClock = 0
     }
@@ -184,6 +191,12 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
       connected = true
       sinceBlocks = Infinity
     },
+    // the clock pair of an element still seeking, its audio from there at once, and the main thread `late` s behind
+    seekAhead: (seconds: number, late: number) => {
+      position = Math.round(seconds * RATE)
+      node.port.onmessage({ data: { media: position / RATE, ctx: frame / RATE, rate: 1, paused: true } })
+      quietUntil = frame + Math.round(late * RATE)
+    },
   }
 }
 
@@ -245,6 +258,18 @@ describe('the worklet against the media time', () => {
     expect(node.doubt).toBe(false)
     expect((node.offset! - before) * 1000).toBeCloseTo(12, 0)
     expect(short(record, 47, 50)).toEqual([])
+  })
+
+  it('cuts a loud sound right after a seek whose audio comes before the seek is told', () => {
+    const { record, start, playTo, seekAhead } = rig()
+    start(5)
+    playTo(20)
+    // 50 ms before the 10 ms burst at 10.12 s, which plays before the main thread catches up
+    seekAhead(10.0734, 0.08)
+    playTo(10.5)
+    expect(short(record, 10, 10.5)).toEqual([])
+    // the control: what it had to cut there
+    expect(record.filter(({ time, asked }) => time > 10.12 && time < 10.14 && asked < -3).length).toBeGreaterThan(400)
   })
 
   it('cuts a seek 34 s back from its first sample, with the worker slow to send a block again', () => {
