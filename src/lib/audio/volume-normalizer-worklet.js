@@ -946,7 +946,12 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
     const frame = ctx * sampleRate
     const model = this.model
     if (paused) {
-      this.model = { paused: true, media: model && !model.paused ? this.mediaAt(frame) : media }
+      // A pause leaves the media where the clock had it, and a seek moves it. The seek's audio can come before its
+      // reset: 10 to 27 ms after the move in Chrome 155, where the main thread once took 52 ms (2026-10-30).
+      const held = model && !model.paused ? this.mediaAt(frame) : media
+      const moved = !(Math.abs(media - held) <= 0.025)
+      this.model = { paused: true, media: moved ? media : held }
+      if (moved && this.offset !== null) this.doubt = true
       this.liveCount = 0
       return
     }
