@@ -445,17 +445,17 @@ its published name so it stays an honest consumer.
   player's button, `f` and double click then fire one `fullscreenrequest` on the mirror each, within the press's
   activation, and show `player.fullscreen` as this page sets it, until `destroy()` gives the fullscreen back.
 
-  A page with something of its own in the corner of the far player's skip offer sets `player.endingOffered = false` to
-  take the offer of the last ending away. The read is the far player's own word, from after its render, with a
-  `chapterschange` event following each change: wait for the false before drawing over that corner, and a player that
-  cannot take it (a bare element, an older version) stays true.
-
   ```ts
   const player = mediaPlayer(iframe, { origin, fullscreen: true })
   player.addEventListener('fullscreenrequest', () => document.fullscreenElement ? document.exitFullscreen() : stage.requestFullscreen())
   document.addEventListener('fullscreenchange', () => { player.fullscreen = !!document.fullscreenElement })
   player.addEventListener('chapterschange', () => console.log(player.chapters))
   ```
+
+  A page with something of its own in the corner of the far player's skip offer sets `player.endingOffered = false` to
+  take the offer of the last ending away. The read is the far player's own word, from after its render, with a
+  `chapterschange` event following each change: wait for the false before drawing over that corner, and a player that
+  cannot take it (a bare element, an older version) stays true.
 - `src/lib/react/` the player component, its chrome, and the hooks.
 - `src/lib/labels.ts` the chrome's text in English, and `src/lib/locales/` its other languages.
 
