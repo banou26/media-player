@@ -26,13 +26,13 @@ export type MediaChapter = { start: number, end: number, title: string }
 
 /**
  * What the remuxer produced, in the order it was appended: the init segment and the input audio stream it carries,
- * a run at load and at every remuxer seek (`pts` is the timestampOffset its fragments are appended at), each
- * fragment, and the end of the file once read. The buffers are playback's own and may be appended again, so a
- * consumer copies what it keeps.
+ * a run at load and at every remuxer seek (`pts` is the timestampOffset its fragments are appended at, the same for
+ * every run, and `from` the time the run starts at), each fragment, and the end of the file once read. The buffers
+ * are playback's own and may be appended again, so a consumer copies what it keeps.
  */
 export type PlaybackOutput =
   | { type: 'init', data: ArrayBuffer, audioMimeType: string, audioStreamIndex: number }
-  | { type: 'run', pts: number }
+  | { type: 'run', pts: number, from: number }
   | { type: 'fragment', data: ArrayBuffer }
   | { type: 'end' }
 
@@ -126,10 +126,11 @@ const SOURCE_OPEN_TIMEOUT = 15_000
  * How far past the playhead a range may start and still count as the one holding it, which decides how
  * much to read and never whether to fetch.
  *
- * Firefox 151 reports a range from its first presented frame, the reorder delay past its keyframe: 82 ms
- * on most fixtures and 166 ms on anime-chapters, at load and after every remuxer seek, where Chrome 153
- * reports the keyframe itself. Without the slack a playhead paused at 0 reads the whole file, and a
- * prepared seek to a keyframe builds no runway (measured 2026-10-11).
+ * A range starts at its first presented frame. While libav-wasm moved every track by the reorder delay (before
+ * 0.9.0), Firefox 151 reported each range 82 ms past its keyframe on most fixtures and 166 ms on anime-chapters, and
+ * without the slack a playhead paused at 0 read the whole file and a prepared seek to a keyframe built no runway
+ * (measured 2026-10-11). Firefox 157 and Chrome 155 now report the keyframe or earlier (measured 2026-10-30), and the
+ * slack covers a file whose first picture comes after 0.
  */
 const BOUNDARY_SLACK = 1
 /*
@@ -264,6 +265,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         try {
           const sb = mediaSource.addSourceBuffer(mime)
           sb.mode = 'segments'
+          sb.timestampOffset = metadata.timestampOffset
           const duration = metadata.info.input.duration
           if (Number.isFinite(duration) && duration > 0) mediaSource.duration = duration
           cleanup()
@@ -279,10 +281,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       mediaSource.addEventListener('error', onFail, { once: true })
     })
 
-    const { appendBuffer, unbufferRange, updateTimestampOffset, endOfStream } = updateSourceBuffer(sourceBuffer, mediaSource)
+    const { appendBuffer, unbufferRange, endOfStream } = updateSourceBuffer(sourceBuffer, mediaSource)
     await appendBuffer(metadata.data)
     onOutput?.({ type: 'init', data: metadata.data, audioMimeType: metadata.info.output.audioMimeType, audioStreamIndex: selectedAudio })
-    onOutput?.({ type: 'run', pts: 0 })
+    onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: 0 })
     if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
     onReady?.()
 
@@ -428,9 +430,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         if (destroyed || generation !== seekGeneration) return
         if (done) finished = true
         if (fragments?.length) subtitles.pushFragments(fragments)
-        await updateTimestampOffset(pts)
-        if (destroyed || generation !== seekGeneration) return
-        onOutput?.({ type: 'run', pts })
+        onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: pts })
         if (data.byteLength) onOutput?.({ type: 'fragment', data })
         if (done) onOutput?.({ type: 'end' })
         if (data.byteLength) {
@@ -531,8 +531,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * Whether the element can play from a GIVEN time without a fetch.
      *
      * Exact. A seek that lands before a range waits there for good once the gap passes 60 to 90 ms in
-     * Chrome 153, or 250 to 300 ms in Firefox 151, so Firefox's reorder delay cannot be allowed for here
-     * and a target inside it costs a remuxer seek (24 fps fixtures, measured 2026-10-11).
+     * Chrome 153, or 250 to 300 ms in Firefox 151 (24 fps fixtures, measured 2026-10-11).
      */
     const playableAt = (time: number) =>
       getTimeRanges(sourceBuffer).some((r) => r.start <= time && time < r.end)
@@ -692,8 +691,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
        * once its budget runs out, with the seek or the runway's reads still running. Without this, the
        * move fires `seeking`, which starts the identical read again and bumps the generation, throwing
        * away everything the first one had done. The benchmark caught it as a seek that took twice as
-       * long as seeking the old way. It also covers a finished prepare to a keyframe in Firefox, whose
-       * range starts the reorder delay past the target, so the target never counts as buffered.
+       * long as seeking the old way.
        */
       if (positioned && (seeking || runwayFrom(time) > 0) && Math.abs(time - lastSeekPosition) < 0.001) return
       finished = false

@@ -202,7 +202,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     worker.postMessage({ type: 'init', data: init.data, codec: init.info.output.audioMimeType }, [init.data])
     active = true
     started = true
-    worker.postMessage({ type: 'run', run, pts: 0, start: true })
+    worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: 0, start: true })
     while (!stopped) {
       const next = decide()
       if (next === 'done') break
@@ -229,7 +229,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
           run++
           active = true
           runStart = result.pts
-          worker.postMessage({ type: 'run', run, pts: result.pts, start: result.pts <= 0 })
+          worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: result.pts, start: result.pts <= 0 })
           await send(result)
           if (result.finished) await endRun(true)
         }
@@ -260,7 +260,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
       } else if (output.type === 'run') {
         end(false)
         open = true
-        worker.postMessage({ type: 'run', run: ++run, pts: output.pts, start: !join && output.pts <= 0, join })
+        worker.postMessage({ type: 'run', run: ++run, pts: output.pts, from: output.from, start: !join && output.from <= 0, join })
       } else if (output.type === 'end') end(true)
       else if (open) {
         const data = output.data.slice(0)

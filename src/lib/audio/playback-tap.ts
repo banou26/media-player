@@ -12,7 +12,7 @@ export type PlaybackTap = {
 
 export const createPlaybackTap = (): PlaybackTap => {
   let init: Extract<PlaybackOutput, { type: 'init' }> | undefined
-  let run: { pts: number, begun: boolean } | undefined
+  let run: { output: Extract<PlaybackOutput, { type: 'run' }>, begun: boolean } | undefined
   let listener: { audioStreamIndex: number, take: (output: PlaybackOutput, join?: boolean) => void } | undefined
   const live = () => listener && init?.audioStreamIndex === listener.audioStreamIndex ? listener : undefined
   return {
@@ -20,7 +20,7 @@ export const createPlaybackTap = (): PlaybackTap => {
       if (output.type === 'init') {
         init = output
         run = undefined
-      } else if (output.type === 'run') run = { pts: output.pts, begun: false }
+      } else if (output.type === 'run') run = { output, begun: false }
       else if (output.type === 'fragment' && run) run.begun = true
       live()?.take(output)
     },
@@ -29,7 +29,7 @@ export const createPlaybackTap = (): PlaybackTap => {
       listener = mine
       if (live() && init) {
         take(init)
-        if (run) take({ type: 'run', pts: run.pts }, run.begun)
+        if (run) take(run.output, run.begun)
       }
       return () => { if (listener === mine) listener = undefined }
     },

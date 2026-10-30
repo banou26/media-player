@@ -91,7 +91,8 @@ const island = async (scrubbed = false) => {
   const { video, hold, lift, pos } = opened
   const past = hold(pos(24), Infinity)
   await seek(video, 20)
-  await expect.poll(() => ranges(video).at(-1)?.[1], { timeout: 10_000 }).toBeGreaterThan(23.9)
+  // the last fragment before 24 ends at 23.893 s
+  await expect.poll(() => ranges(video).at(-1)?.[1], { timeout: 10_000 }).toBeGreaterThan(23.8)
   if (scrubbed) await new Promise((done) => { video.addEventListener('seeking', done, { once: true }); video.currentTime = 15 })
   await seek(video, 2)
   lift(past)
@@ -121,9 +122,8 @@ it('prepares a runway for a seek into the end of an island ahead of the reader w
 })
 
 /*
- * A keyframe, because Firefox reports the range from the reorder delay past it and so never counts the
- * target as buffered; and moves made while the seek or the runway is still being read, which is what a
- * prepare over a torrent outlasting its budget gets.
+ * A keyframe, where a remuxer seek starts, and moves made while the seek or the runway is still being read, which is
+ * what a prepare over a torrent outlasting its budget gets.
  */
 it.each(['after', 'while', 'before'])('positions the remuxer once for a move made %s a prepare reads its runway', async (when) => {
   const { video, controller, hold, release, reads, pos } = await open()
@@ -145,7 +145,7 @@ it.each(['after', 'while', 'before'])('positions the remuxer once for a move mad
   expect(reads.slice(before).filter((offset) => offset === pos(target)).length).toBe(1)
 })
 
-// Firefox reports the range from 82 ms past 0, so only the remuxer starting out positioned at 0 makes this free
+// the remuxer starts out positioned at 0, which is what makes this free
 it('positions nothing for a paused seek to 0 right after load', async () => {
   const { video, reads, pos } = await open()
   const before = reads.length
