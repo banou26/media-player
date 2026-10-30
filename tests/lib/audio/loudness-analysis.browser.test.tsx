@@ -182,8 +182,9 @@ describe('the analysis ahead, in the player', () => {
     const screen = await render(<MediaPlayer {...props} normalizeVolume={false} />, { container: mountIn() })
     await expect.poll(() => screen.container.querySelector('video')?.currentTime ?? 0, { timeout: 30_000 }).toBeGreaterThan(1)
     await screen.rerender(<MediaPlayer {...props} normalizeVolume />)
-    // playback holds about 39 s by then, and reads on once less than 30 s of it is ahead
-    await expect.poll(() => analysed(41, 50), { timeout: 20_000 }).toBe(true)
+    // playback holds about 39 s by then, and reads on once less than 30 s of it is ahead; the audio of the fragment
+    // that ends at the keyframe at 50 s ends at 49.92 s
+    await expect.poll(() => analysed(41, 49.5), { timeout: 20_000 }).toBe(true)
     expect(analysed(5, 6)).toBe(false)
     expect(workers.filter(({ url }) => url.includes('libav')).length).toBe(1)
     await screen.unmount()
@@ -235,7 +236,7 @@ describe('the analysis ahead, in the player', () => {
     await screen.unmount()
   }, 90_000)
 
-  // libav's first audio sample of a run lasts until the video's first frame is due, 82 ms in this file
+  // Chrome's AudioDecoder stamps its outputs by counting samples from the first chunk, across a gap in the timestamps
   it('places decoded audio by its chunks\' timestamps, where MediaSource plays it, whatever the decoder stamps', async () => {
     const file = await bytesOf('/normalizer-aac.mkv')
     const remuxer = await makeRemuxer({
@@ -254,13 +255,17 @@ describe('the analysis ahead, in the player', () => {
     }
     await remuxer.destroy()
     const track = audioTrackOf(init.data)!
-    const samples = fragments.flatMap((fragment) => audioSamplesOf(fragment, track))
-    // AAC decodes 1024 frames a sample; the first sample lasts 60 ms longer than its frames
+    // a gap of one fragment, 2 s of this file
+    const sent = [fragments[0]!, ...fragments.slice(2)]
+    const seconds = (time: number) => init.timestampOffset + time / track.timescale
+    const samples = sent.flatMap((fragment) => audioSamplesOf(fragment, track))
+    const resumed = seconds(audioSamplesOf(sent[1]!, track)[0]!.time)
+    // AAC decodes 1024 frames a sample
     const frames = 1024 / track.sampleRate
-    const fromGap = samples[1]!.time / track.timescale + (samples.length - 1) * frames
-    const counted = samples.length * frames
+    const stamped = seconds(samples.at(-1)!.time) + frames
+    const counted = seconds(samples[0]!.time) + samples.length * frames
     // the control: the two ends are far enough apart to tell which one the analysis took
-    expect(fromGap - counted).toBeGreaterThan(0.05)
+    expect(stamped - counted).toBeGreaterThan(0.05)
 
     const worker = new Worker(playerAssets.normalizerWorkletUrl, { type: 'module' })
     const messages: any[] = []
@@ -276,8 +281,8 @@ describe('the analysis ahead, in the player', () => {
     const { port1 } = new MessageChannel()
     worker.postMessage({ type: 'port', port: port1 }, [port1])
     worker.postMessage({ type: 'init', data: init.data, codec: init.info.output.audioMimeType })
-    worker.postMessage({ type: 'run', run: 0, pts: 0, start: true })
-    for (const data of fragments) {
+    worker.postMessage({ type: 'run', run: 0, pts: init.timestampOffset, from: 0, start: true })
+    for (const data of sent) {
       const acked = reply('ack')
       worker.postMessage({ type: 'fragment', run: 0, data }, [data])
       await acked
@@ -287,11 +292,12 @@ describe('the analysis ahead, in the player', () => {
     const { spans, end } = await ended
     worker.terminate()
     expect(messages.some(({ type }) => type === 'unsupported')).toBe(false)
-    // one span from the start, the gap after the first sample analysed as the silence MediaSource plays there, to
-    // where the frames after that gap end, not where counting every sample from the start does
-    expect(spans.length).toBe(1)
+    // a span from the start, and one from where the chunks after the gap say, to where their frames end, not where
+    // counting every sample from the start does
+    expect(spans.length).toBe(2)
     expect(spans[0][0]).toBe(0)
-    expect(Math.abs(end - fromGap)).toBeLessThan(0.002)
+    expect(Math.abs(spans[1][0] - resumed)).toBeLessThan(0.002)
+    expect(Math.abs(end - stamped)).toBeLessThan(0.002)
   }, 60_000)
 
   // an analysis that attaches to playback mid-run has its decoder start at whatever fragment comes next
@@ -314,7 +320,7 @@ describe('the analysis ahead, in the player', () => {
     await remuxer.destroy()
     const track = audioTrackOf(init.data)!
     const from = fragments.findIndex((fragment, i) => i >= 3 && audioSamplesOf(fragment, track).length > 0)
-    const first = audioSamplesOf(fragments[from]!, track)[0]!.time / track.timescale
+    const first = init.timestampOffset + audioSamplesOf(fragments[from]!, track)[0]!.time / track.timescale
     // the control: the run joined well after its start
     expect(first).toBeGreaterThan(1)
 
@@ -323,7 +329,7 @@ describe('the analysis ahead, in the player', () => {
     const { port1 } = new MessageChannel()
     worker.postMessage({ type: 'port', port: port1 }, [port1])
     worker.postMessage({ type: 'init', data: init.data, codec: init.info.output.audioMimeType })
-    worker.postMessage({ type: 'run', run: 0, pts: 0, start: false, join: true })
+    worker.postMessage({ type: 'run', run: 0, pts: init.timestampOffset, from: 0, start: false, join: true })
     for (const data of fragments.slice(from)) worker.postMessage({ type: 'fragment', run: 0, data }, [data])
     worker.postMessage({ type: 'end', run: 0, finished: true })
     const { spans } = await ended

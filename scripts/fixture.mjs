@@ -710,13 +710,15 @@ export const FRAME_STEP_FIXTURE = 'frame-step.mkv'
 export const FRAME_STEP_FIXTURE_PATH = PUBLIC_DIR + FRAME_STEP_FIXTURE
 export const FRAME_STEP_60_FIXTURE = 'frame-step-60.mkv'
 export const FRAME_STEP_60_FIXTURE_PATH = PUBLIC_DIR + FRAME_STEP_60_FIXTURE
+export const PICTURE_TIME_FIXTURE = 'picture-time.mkv'
+export const PICTURE_TIME_FIXTURE_PATH = PUBLIC_DIR + PICTURE_TIME_FIXTURE
 
 /**
  * Every frame paints its own number, so a test reads the frame on screen off the picture rather than off a timestamp:
  * the left half is 16 + (n mod 16) * 14, the right half 16 + (floor(n / 16) mod 16) * 14. A keyframe every 240
- * frames, B-frames, and one subtitle line from 2.00 to 4.00 s.
+ * frames, B-frames, and one subtitle line from 2.00 to 4.00 s; the sound is a tone, or `audio`.
  */
-const frameStepFixture = async (path, rate, duration) => {
+const frameStepFixture = async (path, rate, duration, audio = `sine=frequency=440:duration=${duration}`) => {
   if (await exists(path)) return path
   await mkdir(PUBLIC_DIR, { recursive: true })
 
@@ -728,7 +730,7 @@ const frameStepFixture = async (path, rate, duration) => {
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-f', 'lavfi', '-i', `color=c=black:s=640x360:r=${rate}:d=${duration},format=gray,geq=lum='if(lt(X,320),16+mod(N,16)*14,16+mod(floor(N/16),16)*14)',format=yuv420p`,
-    '-f', 'lavfi', '-i', `sine=frequency=440:duration=${duration}`,
+    '-f', 'lavfi', '-i', audio,
     '-i', subs,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '8', '-g', '240', '-keyint_min', '240', '-sc_threshold', '0',
     '-c:a', 'aac',
@@ -746,6 +748,10 @@ export const ensureFrameStepFixture = () => frameStepFixture(FRAME_STEP_FIXTURE_
 
 /** Ten seconds at 60 fps, keyframes every 4 s. */
 export const ensureFrameStep60Fixture = () => frameStepFixture(FRAME_STEP_60_FIXTURE_PATH, '60', 10)
+
+/** A minute at 23.976 fps, keyframes every 10.01 s, silent but for a 10 ms 2 kHz beep from every k + 0.5 s. */
+export const ensurePictureTimeFixture = () => frameStepFixture(PICTURE_TIME_FIXTURE_PATH, '24000/1001', 60,
+  "aevalsrc=exprs='if(gte(mod(t,1),0.5)*lt(mod(t,1),0.51),0.8*sin(2*PI*2000*t),0)':s=48000:d=60")
 
 /**
  * The volume normalizer's own signal: a minute of synthetic dialogue at about -24 LUFS over a room tone, with loud
@@ -909,7 +915,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensureLanguagesFixture, ensureLanguagesUndFixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensurePictureTimeFixture, ensureLanguagesFixture, ensureLanguagesUndFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)

@@ -1,7 +1,6 @@
 import { labelledError } from '../labels'
 
-// appendBuffer, remove and timestampOffset must never overlap an in-flight update, so every op
-// goes through one chain
+// appendBuffer and remove must never overlap an in-flight update, so every op goes through one chain
 
 export type TimeRange = { index: number, start: number, end: number }
 
@@ -49,9 +48,6 @@ export const updateSourceBuffer = (sourceBuffer: SourceBuffer, mediaSource: Medi
       return waitForUpdate(sourceBuffer)
     })
 
-  const updateTimestampOffset = (timestampOffset: number) =>
-    enqueue(async () => { sourceBuffer.timestampOffset = timestampOffset })
-
   /**
    * endOfStream throws mid-update and is undone by the next remove(), so the caller re-arms it.
    * `allowed` is asked when the call reaches the front of the queue, not when it is queued.
@@ -62,5 +58,5 @@ export const updateSourceBuffer = (sourceBuffer: SourceBuffer, mediaSource: Medi
       try { mediaSource.endOfStream() } catch {}
     })
 
-  return { appendBuffer, unbufferRange, updateTimestampOffset, endOfStream }
+  return { appendBuffer, unbufferRange, endOfStream }
 }

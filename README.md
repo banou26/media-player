@@ -94,6 +94,9 @@ reads as a browser bug rather than a missing asset. Serve both.
 
 `libavWorkerUrl` (`libav-wasm/build/worker.js`) is named individually and still copies fine.
 
+Copy all three from the libav-wasm this package depends on. A worker from before libav-wasm 0.9.0 writes another
+timeline and reports no `timestampOffset`, so playback fails at load.
+
 `cjkFontUrl` is this package's own `noto-sans-jp.otf` (`import cjkFontUrl from
 '@banou/media-player/noto-sans-jp.otf?no-inline&url'`), Noto Sans JP cut to the JIS X 0208 kanji. jassub's libass has no
 system font fallback, so without it Japanese in a style whose font has no Japanese, which is how releases set song

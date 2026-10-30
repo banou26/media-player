@@ -5,12 +5,13 @@ import { playerAssets } from '../../../src/asset-urls'
 
 /**
  * A seek that lands just before a buffered range has to fetch, and the slack that names which range
- * holds the playhead still has to count Firefox's reorder delay.
+ * holds the playhead still has to count a range that starts after it.
  *
  * A target 0.5 s before the back buffer used to count as buffered, so nothing was fetched and the
- * element waited there for good, in Chrome 153 and Firefox 151 alike (measured 2026-10-11). Firefox
- * reports each range from its first presented frame, 82 ms past the keyframe on loud-tone and 166 ms
- * on anime-chapters, which is what the last two tests pin, with Chromium as the control.
+ * element waited there for good, in Chrome 153 and Firefox 151 alike (measured 2026-10-11). The last two
+ * tests pin the slack, for a range that starts after the playhead: Firefox 151 reported each range 82 ms past
+ * the keyframe on loud-tone and 166 ms on anime-chapters while libav-wasm moved every track by the reorder delay
+ * (before 0.9.0), with Chromium as the control.
  */
 const cleanups: (() => void)[] = []
 afterEach(() => { while (cleanups.length) cleanups.pop()?.() })

@@ -644,10 +644,11 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
  *
  *   { type: 'port', port }                the worklet's end of a MessageChannel, for the blocks
  *   { type: 'init', data, codec }         the init segment and the codec string MediaSource was given
- *   { type: 'run', run, pts, start }      a run of fragments starts, `pts` added to their times as the SourceBuffer's
- *                                         timestampOffset adds it for playback; `start` for the one from the start,
- *                                         and `join: true` for one whose first fragments went by unseen, which starts
- *                                         at its first sample
+ *   { type: 'run', run, pts, from, start }
+ *                                         a run of fragments starts at `from` s, `pts` added to their times as the
+ *                                         SourceBuffer's timestampOffset adds it for playback; `start` for the one
+ *                                         from the start, and `join: true` for one whose first fragments went by
+ *                                         unseen, which starts at its first sample
  *   { type: 'fragment', run, data }       answered { type: 'ack', run, spans, end, normal } once its audio is queued
  *                                         for decoding: the analysed seconds, the file's end once known, and the
  *                                         level learned so far in LUFS
@@ -682,10 +683,10 @@ const serve = (scope) => {
   })
   /*
    * Each output is placed by its own chunk's timestamp, never the one AudioData carries: Chrome 155 stamps outputs by
-   * counting samples from the first chunk, and libav's first audio sample in a run lasts until the video's first frame
-   * is due (62 ms more than its own length in Matroska and mp4 with B-frames, 82 ms in FLAC), which MediaSource plays
-   * as a gap; counted, what follows came out that much early, too far for the first match to find (HOR-498 build,
-   * 2026-10-17).
+   * counting samples from the first chunk, so past a gap in the timestamps, which MediaSource plays as a gap, what
+   * follows comes out early by the gap. Before 0.9.0 libav-wasm's first audio sample of a run lasted until the video's
+   * first frame, 62 ms more than its own length in Matroska and mp4 with B-frames and 82 ms in FLAC, too far for the
+   * first match to find (HOR-498 build, 2026-10-17).
    */
   let stamps = []
   const open = (id) => {
@@ -722,7 +723,7 @@ const serve = (scope) => {
       pts = data.pts
       open(runId)
       joining = !!data.join
-      if (!joining) analysis.startRun(runId, pts, data.start)
+      if (!joining) analysis.startRun(runId, data.from, data.start)
     } else if (data.type === 'fragment') {
       if (data.run !== runId || decoder.state !== 'configured') return
       const samples = audioSamplesOf(data.data, track)
@@ -781,13 +782,14 @@ const HANDOVER_SECONDS = 0.05
 const CROSSFADE_SECONDS = 0.05
 /*
  * How far either way the live audio is searched for in the analysed audio, in ms: first, and after a seek, against
- * where the last match put it. Played from the start, the fixtures matched 21 to 60 ms off, and FLAC past 60 ms (HOR-498
- * build, 2026-10-17), as long as libav's first audio sample stretches to the video's first frame, which B-frames set.
+ * where the last match put it. Played from the start, the fixtures matched 21 to 60 ms off, and FLAC past 60 ms, while
+ * libav-wasm stretched each run's first audio sample to the video's first frame (HOR-498 build, 2026-10-17); with each
+ * track at its own time (0.9.0), within 3.4 ms (2026-10-30).
  */
 const LOCK_RANGE_MS = 250
 const RELOCK_RANGE_MS = 30
 // how far from the last match a seek may move the audio, which the deepest cut in doubt covers, in ms: FLAC moved 82 ms
-// across the first remuxer seek, from the stream's start, where MediaSource plays libav's first sample short
+// across the first remuxer seek while libav-wasm stretched a run's first audio sample, and at most 3 ms since 0.9.0
 const DOUBT_MS = 100
 // how far from the best offset another must come close for the match to be in question, in ms
 const CLEAR_MS = 60
@@ -805,14 +807,15 @@ const SCORES_PER_QUANTUM = 40_000
  * context.currentTime read in one task names the media time of the audio reaching a worklet that same render frame,
  * to the sample for a 48 kHz file and within about 2 ms for a 44.1 kHz one, except for the odd pair off by up to
  * 13 ms; so a jump of more than 25 ms re-anchors the timeline, and the median of the next five pairs settles it. Where
- * playback's audio sits against the analysed audio changes with each run of the remuxer behind it: -18 to +44 ms on
- * the fixtures, the same file 44 ms apart before and after a seek (HOR-498 build, 2026-10-17). So the offset is found
- * from the audio itself: the live fingerprint against the analysed one, every 250 ms at normal speed, to a fraction of
- * a millisecond. The same match catches the rare stall (once, 60 ms of silence came in mid-file and the audio after it
- * ran 11 ms ahead of the clock). Nothing is cut ahead until the first match, which also proves the blocks belong to
- * this audio; after a seek, until the next one, each quantum gets the deepest cut within the doubt, never less than
- * the cut asks, as it does away from normal speed (Chrome's time stretching moves the audio up to about 30 ms either
- * way).
+ * playback's audio sits against the analysed audio changed with each run of the remuxer behind it while libav-wasm
+ * moved each run by its own amount: -18 to +44 ms on the fixtures, the same file 44 ms apart before and after a seek
+ * (HOR-498 build, 2026-10-17); with each track at its own time, -3.4 to +1.2 ms (0.9.0, 2026-10-30). So the offset
+ * is found from the audio itself: the live fingerprint against the analysed one, every 250 ms at normal speed, to a
+ * fraction of a millisecond. The same match catches the rare stall (once, 60 ms of silence came in mid-file and the
+ * audio after it ran 11 ms ahead of the clock). Nothing is cut ahead until the first match, which also proves the
+ * blocks belong to this audio; after a seek, until the next one, each quantum gets the deepest cut within the doubt,
+ * never less than the cut asks, as it does away from normal speed (Chrome's time stretching moves the audio up to
+ * about 30 ms either way).
  */
 const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcessor {
   constructor({ processorOptions = {} } = {}) {
