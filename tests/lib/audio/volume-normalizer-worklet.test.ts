@@ -112,20 +112,22 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
   let sinceClock = Infinity
   let sinceBlocks = Infinity
   let connected = analysis
-  // until this frame the main thread says nothing, then it resets for a seek
-  let quietUntil = -1
+  // a main thread busy until frame `due`, which then posts what the element's events asked: a seek's reset, then the
+  // clock pair of an element paused, or still seeking, at `media`
+  let behind: { due: number, media: number, seek: boolean } | null = null
   const record: { time: number, reference: number, applied: number, asked: number, handover: number }[] = []
   const history = new Map<number, { index: number, time: number } | null>()
   const deliver = () => {
     for (const message of worker ? worker(position / RATE, frame) : blocks(position / RATE)) port.onmessage?.({ data: message })
   }
   const quantum = () => {
-    if (quietUntil >= 0 && frame >= quietUntil) {
-      node.port.onmessage({ data: { reset: 'seek' } })
-      quietUntil = -1
-      sinceClock = Infinity
+    if (behind && frame >= behind.due) {
+      if (behind.seek) node.port.onmessage({ data: { reset: 'seek' } })
+      node.port.onmessage({ data: { media: behind.media, ctx: frame / RATE, rate: 1, paused: true } })
+      behind = null
+      sinceClock = 0
     }
-    if (sinceClock >= 2400 && quietUntil < 0) {
+    if (sinceClock >= 2400 && !behind) {
       node.port.onmessage({ data: { media: position / RATE, ctx: frame / RATE, rate: 1, paused } })
       sinceClock = 0
     }
@@ -172,9 +174,10 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
     start: (seconds: number) => { position = Math.round(seconds * RATE) },
     run,
     playTo: (seconds: number) => { while (position < seconds * RATE) quantum() },
-    pause: (seconds: number) => {
+    // a pause the main thread tells `late` s after the audio stopped
+    pause: (seconds: number, late = 0) => {
       paused = true
-      sinceClock = Infinity
+      behind = { due: frame + Math.round(late * RATE), media: position / RATE, seek: false }
       run(seconds)
       paused = false
       sinceClock = Infinity
@@ -191,11 +194,10 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
       connected = true
       sinceBlocks = Infinity
     },
-    // the clock pair of an element still seeking, its audio from there at once, and the main thread `late` s behind
+    // a seek whose audio plays from there at once, told by a main thread `late` s behind
     seekAhead: (seconds: number, late: number) => {
       position = Math.round(seconds * RATE)
-      node.port.onmessage({ data: { media: position / RATE, ctx: frame / RATE, rate: 1, paused: true } })
-      quietUntil = frame + Math.round(late * RATE)
+      behind = { due: frame + Math.round(late * RATE), media: position / RATE, seek: true }
     },
   }
 }
@@ -264,8 +266,8 @@ describe('the worklet against the media time', () => {
     const { record, start, playTo, seekAhead } = rig()
     start(5)
     playTo(20)
-    // 50 ms before the 10 ms burst at 10.12 s, which plays before the main thread catches up
-    seekAhead(10.0734, 0.08)
+    // 50 ms before the 10 ms burst at 10.12 s, and told 30 ms later
+    seekAhead(10.0734, 0.03)
     playTo(10.5)
     expect(short(record, 10, 10.5)).toEqual([])
     // the control: what it had to cut there
@@ -307,6 +309,18 @@ describe('the worklet against the media time', () => {
     expect(short(record, 38, 41)).toEqual([])
     expect(record.filter(({ time, asked }) => time > 38.9 && time < 39.6 && asked < -6).length).toBeGreaterThan(1000)
     // and once settled after the resume, the cut follows the curve out of the burst, too deep nowhere
+    const settled = record.filter(({ time }) => time > 39.3 && time < 41)
+    expect(Math.max(...settled.map(({ applied, asked }) => Math.abs(applied - asked)))).toBeLessThan(0.5)
+  })
+
+  // the main thread once took 52 ms to tell a seek (2026-10-30), and a pause is told the same way
+  it.each([0.03, 0.06])('keeps the cut in step through a pause in a loud burst, told %f s late', (late) => {
+    const { record, start, playTo, pause } = rig()
+    start(30)
+    playTo(38.9)
+    pause(0.8, late)
+    playTo(41)
+    expect(short(record, 38, 41)).toEqual([])
     const settled = record.filter(({ time }) => time > 39.3 && time < 41)
     expect(Math.max(...settled.map(({ applied, asked }) => Math.abs(applied - asked)))).toBeLessThan(0.5)
   })
