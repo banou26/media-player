@@ -32,7 +32,7 @@ export type AudioTrack = {
 export const audioTrackOf: (init: ArrayBuffer) => AudioTrack | undefined
 export const audioSamplesOf: (fragment: ArrayBuffer, track: AudioTrack) => { time: number, duration: number, data: Uint8Array }[]
 
-export type BlockMessage = { block: number, gain: Float32Array, finger: Float32Array } | { drop: number }
+export type BlockMessage = { block: number, gain: Float32Array, finger: Float32Array } | { drop: number } | { end: number }
 export type Analysis = {
   startRun: (id: number, time: number, start?: boolean) => void
   push: (planes: Float32Array[], frames: number, rate: number, time: number) => void

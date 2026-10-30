@@ -440,8 +440,9 @@ export const audioSamplesOf = (fragment, track) => {
 /**
  * The analysis: 1 ms bins of whatever audio it is given, the normal level learned from them, and the cut for the
  * blocks around the playhead. `toWorklet` takes `{ block, gain, finger }` (10 s of bins from `block * 10` s, NaN where
- * the cut or the audio is not known) and `{ drop }` for each block past the 60 sent nearest the playhead, which is all
- * the worklet keeps; `toPage` takes the coverage reports the page schedules reads on.
+ * the cut or the audio is not known), `{ drop }` for each block past the 60 sent nearest the playhead, which is all
+ * the worklet keeps, and `{ end }`, the bin the file's audio ends at, once a run reaches it; `toPage` takes the
+ * coverage reports the page schedules reads on.
  * Separate from the worker's messages so a test can drive it with decoded audio.
  */
 export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
@@ -556,8 +557,6 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
         finger[bin - start] = Math.log(chunk.finger[bin % BLOCK_BINS] + 1e-10)
         if (bin < known) gain[bin - start] = curve[bin - from]
       }
-      // the last cut holds past the end of the file, where playback's audio can run on by its offset
-      if (b >= endBin && b > start && b < end) gain.fill(gain[b - 1 - start], b - start)
     }
     return { gain, finger }
   }
@@ -616,7 +615,10 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
     endRun: (finished) => {
       if (!run) return
       run.binner?.flush()
-      if (finished && run.last >= 0) endBin = run.last + 1
+      if (finished && run.last >= 0) {
+        endBin = run.last + 1
+        toWorklet({ end: endBin })
+      }
       run = null
       schedule()
     },
@@ -870,6 +872,8 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
     this.shortTime = 0
 
     this.blocks = new Map()
+    // the bin the file's audio ends at; the last cut holds past it, where playback's audio can run on
+    this.end = Infinity
     this.analysis = null
     this.fingerFilter = fingerprintFilter(sampleRate)
     this.fingerState = []
@@ -912,6 +916,7 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
       if (data?.analysis !== undefined) {
         this.analysis?.close()
         this.blocks.clear()
+        this.end = Infinity
         this.search = null
         this.analysis = data.analysis
         if (this.analysis) this.analysis.onmessage = ({ data: block }) => this.receive(block)
@@ -933,6 +938,7 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
   receive(message) {
     if (typeof message?.drop === 'number') this.blocks.delete(message.drop)
     else if (typeof message?.block === 'number') this.blocks.set(message.block, message)
+    else if (typeof message?.end === 'number') this.end = message.end
     this.lastBlock = undefined
   }
 
@@ -976,6 +982,7 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
   }
 
   gainBin(i) {
+    if (i >= this.end) i = this.end - 1
     const block = this.blockOf(i)
     return block.gain ? block.gain[i - block.block * BLOCK_BINS] : NaN
   }

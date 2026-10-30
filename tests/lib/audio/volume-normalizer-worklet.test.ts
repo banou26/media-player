@@ -12,6 +12,8 @@ type Processor = {
   doubt: boolean
   handover: number
   found: (offset: number, clear: boolean) => void
+  cutAt: (time: number) => number
+  deepest: (from: number, to: number) => number
 }
 
 // the worklet's globals, in place before the module is evaluated, so it registers its processor here
@@ -290,6 +292,28 @@ describe('the worklet against the media time', () => {
     playTo(60)
     expect(short(record, 51, 60)).toEqual([])
     expect(() => run(1)).not.toThrow()
+  })
+
+  // a seek leaves the cut in doubt, the deepest within 100 ms either way, and no block follows audio that ends on one
+  it('holds the last cut past the end of a file whose audio ends where a block does', () => {
+    const node = new registered.Processor!({ processorOptions: {} })
+    const port = { onmessage: null as null | ((event: { data: unknown }) => void), close() {} }
+    node.port.onmessage({ data: { analysis: port } })
+    const analysis = createAnalysis({ toWorklet: (message) => port.onmessage?.({ data: message }) })
+    analysis.startRun(0, 0, true)
+    for (let at = 0; at < signal.left.length; at += 4096) {
+      const planes = [signal.left, signal.right].map((x) => x.slice(at, at + 4096))
+      analysis.push(planes, planes[0]!.length, RATE, at / RATE)
+    }
+    analysis.endRun(true)
+    analysis.setPlayhead(59.9)
+    analysis.flushBlocks()
+    // the control: the signal ends on a block, and its last loud sound, from 59.95 s, asks for a deep cut
+    expect(analysis.coverage().end).toBe(60)
+    expect(askedAt(59.96 + PRIMING / RATE)).toBeLessThan(-3)
+    expect(node.deepest(59.85, 60.05)).toBeLessThan(-3)
+    expect(Number.isFinite(node.cutAt(60.05))).toBe(true)
+    expect(node.cutAt(60.05)).toBe(node.cutAt(59.9995))
   })
 })
 
