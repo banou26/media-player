@@ -194,7 +194,7 @@ export const TrackMenu = (
         {onBack ? <ChevronLeft /> : null}
         <span>{title}</span>
       </div>
-      {failed ? <div className="no-hover failed">{format(LABELS.switchFailed)}</div> : null}
+      {failed ? <div className="no-hover failed" dir="auto">{format(LABELS.switchFailed)}</div> : null}
       {offLabel ? row(null, offLabel) : null}
       {tracks.map(({ id, label }) => row(id, label, 'description'))}
     </div>

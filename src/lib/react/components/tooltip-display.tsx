@@ -29,7 +29,7 @@ const style = (size: buttonSize) => css`
   max-width: min(calc(26 * var(--mp-unit)), calc(100vw - calc(2.4 * var(--mp-unit))));
   white-space: normal;
   overflow-wrap: anywhere;
-  text-align: left;
+  text-align: start;
 
   /*
    * The radius carries !important for the same reason the paddings below do.
@@ -46,6 +46,8 @@ const style = (size: buttonSize) => css`
 
   * {
     ${fonts.bMedium.regular}
+    /* a label reads in its own direction, though the player around it stays left to right */
+    unicode-bidi: plaintext;
   }
 
   ${size === buttonSize.sm && css`

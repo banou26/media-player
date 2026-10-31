@@ -7,7 +7,7 @@ import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
 import { usePlayer } from '../../../src/lib/react/player'
-import { labelledError } from '../../../src/lib/labels'
+import { LABELS, labelledError } from '../../../src/lib/labels'
 import { LANGUAGES } from '../../../src/lib/react/labels'
 import { playerAssets } from '../../../src/asset-urls'
 import { createFakeRemoteMedia } from './remote-media.fixture'
@@ -443,6 +443,77 @@ const overflowing = (root: HTMLElement) => {
     ...[...root.querySelectorAll('.popover > div')].filter(scrolls).map((element) => `scrolls: ${named(element)}`),
   ]
 }
+
+/** The left edge of the last `text` inside `element`'s text nodes, the same for a Latin word and a right to left run. */
+const leftOf = (element: Element, text: string) => {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  while (walker.nextNode()) {
+    const at = walker.currentNode.textContent!.lastIndexOf(text)
+    if (at < 0) continue
+    const range = document.createRange()
+    range.setStart(walker.currentNode, at)
+    range.setEnd(walker.currentNode, at + text.length)
+    return range.getBoundingClientRect().left
+  }
+  throw new Error(`no ${text} in ${element.textContent}`)
+}
+
+/** The player the way a right to left host mounts it: the chrome stays left to right, the page around it does not. */
+const inLeftToRight = () => {
+  const container = document.createElement('div')
+  container.dir = 'ltr'
+  container.style.cssText = 'width: 960px; height: 540px;'
+  document.body.append(container)
+  return { container }
+}
+
+describe('a right to left language in a left to right player', () => {
+  it.each([['ar', 'تشغيل'], ['he', 'הפעלה']])('%s keeps a tooltip\'s key hint after its label, at the left', async (language, label) => {
+    const { root } = await mount({ language })
+    await tooltip(root, 'play', () => {
+      const shown = document.querySelector('.react-tooltip__show[id="play"]')!
+      expect(shown.textContent).toContain(label)
+      expect(leftOf(shown, '(k)')).toBeLessThan(leftOf(shown, label))
+    })
+  })
+
+  it('the control: an English tooltip keeps its hint at the right', async () => {
+    const { root } = await mount({ language: 'en' })
+    await tooltip(root, 'play', () => {
+      const shown = document.querySelector('.react-tooltip__show[id="play"]')!
+      expect(leftOf(shown, '(k)')).toBeGreaterThan(leftOf(shown, 'Play'))
+    })
+  })
+
+  it.each([
+    ['الحلقة 1', 'Red Light'],
+    ['פרק 1', 'Red Light'],
+  ])('a title in %s starts at the right, its Latin part after it', async (word, name) => {
+    const title = `${word} - \u2068${name}\u2069`
+    const screen = await render(<MediaPlayer media={createFakeRemoteMedia({ duration: DURATION })} title={title} />, inLeftToRight())
+    await expect.poll(() => !!screen.container.querySelector('.title')).toBe(true)
+    const shown = screen.container.querySelector('.title')!
+    expect(leftOf(shown, word)).toBeGreaterThan(leftOf(shown, name))
+  })
+
+  it('an error\'s sentence reads from the right, its Latin word after it', async () => {
+    const { root } = await mount({ language: 'ar' })
+    store.set!({ playbackError: labelledError(LABELS.sourceNeverOpened) })
+    const shown = () => [...root.querySelectorAll('div')].find((element) => !element.children.length && element.textContent?.includes('MediaSource'))
+    await expect.poll(() => !!shown()).toBe(true)
+    expect(leftOf(shown()!, 'لم')).toBeGreaterThan(leftOf(shown()!, 'MediaSource'))
+  })
+
+  it('a refused switch ends its sentence at the left', async () => {
+    const { root } = await mount({ language: 'ar' })
+    button(root, 'subtitles').click()
+    await settle()
+    row(root, 'track-list', 1).click()
+    await expect.poll(() => !!root.querySelector('.track-list .failed'), { timeout: 5_000 }).toBe(true)
+    const line = root.querySelector('.track-list .failed')!
+    expect(leftOf(line, '.')).toBeLessThan(leftOf(line, 'أخرى'))
+  })
+})
 
 describe('at a phone\'s width', () => {
   it.each(['en', ...LANGUAGES])('%s keeps the bar, its menus, its tooltips, the errors and the skip offer inside the player', async (language) => {
