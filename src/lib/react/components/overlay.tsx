@@ -138,6 +138,7 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
         ? (
           <div
             className="title"
+            dir="auto"
             css={titleStyle}
             style={{ ...hideUI ? { opacity: '0', pointerEvents: 'none' } : {} }}
           >
@@ -153,7 +154,7 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
         ? <div css={loadingStyle} />
         : undefined}
       {playbackError
-        ? <div css={errorStyle}>{errorMessage(playbackError, labels)}</div>
+        ? <div css={errorStyle} dir="auto">{errorMessage(playbackError, labels)}</div>
         : undefined}
       <div className="subtitles" ref={onSubtitleRef} css={style} />
     </>
