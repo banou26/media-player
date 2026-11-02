@@ -34,8 +34,10 @@ const verify = (catalogues: Record<string, Record<string, string>>) => {
 const everyCatalogue = () => Object.fromEntries(LANGUAGES.map((language) => [language, catalogue(language)]))
 
 describe('the catalogues', () => {
-  it('are wave 1 with Arabic and Hebrew, one file each, each with its loader', () => {
-    expect([...LANGUAGES].sort()).toEqual(['ar', 'de', 'es-419', 'fr', 'he', 'it', 'ja', 'ko', 'pl', 'pt-BR', 'ru', 'tr', 'zh-Hans', 'zh-Hant'])
+  it('are both waves with Arabic and Hebrew, one file each, each with its loader', () => {
+    expect([...LANGUAGES].sort()).toEqual([
+      'ar', 'cs', 'de', 'el', 'es-419', 'fr', 'he', 'hi', 'hu', 'id', 'it', 'ja', 'ko', 'ms', 'nl', 'pl', 'pt-BR', 'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'vi', 'zh-Hans', 'zh-Hant',
+    ])
     expect(readdirSync(LOCALES).filter((file) => file.endsWith('.json')).map((file) => file.slice(0, -'.json'.length)).sort()).toEqual([...LANGUAGES].sort())
   })
 
@@ -104,6 +106,8 @@ describe('the catalogue a language finds', () => {
   it.each([
     ['fr', 'fr'], ['fr-CA', 'fr'], ['de-AT', 'de'], ['ja-JP', 'ja'], ['ko-KR', 'ko'], ['ru-RU', 'ru'], ['tr-TR', 'tr'], ['pl-PL', 'pl'], ['it-IT', 'it'],
     ['ar', 'ar'], ['ar-EG', 'ar'], ['ar-SA', 'ar'], ['he', 'he'], ['he-IL', 'he'], ['iw', 'he'],
+    ['id-ID', 'id'], ['in', 'id'], ['vi-VN', 'vi'], ['th-TH', 'th'], ['hi-IN', 'hi'], ['uk-UA', 'uk'], ['nl-BE', 'nl'], ['sv-FI', 'sv'],
+    ['cs-CZ', 'cs'], ['el-GR', 'el'], ['ro-MD', 'ro'], ['mo', 'ro'], ['hu-HU', 'hu'], ['ms-MY', 'ms'],
     ['es', 'es-419'], ['es-MX', 'es-419'], ['es-ES', 'es-419'], ['es-419', 'es-419'],
     ['pt', 'pt-BR'], ['pt-PT', 'pt-BR'], ['pt-BR', 'pt-BR'],
     ['zh', 'zh-Hans'], ['zh-CN', 'zh-Hans'], ['zh-SG', 'zh-Hans'], ['zh-TW', 'zh-Hant'], ['zh-HK', 'zh-Hant'], ['zh-hant', 'zh-Hant'],
@@ -111,7 +115,7 @@ describe('the catalogue a language finds', () => {
     expect(catalogueFor(language)).toBe(found)
   })
 
-  it.each(['en', 'en-GB', 'th', 'fa', 'not a tag', ''])('%s finds none, and is shown in English', (language) => {
+  it.each(['en', 'en-GB', 'da', 'fa', 'not a tag', ''])('%s finds none, and is shown in English', (language) => {
     expect(catalogueFor(language)).toBeUndefined()
   })
 })

@@ -393,9 +393,9 @@ describe('a player given a language', () => {
   }, 60_000)
 
   it('it has no catalogue for names a file\'s tracks in it, the labels in English', async () => {
-    const { root } = await mountFile('sv')
+    const { root } = await mountFile('da')
     button(root, 'subtitles').click()
-    const named = new Intl.DisplayNames(['sv'], { type: 'language' })
+    const named = new Intl.DisplayNames(['da'], { type: 'language' })
     await expect.poll(() => fileTracks(root), { timeout: 5_000 }).toEqual([`${named.of('en')} (Signs & Songs)`, `${named.of('en')} (Full Subtitles)`, named.of('ja')])
     expect(rows(root, 'track-list').slice(0, 2)).toEqual(['Subtitles', 'Disable'])
   }, 60_000)
