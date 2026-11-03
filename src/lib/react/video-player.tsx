@@ -259,8 +259,8 @@ export type MediaPlayerLocalOptions =
 
     /**
      * The language a file starts its audio in, as `onPreferredAudioLanguageChange` reported it or as any tag or name
-     * (`ja`, `jpn`, `Japanese`). Its full track wins over a commentary, and a file with none plays its default. A
-     * track the viewer picks wins for that file. Read when a file starts, so a change applies from the next one.
+     * (`ja`, `jpn`, `Japanese`). Only a full track counts, never a commentary or an audio description, and a file with
+     * none plays its original. A track the viewer picks wins for that file. Read when a file starts, so a change applies from the next one.
      */
     preferredAudioLanguage?: string
     /**
@@ -270,7 +270,7 @@ export type MediaPlayerLocalOptions =
      */
     preferredSubtitleLanguage?: string | null
     /**
-     * The language the media was made in, as its source knows it (`ja` for anime): a file with no track in
+     * The language the media was made in, as its source knows it (`ja` for anime): a file with no full track in
      * `preferredAudioLanguage` plays its full track in this one, else its default, its first track. Read as the
      * preferences are.
      */

@@ -41,6 +41,11 @@ describe('preferredTrack', () => {
     expect(preferredTrack('en', [{ language: 'eng', title: 'Signs' }, { language: 'eng', title: 'Full (incl. signs)' }])).toBe(1)
   })
 
+  it('reads the region or script a title names when the tag names none', () => {
+    expect(preferredTrack('zh-Hant', [{ language: 'chi', title: 'Chinese (Simplified)' }, { language: 'chi', title: 'Chinese (Traditional)' }])).toBe(1)
+    expect(preferredTrack('es-419', [{ language: 'spa', title: 'Spanish (Spain)' }, { language: 'spa', title: 'Spanish (Latin America)' }])).toBe(1)
+  })
+
   it('takes a partial track when it is the only one in the language', () => {
     expect(preferredTrack('en', [{ language: 'jpn' }, { language: 'eng', title: 'Signs & Songs' }])).toBe(1)
   })
@@ -76,7 +81,8 @@ describe('languageTag', () => {
   it.each([
     ['jpn', 'ja'], ['ja-JP', 'ja-JP'], ['en_US', 'en-US'], ['Japanese', 'ja'], ['日本語', 'ja'], ['German', 'de'],
     ['Português (Brasil)', 'pt-BR'], ['English (UK)', 'en-GB'], ['es-419', 'es-419'], ['zh-Hant', 'zh-Hant'],
-    ['English (CC)', 'en'], ['English (HI)', 'en'], ['English (AD)', 'en'],
+    ['English (CC)', 'en'], ['English (HI)', 'en'], ['English (AD)', 'en'], ['Español (América Latina)', 'es-419'],
+    ['Español (España)', 'es-ES'], ['English (United Kingdom)', 'en-GB'],
   ])('tags %s as %s', (text, tag) => {
     expect(languageTag(text)).toBe(tag)
   })
@@ -108,6 +114,9 @@ describe('startingTracks', () => {
     ['a French viewer who turned subtitles off: off', [japanese], subtitles, viewer('fr', { subtitles: null }), { audio: -1, subtitles: null }],
     ['a French viewer who picked English subtitles, on a French dub: English', [french], subtitles, viewer('fr', { subtitles: 'en' }), { audio: 0, subtitles: 1 }],
     ['no preferences: the file\'s own', [japanese, french], subtitles, {}, { audio: -1, subtitles: -1 }],
+    ['an English viewer, a Japanese file with an English commentary: Japanese, the full English', [japanese, { language: 'eng', title: 'Commentary' }], subtitles, viewer('en-US'), { audio: -1, subtitles: 1 }],
+    ['a French viewer, a French audio description: the original, French subtitles', [japanese, { language: 'fre', title: 'Audio Description' }], subtitles, viewer('fr'), { audio: -1, subtitles: 2 }],
+    ['a French viewer, a French commentary beside the dub: the dub, subtitles off', [japanese, { language: 'fre', title: 'Commentary' }, french], subtitles, viewer('fr'), { audio: 2, subtitles: null }],
   ] as const)('%s', (_, audio, subtitleTracks, preferences, expected) => {
     expect(startingTracks(audio, subtitleTracks, preferences)).toEqual(expected)
   })

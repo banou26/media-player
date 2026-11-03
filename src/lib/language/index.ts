@@ -55,6 +55,24 @@ const nameIndex = () => {
   return names = index
 }
 
+let regions: Map<string, string> | undefined
+// the regions FORMS name, by name in each of their languages: Crunchyroll's 'Español (América Latina)' is es-419 by the
+// Portuguese name for 419, which Spanish's own CLDR names Latinoamérica
+const regionIndex = () => {
+  if (regions) return regions
+  const index = new Map<string, string>()
+  const locales = ['en', globalThis.navigator?.language, ...FORMS].filter((locale): locale is string => !!locale)
+  for (const region of new Set(FORMS.map((tag) => new Intl.Locale(tag).region).filter((region): region is string => !!region))) {
+    for (const locale of locales) {
+      try {
+        const name = new Intl.DisplayNames([locale], { type: 'region', fallback: 'none' }).of(region)
+        if (name) index.set(key(name), region)
+      } catch {}
+    }
+  }
+  return regions = index
+}
+
 // a title or a label is read by name only: as a tag, 'SDH' would be Southern Kurdish and 'UK' Ukrainian
 const parseName = (text: string | undefined): Language | undefined => {
   const trimmed = text?.trim()
@@ -65,9 +83,11 @@ const parseName = (text: string | undefined): Language | undefined => {
   const [, base, qualifier] = /^([^([]+)(?:\(([^)]*)\))?/.exec(trimmed.normalize('NFKC')) ?? []
   const named = base ? index.get(key(base)) : undefined
   if (!named) return undefined
-  const region = qualifier?.trim()
-  // through Intl.Locale, which reads the 'UK' of 'English (UK)' as GB
-  return (region && /^(?:[A-Z]{2}|\d{3})$/.test(region) && !TRACK_NOTES.has(region) ? fromTag(`${named}-${region}`) : undefined) ?? fromTag(named)
+  const qualified = qualifier?.trim()
+  // a code goes through Intl.Locale, which reads the 'UK' of 'English (UK)' as GB
+  const region = !qualified || TRACK_NOTES.has(qualified) ? undefined
+    : /^(?:[A-Z]{2}|\d{3})$/.test(qualified) ? qualified : regionIndex().get(key(qualified))
+  return (region ? fromTag(`${named}-${region}`) : undefined) ?? fromTag(named)
 }
 
 const parseLanguage = (text: string | undefined) => {
@@ -97,6 +117,14 @@ const isPartial = ({ language = '', title = '' }: LanguageTrack) => {
   return PARTIAL.test(text) && !FULL.test(text)
 }
 
+// a tag naming no region or script takes the one its title names in the same language, as MKV tags carry none:
+// `chi` titled 'Chinese (Traditional)' is zh-Hant
+const spokenIn = ({ language, title }: LanguageTrack) => {
+  const tagged = parseLanguage(language)
+  const named = parseName(title)
+  return tagged && !tagged.variant && named?.variant && named.language === tagged.language ? named : tagged ?? named
+}
+
 /**
  * The index of the track to play for a preferred language (a tag or a name, as `languageOf` gives it), else of the
  * track titled exactly as the preference, or -1 when there is neither. A full track wins over a signs, songs, forced
@@ -108,7 +136,7 @@ export const preferredTrack = (preference: string, tracks: readonly LanguageTrac
   let best = -1
   let bestScore = 0
   if (wanted) tracks.forEach((track, index) => {
-    const found = parseLanguage(track.language) ?? parseName(track.title)
+    const found = spokenIn(track)
     if (found?.language !== wanted.language) return
     const named = languageOf(track)
     const score = 1
@@ -125,7 +153,10 @@ export const preferredTrack = (preference: string, tracks: readonly LanguageTrac
 
 /** The viewer's preferences, as `startingTracks` reads them. Each may be left out. */
 export type TrackPreferences = {
-  /** The audio language, as `preferredTrack` reads it. A media without it, or with none given, plays its original. */
+  /**
+   * The audio language, as `preferredTrack` reads it. A media without a full track in it, or with none given, plays its
+   * original: a commentary or described audio in it is no dub.
+   */
   audio?: string
   /**
    * The language the media was made in, as its source knows it (`ja` for anime): its full track is the original.
@@ -145,16 +176,17 @@ export const playsIn = (track: LanguageTrack | undefined, language: string): boo
 }
 
 /**
- * The tracks a media starts on, by index: the audio in `preferences.audio`, else the original, else -1 for the file's
- * default, its first track; and the subtitles in `preferences.subtitles`, else -1 for the file's default, or null for
- * none, when they are off or when `alwaysSubtitles` is false and the audio plays in their language.
+ * The tracks a media starts on, by index: the full audio in `preferences.audio`, else the original, else -1 for the
+ * file's default, its first track; and the subtitles in `preferences.subtitles`, else -1 for the file's default, or null
+ * for none, when they are off or when `alwaysSubtitles` is false and the audio plays in their language.
  */
 export const startingTracks = (
   audio: readonly LanguageTrack[],
   subtitles: readonly LanguageTrack[],
   { audio: audioLanguage, original, subtitles: subtitleLanguage, alwaysSubtitles = true }: TrackPreferences,
 ): { audio: number, subtitles: number | null } => {
-  const wanted = audioLanguage === undefined ? -1 : preferredTrack(audioLanguage, audio)
+  const match = audioLanguage === undefined ? -1 : preferredTrack(audioLanguage, audio)
+  const wanted = match !== -1 && !isPartial(audio[match]!) ? match : -1
   const audioIndex = wanted !== -1 || original === undefined ? wanted : preferredTrack(original, audio)
   if (subtitleLanguage === null) return { audio: audioIndex, subtitles: null }
   if (subtitleLanguage === undefined) return { audio: audioIndex, subtitles: -1 }
