@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { languageOf, languageTag, preferredSelection, preferredTrack } from '../../../src/lib/language'
+import { languageOf, languageTag, playsIn, preferredSelection, preferredTrack, startingTracks } from '../../../src/lib/language'
 
 const tags = (...languages: string[]) => languages.map((language) => ({ language }))
 
@@ -86,35 +86,93 @@ describe('languageTag', () => {
   })
 })
 
+describe('startingTracks', () => {
+  const japanese = { language: 'jpn' }
+  const french = { language: 'fre', title: 'Français' }
+  const english = { language: 'eng', title: 'English' }
+  const subtitles = [{ language: 'eng', title: 'Signs & Songs' }, { language: 'eng', title: 'Full' }, { language: 'fre' }]
+  // the viewer's language as both preferences, subtitles off where the audio speaks it, as stub's Automatic hands it
+  const viewer = (language: string, more = {}) => ({ audio: language, subtitles: language, alwaysSubtitles: false, ...more })
+
+  it.each([
+    ['a French viewer, a French dub present: the dub, subtitles off', [japanese, french], subtitles, viewer('fr'), { audio: 1, subtitles: null }],
+    ['a French viewer, no French dub: the original, French subtitles', [japanese, english], subtitles, viewer('fr'), { audio: -1, subtitles: 2 }],
+    ['a French viewer, no French anything: the original, the file\'s subtitles', [japanese], subtitles.slice(0, 2), viewer('fr'), { audio: -1, subtitles: -1 }],
+    ['an English viewer, a Japanese file with English subtitles: Japanese, the full English', [japanese], subtitles, viewer('en-US'), { audio: -1, subtitles: 1 }],
+    ['a Japanese viewer, a Japanese file: subtitles off', [japanese], subtitles, viewer('ja'), { audio: 0, subtitles: null }],
+    ['always show subtitles: the dub with French subtitles', [japanese, french], subtitles, viewer('fr', { alwaysSubtitles: true }), { audio: 1, subtitles: 2 }],
+    ['Original, a dual audio file opening on its dub: the Japanese, French subtitles', [english, { language: 'jpn', title: 'Commentary' }, japanese], subtitles, viewer('fr', { audio: undefined, original: 'ja' }), { audio: 2, subtitles: 2 }],
+    ['Original with nothing known: the file\'s first, a dub here, French subtitles', [english, japanese], subtitles, viewer('fr', { audio: undefined }), { audio: -1, subtitles: 2 }],
+    ['a French viewer who picked English audio: English, French subtitles', [japanese, english, french], subtitles, viewer('fr', { audio: 'eng' }), { audio: 1, subtitles: 2 }],
+    ['a French viewer who picked Japanese audio on a French dub: Japanese, French subtitles', [french, japanese], subtitles, viewer('fr', { audio: 'Japanese' }), { audio: 1, subtitles: 2 }],
+    ['a French viewer who turned subtitles off: off', [japanese], subtitles, viewer('fr', { subtitles: null }), { audio: -1, subtitles: null }],
+    ['a French viewer who picked English subtitles, on a French dub: English', [french], subtitles, viewer('fr', { subtitles: 'en' }), { audio: 0, subtitles: 1 }],
+    ['no preferences: the file\'s own', [japanese, french], subtitles, {}, { audio: -1, subtitles: -1 }],
+  ] as const)('%s', (_, audio, subtitleTracks, preferences, expected) => {
+    expect(startingTracks(audio, subtitleTracks, preferences)).toEqual(expected)
+  })
+
+  it('shows subtitles, as preferredSubtitleLanguage always did, unless told not to', () => {
+    expect(startingTracks([english], subtitles, { subtitles: 'en' }).subtitles).toBe(1)
+    expect(startingTracks([english], subtitles, { subtitles: 'en', alwaysSubtitles: false }).subtitles).toBeNull()
+  })
+
+  it('reads the audio by its title when its tag names no language, and shows subtitles for audio naming none', () => {
+    expect(startingTracks([{ language: 'und', title: 'Français' }], subtitles, viewer('fr')).subtitles).toBeNull()
+    expect(startingTracks([{ language: 'und' }], subtitles, viewer('fr')).subtitles).toBe(2)
+  })
+})
+
+describe('playsIn', () => {
+  it('reads a track by its tag, else its title, against a tag or a name', () => {
+    expect(playsIn({ language: 'fre' }, 'fr-CA')).toBe(true)
+    expect(playsIn({ language: 'und', title: 'Français' }, 'French')).toBe(true)
+    expect(playsIn({ language: 'jpn' }, 'en')).toBe(false)
+    expect(playsIn({ language: 'und' }, 'und')).toBe(false)
+    expect(playsIn(undefined, 'en')).toBe(false)
+  })
+})
+
 describe('preferredSelection', () => {
-  const selection = {
-    options: [{ id: 'ja', label: 'Japanese' }, { id: 'en', label: 'English' }, { id: 'de', label: 'Deutsch', disabled: true }],
-    selectedId: 'ja',
-    offLabel: 'Off',
+  const selections = {
+    audio: { options: [{ id: 'ja', label: 'Japanese' }, { id: 'en', label: 'English' }, { id: 'de', label: 'Deutsch', disabled: true }], selectedId: 'ja' },
+    subtitles: { options: [{ id: 'en', label: 'English' }, { id: 'fr', label: 'Français' }], selectedId: 'en', offLabel: 'Off' },
   }
 
   it('names the option in the preferred language', () => {
-    expect(preferredSelection(selection, 'eng')).toBe('en')
+    expect(preferredSelection('audio', selections, { audio: 'eng' })).toBe('en')
+    expect(preferredSelection('subtitles', selections, { subtitles: 'fr' })).toBe('fr')
   })
 
   it('leaves the selection alone with no preference, nothing to match, or the match already selected', () => {
-    expect(preferredSelection(selection, undefined)).toBeUndefined()
-    expect(preferredSelection(selection, 'fr')).toBeUndefined()
-    expect(preferredSelection(selection, 'Japanese')).toBeUndefined()
+    expect(preferredSelection('audio', selections, {})).toBeUndefined()
+    expect(preferredSelection('audio', selections, { audio: 'fr' })).toBeUndefined()
+    expect(preferredSelection('audio', selections, { audio: 'Japanese' })).toBeUndefined()
+    expect(preferredSelection('subtitles', selections, { subtitles: 'de' })).toBeUndefined()
+    expect(preferredSelection('subtitles', { audio: selections.audio }, { subtitles: 'fr' })).toBeUndefined()
   })
 
   it('names the option labelled as a preference that names no language', () => {
-    const indonesian = { ...selection, options: [...selection.options, { id: 'id', label: 'Bahasa Indonesia' }] }
-    expect(preferredSelection(indonesian, 'Bahasa Indonesia')).toBe('id')
+    const indonesian = { ...selections.audio, options: [...selections.audio.options, { id: 'id', label: 'Bahasa Indonesia' }] }
+    expect(preferredSelection('audio', { audio: indonesian }, { audio: 'Bahasa Indonesia' })).toBe('id')
   })
 
   it('skips a disabled option', () => {
-    expect(preferredSelection(selection, 'de')).toBeUndefined()
+    expect(preferredSelection('audio', selections, { audio: 'de' })).toBeUndefined()
   })
 
-  it('turns the feature off only where an off row exists and it is on', () => {
-    expect(preferredSelection(selection, null)).toBeNull()
-    expect(preferredSelection({ ...selection, selectedId: null }, null)).toBeUndefined()
-    expect(preferredSelection({ ...selection, offLabel: undefined }, null)).toBeUndefined()
+  it('turns subtitles off only where an off row exists and they are on', () => {
+    expect(preferredSelection('subtitles', selections, { subtitles: null })).toBeNull()
+    expect(preferredSelection('subtitles', { subtitles: { ...selections.subtitles, selectedId: null } }, { subtitles: null })).toBeUndefined()
+    expect(preferredSelection('subtitles', { subtitles: { ...selections.subtitles, offLabel: undefined } }, { subtitles: null })).toBeUndefined()
+  })
+
+  it('chooses subtitles for the audio selected, which stands for the original', () => {
+    const viewer = { audio: 'en', subtitles: 'en', alwaysSubtitles: false }
+    expect(preferredSelection('audio', selections, viewer)).toBe('en')
+    expect(preferredSelection('subtitles', selections, viewer)).toBeUndefined()
+    expect(preferredSelection('subtitles', { ...selections, audio: { ...selections.audio, selectedId: 'en' } }, viewer)).toBeNull()
+    expect(preferredSelection('audio', selections, { audio: 'fr', subtitles: 'fr', alwaysSubtitles: false })).toBeUndefined()
+    expect(preferredSelection('subtitles', selections, { audio: 'fr', subtitles: 'fr', alwaysSubtitles: false })).toBe('fr')
   })
 })

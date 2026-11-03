@@ -347,11 +347,21 @@ nothing in that language. What the viewer picks wins for that file. A subtitle t
 by its title, and only when it turns subtitles on, so the next file starts with them on, on the track of that title if
 it has one.
 
+To start in the viewer's own language, pass it as both preferences with `alwaysShowSubtitles={false}`: a file with audio
+in it plays that audio with subtitles off, and any other plays its original audio with subtitles in it. Subtitles are
+left off only where the audio plays in their language, so a picked audio language other than theirs keeps them on. The
+original is the file's track in `originalLanguage` when the source knows it (`ja` for anime), else the file's default,
+which is its first track: on a dual audio file whose first track is a dub, only `originalLanguage` finds the original.
+`onAlwaysShowSubtitlesChange` reports true when the viewer turns on subtitles in the language the audio plays in, for
+the app to pass back as `alwaysShowSubtitles`. The rule is `startingTracks(audio, subtitles, preferences)`, from
+`@banou/media-player/language`.
+
 A media the player does not own reports picks the same way, by the option's label once the source's `select`
-resolves, and its host applies the preference to its own tracks: `preferredSelection(selection, preference)`, from
-`@banou/media-player/language`, names the option to select, and imports nothing else of the player. `languageTag(pick)`
-from the same module gives a pick's BCP 47 tag (`jpn` gives `ja`, `Português (Brasil)` gives `pt-BR`), or undefined for
-one naming no language, for code that reads tags.
+resolves, and its host applies the preferences to its own tracks: `preferredSelection(kind, selections, preferences)`,
+from `@banou/media-player/language`, names the option to select by the same rule, the audio selected standing for the
+source's default, and imports nothing else of the player. `languageTag(pick)` from the same module gives a pick's BCP 47
+tag (`jpn` gives `ja`, `Português (Brasil)` gives `pt-BR`), or undefined for one naming no language, for code that reads
+tags.
 
 ### Labels in the viewer's language
 

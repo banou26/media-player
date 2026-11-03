@@ -197,6 +197,58 @@ describe('preferred languages, on a file the player plays', () => {
   })
 })
 
+describe('the viewer\'s own language, on a file the player plays', () => {
+  const english = { preferredAudioLanguage: 'en', preferredSubtitleLanguage: 'en', alwaysShowSubtitles: false }
+
+  it('starts on audio in it with subtitles off', async () => {
+    const root = await mount(english)
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('Disable')
+    await new Promise((resolve) => setTimeout(resolve, 1_500))
+    expect(colour(root)).toBeNull()
+    await openAudio(root)
+    expect(ticked(root)).toBe('English')
+  })
+
+  it('starts on its subtitles too when they are always shown', async () => {
+    const root = await mount({ ...english, alwaysShowSubtitles: true })
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('English (Full Subtitles)')
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('green')
+  })
+
+  it('starts on the original, past a first track that is a dub, with subtitles in it', async () => {
+    const root = await mount({ originalLanguage: 'ja', preferredSubtitleLanguage: 'en', alwaysShowSubtitles: false })
+    await openSubtitles(root)
+    expect(ticked(root)).toBe('English (Full Subtitles)')
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('green')
+    await openAudio(root)
+    expect(ticked(root)).toBe('Japanese')
+  })
+
+  it('shows its subtitles once the viewer switches to audio in another language', async () => {
+    const root = await mount(english)
+    await openAudio(root)
+    click(row(root, 'Japanese'))
+    await new Promise((resolve) => setTimeout(resolve, 3_000))
+    await openSubtitles(root)
+    await expect.poll(() => ticked(root), { timeout: 10_000 }).toBe('English (Full Subtitles)')
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('green')
+  })
+
+  it('reports subtitles picked in the language the audio plays in as always shown', async () => {
+    const always: boolean[] = []
+    const root = await mount({ ...english, onAlwaysShowSubtitlesChange: (on) => { always.push(on) } })
+    await openSubtitles(root)
+    click(row(root, 'Japanese'))
+    await expect.poll(() => colour(root), { timeout: 10_000 }).toBe('blue')
+    expect(always).toEqual([])
+    await openSubtitles(root)
+    click(row(root, 'English (Full Subtitles)'))
+    expect(always).toEqual([true])
+  })
+})
+
 describe('preferred languages, on a media the player does not own', () => {
   const tracks = (select: DelegatedTracks['selection']['select'], offLabel?: string): DelegatedTracks => ({
     selection: {
@@ -243,6 +295,27 @@ describe('preferred languages, on a media the player does not own', () => {
     await openAudio(root)
     click(row(root, 'Español (América Latina)'))
     await expect.poll(() => audio, { timeout: 2_000 }).toEqual(['Español (América Latina)'])
+  })
+
+  it('reports subtitles picked in the language of the audio selected as always shown', async () => {
+    const always: boolean[] = []
+    const screen = await render(
+      <MediaPlayer
+        media={createFakeRemoteMedia()}
+        subtitles={tracks(() => {}, 'Off')}
+        audioTracks={tracks(() => {})}
+        onAlwaysShowSubtitlesChange={(on) => { always.push(on) }}
+      />,
+      sized(),
+    )
+    const root = screen.container
+    await openSubtitles(root)
+    click(row(root, 'Español (América Latina)'))
+    await expect.poll(() => !root.querySelector('.track-list'), { timeout: 2_000 }).toBe(true)
+    expect(always).toEqual([])
+    await openSubtitles(root)
+    click(row(root, 'English'))
+    await expect.poll(() => always, { timeout: 2_000 }).toEqual([true])
   })
 
   it('reports subtitles turned off, a label naming no language that turns them on, and audio once it has switched', async () => {

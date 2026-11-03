@@ -123,19 +123,68 @@ export const preferredTrack = (preference: string, tracks: readonly LanguageTrac
   return best !== -1 ? best : tracks.findIndex(({ title }) => !!title?.trim() && key(title) === key(preference))
 }
 
+/** The viewer's preferences, as `startingTracks` reads them. Each may be left out. */
+export type TrackPreferences = {
+  /** The audio language, as `preferredTrack` reads it. A media without it, or with none given, plays its original. */
+  audio?: string
+  /**
+   * The language the media was made in, as its source knows it (`ja` for anime): its full track is the original.
+   * Without it, or in a file with no track in it, the original is the file's default.
+   */
+  original?: string
+  /** The subtitle language, as `preferredTrack` reads it, or null for none. A media without it shows its default. */
+  subtitles?: string | null
+  /** False starts subtitles off when the audio plays in their language. True when left out. */
+  alwaysSubtitles?: boolean
+}
+
+/** Whether `track` plays in the language `language` names, as a tag or a name, read by the track's tag, else its title. */
+export const playsIn = (track: LanguageTrack | undefined, language: string): boolean => {
+  const spoken = track && (parseLanguage(track.language) ?? parseName(track.title))
+  return !!spoken && parseLanguage(language)?.language === spoken.language
+}
+
 /**
- * For a media the player does not own, whose host applies the viewer's preference itself: the option of `selection`
- * to select for `preference` (as `onPreferredAudioLanguageChange` or `onPreferredSubtitleLanguageChange` reported
- * it), null for the row that turns the feature off, or undefined to leave the selection as it is: no preference,
- * nothing in that language, or already selected. Options are matched by their labels; disabled ones are skipped.
+ * The tracks a media starts on, by index: the audio in `preferences.audio`, else the original, else -1 for the file's
+ * default, its first track; and the subtitles in `preferences.subtitles`, else -1 for the file's default, or null for
+ * none, when they are off or when `alwaysSubtitles` is false and the audio plays in their language.
+ */
+export const startingTracks = (
+  audio: readonly LanguageTrack[],
+  subtitles: readonly LanguageTrack[],
+  { audio: audioLanguage, original, subtitles: subtitleLanguage, alwaysSubtitles = true }: TrackPreferences,
+): { audio: number, subtitles: number | null } => {
+  const wanted = audioLanguage === undefined ? -1 : preferredTrack(audioLanguage, audio)
+  const audioIndex = wanted !== -1 || original === undefined ? wanted : preferredTrack(original, audio)
+  if (subtitleLanguage === null) return { audio: audioIndex, subtitles: null }
+  if (subtitleLanguage === undefined) return { audio: audioIndex, subtitles: -1 }
+  const hidden = !alwaysSubtitles && playsIn(audio[Math.max(audioIndex, 0)], subtitleLanguage)
+  return { audio: audioIndex, subtitles: hidden ? null : preferredTrack(subtitleLanguage, subtitles) }
+}
+
+type Selection = Omit<DelegatedSelection, 'select'>
+
+/**
+ * For a media the player does not own, whose host applies the viewer's preferences itself: the option of
+ * `selections[kind]` to select as `startingTracks` starts it, null for the row that turns subtitles off, or undefined
+ * to leave the selection as it is: the source's own default, or already selected. The audio selected stands for the
+ * default, and the subtitles are chosen for it, so a host switching both asks for the subtitles once the audio has
+ * switched. Options are matched by their labels; disabled ones are skipped.
  */
 export const preferredSelection = (
-  selection: Omit<DelegatedSelection, 'select'>,
-  preference: string | null | undefined,
+  kind: 'audio' | 'subtitles',
+  selections: { audio?: Selection, subtitles?: Selection },
+  preferences: TrackPreferences,
 ): string | null | undefined => {
-  if (preference === undefined) return undefined
-  if (preference === null) return selection.offLabel && selection.selectedId !== null ? null : undefined
+  const selection = selections[kind]
+  if (!selection) return undefined
   const options = selection.options.filter((option) => !option.disabled)
-  const id = options[preferredTrack(preference, options.map(({ label }) => ({ title: label })))]?.id
+  const tracks = options.map(({ label }) => ({ title: label }))
+  const playing = selections.audio?.options.find(({ id }) => id === selections.audio!.selectedId)
+  const index = kind === 'audio'
+    ? startingTracks(tracks, [], preferences).audio
+    : startingTracks(playing ? [{ title: playing.label }] : [], tracks, preferences).subtitles
+  if (index === null) return selection.offLabel && selection.selectedId !== null ? null : undefined
+  const id = options[index]?.id
   return id !== undefined && id !== selection.selectedId ? id : undefined
 }

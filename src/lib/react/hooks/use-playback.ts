@@ -8,7 +8,7 @@ import { isMediaElementError, startPlayback } from '../../engine'
 import { usePlayer } from '../player'
 import { useLabels } from '../labels'
 import { toNamedTracks } from '../../utils/track-label'
-import { languageOf, preferredTrack } from '../../language'
+import { languageOf, playsIn, startingTracks } from '../../language'
 
 /**
  * A wedged element is rebuilt, however many times it takes.
@@ -41,13 +41,6 @@ const SEEK_PREPARE_BUDGET_MS = 500
  * completes at all would otherwise leave the clock reading a time the picture never reached.
  */
 const SEEK_DISPLAY_LIMIT_MS = 15_000
-
-/** The subtitle stream a media starts on: the first in the preferred language, else the first; none when it is off. */
-const preferredSubtitle = (preference: string | null | undefined, subtitles: SubtitleStream[]) => {
-  if (preference === null) return undefined
-  const index = preference === undefined ? 0 : preferredTrack(preference, subtitles)
-  return subtitles[Math.max(index, 0)]?.streamIndex
-}
 
 const messageOf = (error: unknown) =>
   error instanceof Error ? error.message : String(error)
@@ -153,17 +146,24 @@ export const usePlayback = (
   const sizeRef = useRef(size)
   sizeRef.current = size
   const streams = useRef<{ audio: AudioStream[], subtitles: SubtitleStream[] }>({ audio: [], subtitles: [] })
+  const playingAudio = useCallback(() => streams.current.audio.find((track) => track.streamIndex === player.selectedAudioTrack), [player])
 
   const readRef = useRef(read)
   readRef.current = read
-  const preferredAudioRef = useRef(options?.preferredAudioLanguage)
-  preferredAudioRef.current = options?.preferredAudioLanguage
-  const preferredSubtitleRef = useRef(options?.preferredSubtitleLanguage)
-  preferredSubtitleRef.current = options?.preferredSubtitleLanguage
+  const preferences = {
+    audio: options?.preferredAudioLanguage,
+    original: options?.originalLanguage,
+    subtitles: options?.preferredSubtitleLanguage,
+    alwaysSubtitles: options?.alwaysShowSubtitles,
+  }
+  const preferencesRef = useRef(preferences)
+  preferencesRef.current = preferences
   const onAudioLanguageRef = useRef(options?.onPreferredAudioLanguageChange)
   onAudioLanguageRef.current = options?.onPreferredAudioLanguageChange
   const onSubtitleLanguageRef = useRef(options?.onPreferredSubtitleLanguageChange)
   onSubtitleLanguageRef.current = options?.onPreferredSubtitleLanguageChange
+  const onAlwaysSubtitlesRef = useRef(options?.onAlwaysShowSubtitlesChange)
+  onAlwaysSubtitlesRef.current = options?.onAlwaysShowSubtitlesChange
   const onSeekRef = useRef(options?.onSeek)
   onSeekRef.current = options?.onSeek
   const onPlaybackErrorRef = useRef(options?.onPlaybackError)
@@ -193,7 +193,8 @@ export const usePlayback = (
       ? null
       : languageOf(stream) ?? (wasOff ? stream?.title?.trim() || 'und' : undefined)
     if (language !== undefined) onSubtitleLanguageRef.current?.(language)
-  }, [player])
+    if (language && playsIn(playingAudio(), language)) onAlwaysSubtitlesRef.current?.(true)
+  }, [player, playingAudio])
 
   /**
    * Seek with the data already there, or after the deadline, whichever comes first.
@@ -382,10 +383,7 @@ export const usePlayback = (
           cjkFontUrl,
           bufferSize,
           audioStreamIndex,
-          chooseAudioStream: (audio) => {
-            const preference = preferredAudioRef.current
-            return preference === undefined ? undefined : audio[preferredTrack(preference, audio)]?.streamIndex
-          },
+          chooseAudioStream: (audio) => audio[startingTracks(audio, [], preferencesRef.current).audio]?.streamIndex,
           onReady: () => {
             if (cancelled) return
             player.setSourceState({ ready: true })
@@ -404,9 +402,12 @@ export const usePlayback = (
           onSubtitleStreams: (subtitles) => {
             if (cancelled) return
             streams.current.subtitles = subtitles
+            // for the audio playing, which may be one the viewer picked
+            const playing = playingAudio()
+            const start = startingTracks(playing ? [playing] : [], subtitles, preferencesRef.current).subtitles
             player.setSourceState({
               subtitleTracks: toNamedTracks(subtitles, labelsRef.current),
-              ...subtitleChoiceFor.current === size ? {} : { selectedSubtitleTrack: preferredSubtitle(preferredSubtitleRef.current, subtitles) },
+              ...subtitleChoiceFor.current === size ? {} : { selectedSubtitleTrack: start === null ? undefined : subtitles[Math.max(start, 0)]?.streamIndex },
             })
           },
           onAudioStreams: (audio, selected) => {
@@ -445,7 +446,7 @@ export const usePlayback = (
     // identity. A streaming consumer passes a fresh closure on every state update, which is several
     // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
-    player, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
+    player, playingAudio, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
     jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
   ])
 }
