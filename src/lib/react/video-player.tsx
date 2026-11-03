@@ -19,7 +19,7 @@ import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
 import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
 import { LabelsProvider } from './labels'
-import { languageOf } from '../language'
+import { languageOf, playsIn } from '../language'
 
 /**
  * The source, read a range at a time: the player never downloads the whole file. Both fields travel
@@ -169,6 +169,11 @@ type CommonOptions = {
    * with them on too.
    */
   onPreferredSubtitleLanguageChange?: (language: string | null) => void
+  /**
+   * True when the viewer picked subtitles in the language the audio plays in: what an app saves to pass back as
+   * `alwaysShowSubtitles`, so the next media in it starts with them on too.
+   */
+  onAlwaysShowSubtitlesChange?: (always: boolean) => void
 }
 
 /**
@@ -264,6 +269,17 @@ export type MediaPlayerLocalOptions =
      * language starts on the track titled as it is.
      */
     preferredSubtitleLanguage?: string | null
+    /**
+     * The language the media was made in, as its source knows it (`ja` for anime): a file with no track in
+     * `preferredAudioLanguage` plays its full track in this one, else its default, its first track. Read as the
+     * preferences are.
+     */
+    originalLanguage?: string
+    /**
+     * False starts a file with subtitles off when its audio plays in `preferredSubtitleLanguage`, as it does when the
+     * viewer's own language is both. True, the default, starts them as `preferredSubtitleLanguage` says.
+     */
+    alwaysShowSubtitles?: boolean
   }
 
 /**
@@ -528,8 +544,8 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const audio = remote?.audioTracks?.selection
   // `select`'s promise reaches the menu, which is the only place that can hold the popover open, keep the tick off an
   // unfinished switch, and show a failure, and a promise nothing awaits is an unhandled rejection.
-  const reports = useRef({ audio: options.onPreferredAudioLanguageChange, subtitles: options.onPreferredSubtitleLanguageChange })
-  reports.current = { audio: options.onPreferredAudioLanguageChange, subtitles: options.onPreferredSubtitleLanguageChange }
+  const latest = useRef({ options, audio })
+  latest.current = { options, audio }
   useEffect(() => {
     if (!subtitles) return
     setSourceState({
@@ -541,7 +557,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
         const wasOff = subtitles.selectedId === null
         return afterSwitch(subtitles.select(picked), () => {
           const language = picked === null ? null : languageOf(track) ?? (wasOff ? track?.title : undefined)
-          if (language !== undefined) reports.current.subtitles?.(language)
+          const now = latest.current
+          if (language !== undefined) now.options.onPreferredSubtitleLanguageChange?.(language)
+          const playing = now.audio && trackOf(now.audio, now.audio.selectedId ?? '')
+          if (language && playsIn(playing, language)) now.options.onAlwaysShowSubtitlesChange?.(true)
         })
       },
       subtitleOffLabel: subtitles.offLabel,
@@ -555,7 +574,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       selectedAudioTrack: audio.selectedId ?? undefined,
       selectAudioTrack: (id) => afterSwitch(audio.select(String(id)), () => {
         const language = languageOf(trackOf(audio, String(id)))
-        if (language !== undefined) reports.current.audio?.(language)
+        if (language !== undefined) latest.current.options.onPreferredAudioLanguageChange?.(language)
       }),
     })
   }, [setSourceState, audio])
