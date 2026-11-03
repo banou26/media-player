@@ -341,9 +341,10 @@ Pass the languages to start a file in, and save what the viewer picks:
 ```
 
 A preference is a tag or a name (`ja`, `ja-JP`, `jpn`, `Japanese`, `English (US)`), and a pick is reported the way the
-track names its language, its tag or else its title, or null for subtitles off. A file starts on its full track in the
-preferred language, never a commentary or a signs and songs track when a full one exists, and on its default when it has
-nothing in that language. What the viewer picks wins for that file. A subtitle track that names no language is reported
+track names its language, its tag or else its title, or null for subtitles off. A file starts on its full audio track in
+the preferred language, else on its default: a commentary or an audio description in it does not count. Subtitles start
+on the full track in the language, else on a signs and songs one in it, else on the default. What the viewer picks wins
+for that file. A subtitle track that names no language is reported
 by its title, and only when it turns subtitles on, so the next file starts with them on, on the track of that title if
 it has one.
 
