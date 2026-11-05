@@ -13,10 +13,12 @@ import { playerAssets } from '../../../src/asset-urls'
  * An app that plays the next episode in the same document mounts a new player for it (ripple keys its player on the
  * file), so the window has to outlive the player that opened it: a new one would need a click nobody makes.
  */
-const FIXTURE = '/test-video.mkv'
+// 4:3, then 16:9 for the next episode
+const FIRST = '/test-video.mkv'
+const NEXT = '/frame-step.mkv'
 
-const httpSource = async () => {
-  const head = await fetch(FIXTURE, { method: 'HEAD' })
+const httpSource = async (file: string) => {
+  const head = await fetch(file, { method: 'HEAD' })
   const size = Number(head.headers.get('content-length'))
   if (!head.ok || !size) return null
   return {
@@ -24,7 +26,7 @@ const httpSource = async () => {
     read: async (offset: number, length: number) => {
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
-      return (await fetch(FIXTURE, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
+      return (await fetch(file, { headers: { range: `bytes=${offset}-${end}` } })).arrayBuffer()
     },
   }
 }
@@ -38,19 +40,26 @@ const sample = (video: HTMLVideoElement) => {
 }
 
 const openWindow = async () => {
-  const source = await httpSource()
-  if (!source) return null
+  const [first, next] = await Promise.all([httpSource(FIRST), httpSource(NEXT)])
+  if (!first || !next) return null
   const container = document.createElement('div')
   container.style.cssText = 'width: 960px; height: 540px;'
   document.body.append(container)
-  const player = (episode: string) => <MediaPlayer key={episode} {...source} {...playerAssets} autoplay />
+  const player = (file: string, source: typeof first) =>
+    <MediaPlayer key={file} {...source} {...playerAssets} autoplay />
 
-  const screen = await render(player('first'), { container })
-  const first = container.querySelector('video')!
-  await expect.poll(() => first.readyState, { timeout: 30_000 }).toBeGreaterThanOrEqual(2)
+  const screen = await render(player(FIRST, first), { container })
+  const video = container.querySelector('video')!
+  await expect.poll(() => video.readyState, { timeout: 30_000 }).toBeGreaterThanOrEqual(2)
   await expect.poll(() => container.querySelector('button.picture-in-picture'), { timeout: 30_000 }).not.toBeNull()
+  const entered = new Promise<PictureInPictureWindow>((resolve) => {
+    document.addEventListener('enterpictureinpicture', (event) => {
+      resolve((event as PictureInPictureEvent).pictureInPictureWindow)
+    }, { once: true, capture: true })
+  })
   await userEvent.click(container.querySelector('button.picture-in-picture')!)
   await expect.poll(() => document.pictureInPictureElement, { timeout: 5000 }).not.toBeNull()
+  const pipWindow = await entered
   const opened = document.pictureInPictureElement as HTMLVideoElement
   const closed = { at: undefined as number | undefined }
   opened.addEventListener('leavepictureinpicture', () => { closed.at = performance.now() })
@@ -59,20 +68,21 @@ const openWindow = async () => {
     await screen.unmount()
     container.remove()
   }
-  return { screen, player, container, first, opened, closed, done }
+  const playNext = () => screen.rerender(player(NEXT, next))
+  return { screen, playNext, container, first: video, opened, pipWindow, closed, done }
 }
 
 describe('picture in picture across the next episode', () => {
-  it('stays open with the next player playing in it', async () => {
+  it('stays open with the next player playing in it, at its shape', async () => {
     const open = await openWindow()
     if (!open) {
       // eslint-disable-next-line no-console
       console.warn('skipped: run `node scripts/fixture.mjs` to generate the test media')
       return
     }
-    const { screen, player, container, first, opened, closed, done } = open
+    const { playNext, container, first, opened, pipWindow, closed, done } = open
     try {
-      await screen.rerender(player('next'))
+      await playNext()
       const swapped = performance.now()
       const next = container.querySelector('video')!
       expect(next, 'a new player').not.toBe(first)
@@ -85,6 +95,8 @@ describe('picture in picture across the next episode', () => {
       expect(closed.at, 'never closed').toBeUndefined()
       // a media element taken out of the page is paused by the browser
       expect(opened.isConnected, 'still in the page').toBe(true)
+      await expect.poll(() => pipWindow.width / pipWindow.height, { timeout: 3000 })
+        .toBeCloseTo(next.videoWidth / next.videoHeight, 1)
     } finally {
       await done()
     }
