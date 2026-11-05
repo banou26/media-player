@@ -234,8 +234,11 @@ reflect the real element froze the window: seeking while paused left the old sce
 transport state is carried by the Media Session instead, which is what the window reads for its
 play/pause button.
 
-If anything in that path is unavailable the player falls back to handing the browser the bare video,
-which plays without subtitles rather than not at all.
+The window outlives the player. A player unmounted while its window is open leaves it open for a second, and the
+next player mounted in the same document in that time plays in it, so an app that mounts a new player for the next
+episode keeps the window without a click, which a new window would need. Nobody takes it and it closes.
+
+Where that path is unavailable the player offers no picture in picture control.
 
 ### Picture in picture for a media you do not own
 

@@ -37,7 +37,10 @@ export type PictureInPictureOptions = {
    */
   subtitles: HTMLElement
   maxWidth?: number
-  /** Where the mirror is mounted. It must be in the document. Defaults to the video's parent. */
+  /**
+   * Where the mirror is mounted. It must be in the document. Defaults to the video's parent in burn-in, where the
+   * mirror is the picture, and to the body in a window, so the window can outlive the player (see `destroy`).
+   */
   container?: HTMLElement
   /** Overrides detection. Passing a mode the browser cannot honour is the caller's problem. */
   mode?: PictureInPictureMode
@@ -47,6 +50,12 @@ export type PictureInPictureOptions = {
 
 export type PictureInPictureController = {
   toggle: () => Promise<void>
+  /**
+   * Burn-in, or a window that is not open, ends here. An open window is left open for a second, and the next
+   * controller created in the document in that time draws its own video into it: an app that replaces the player
+   * for the next episode keeps the window, with no click, which a fresh request would need. Nobody takes it and it
+   * closes.
+   */
   destroy: () => void
   mode: PictureInPictureMode
 }
@@ -56,6 +65,36 @@ type Session = {
   context: CanvasRenderingContext2D
   stream: MediaStream
   mirror: HTMLVideoElement
+}
+
+/** How long a destroyed controller's window waits for the next one; a remounted player asks within a few frames. */
+export const HAND_OVER_MS = 1000
+
+let handedOver: { session: Session, close: () => void, cancel: () => void } | undefined
+
+const handOver = (session: Session) => {
+  handedOver?.close()
+  const cancel = () => {
+    clearTimeout(timer)
+    session.mirror.removeEventListener('leavepictureinpicture', close)
+    handedOver = undefined
+  }
+  const close = () => {
+    cancel()
+    if (document.pictureInPictureElement === session.mirror) void document.exitPictureInPicture().catch(() => {})
+    for (const track of session.stream.getTracks()) track.stop()
+    session.mirror.remove()
+  }
+  const timer = setTimeout(close, HAND_OVER_MS)
+  session.mirror.addEventListener('leavepictureinpicture', close)
+  handedOver = { session, close, cancel }
+}
+
+/** The window a destroyed controller left, until it closes. */
+const takeOver = () => {
+  const held = handedOver
+  held?.cancel()
+  return held?.session
 }
 
 const canComposite = () =>
@@ -233,26 +272,46 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     }
   }
 
-  const teardown = () => {
+  const start = () => {
+    schedule()
+    pausedRepaint = setInterval(() => { if (video.paused) paint() }, PAUSED_REPAINT_INTERVAL)
+  }
+
+  const listen = (mirror: HTMLVideoElement) => {
+    mirror.addEventListener('play', onMirrorPlay)
+    mirror.addEventListener('pause', onMirrorPause)
+    mirror.addEventListener('leavepictureinpicture', onLeave)
+    video.addEventListener('play', onVideoPlay)
+    video.addEventListener('pause', onVideoPause)
+    video.addEventListener('seeked', onVideoSeeked)
+    bindMediaSession(true)
+    publishState()
+  }
+
+  /** Lets go of the session, mirror and window left as they are. */
+  const detach = () => {
     stopLoop()
     bindMediaSession(false)
     video.removeEventListener('play', onVideoPlay)
     video.removeEventListener('pause', onVideoPause)
     video.removeEventListener('seeked', onVideoSeeked)
-    if (!session) {
-      // a burn-in that never built a session can still have swapped the picture
-      restore?.()
-      return
-    }
-    const { stream, mirror } = session
-    mirror.removeEventListener('play', onMirrorPlay)
-    mirror.removeEventListener('pause', onMirrorPause)
-    mirror.removeEventListener('leavepictureinpicture', onLeave)
-    for (const track of stream.getTracks()) track.stop()
-    mirror.remove()
+    const held = session
     session = undefined
+    held?.mirror.removeEventListener('play', onMirrorPlay)
+    held?.mirror.removeEventListener('pause', onMirrorPause)
+    held?.mirror.removeEventListener('leavepictureinpicture', onLeave)
+    return held
+  }
+
+  const teardown = () => {
+    const held = detach()
+    if (held) {
+      for (const track of held.stream.getTracks()) track.stop()
+      held.mirror.remove()
+    }
     // AFTER the mirror is gone. Restoring first puts the real picture and the overlay back while the
     // composite is still mounted and painting, which is the doubled subtitles this mode exists to avoid.
+    // A burn-in that never built a session can still have swapped the picture.
     restore?.()
   }
 
@@ -312,10 +371,9 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     const mine: Session = { composite, context, stream: composite.captureStream(), mirror }
     session = mine
     mirror.srcObject = mine.stream
-    ;(options.container ?? video.parentElement ?? document.body).appendChild(mirror)
+    ;(options.container ?? (mode === 'burn-in' ? video.parentElement : null) ?? document.body).appendChild(mirror)
 
-    schedule()
-    pausedRepaint = setInterval(() => { if (video.paused) paint() }, PAUSED_REPAINT_INTERVAL)
+    start()
     void mirror.play().catch(() => {})
 
     // requestPictureInPicture rejects while readyState is 0, and the wait is short enough that the
@@ -335,14 +393,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
       return
     }
 
-    mirror.addEventListener('play', onMirrorPlay)
-    mirror.addEventListener('pause', onMirrorPause)
-    mirror.addEventListener('leavepictureinpicture', onLeave)
-    video.addEventListener('play', onVideoPlay)
-    video.addEventListener('pause', onVideoPause)
-    video.addEventListener('seeked', onVideoSeeked)
-    bindMediaSession(true)
-    publishState()
+    listen(mirror)
 
     if (mode === 'burn-in') {
       // No window to open: the browser's own control does that, on the element now on screen.
@@ -386,12 +437,21 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     }
   }
 
+  const taken = mode === 'window' ? takeOver() : undefined
+  if (taken) {
+    session = taken
+    // the last frame of the video before would otherwise stay up until this one has a frame
+    taken.context.fillRect(0, 0, taken.composite.width, taken.composite.height)
+    start()
+    listen(taken.mirror)
+  }
+
   return {
     toggle,
     mode,
     destroy: () => {
       destroyed = true
-      if (mode !== 'burn-in' && active()) void document.exitPictureInPicture().catch(() => {})
+      if (mode === 'window' && active()) return handOver(detach()!)
       teardown()
       if (mode === 'burn-in') options.onBurnedInChange?.(false)
     },
