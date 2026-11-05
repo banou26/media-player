@@ -51,10 +51,10 @@ export type PictureInPictureOptions = {
 export type PictureInPictureController = {
   toggle: () => Promise<void>
   /**
-   * Burn-in, or a window that is not open, ends here. An open window is left open for a second, and the next
-   * controller created in the document in that time draws its own video into it: an app that replaces the player
-   * for the next episode keeps the window, with no click, which a fresh request would need. Nobody takes it and it
-   * closes.
+   * Burn-in, or a window that is not open, ends here. An open window stays open for a second, and the
+   * next controller created in the document in that time draws its own video into it, at that video's
+   * shape: an app that replaces the player for the next episode keeps the window with no click, which
+   * a new window would need. If no controller takes it in that second, it closes.
    */
   destroy: () => void
   mode: PictureInPictureMode
@@ -167,8 +167,21 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     }
   }
 
+  // Sized off the intrinsic dimensions, never the layout, so only a video of another size resizes a
+  // canvas that a MediaStream is capturing. A window taken over starts at the size of the video before.
+  const compositeSize = () => {
+    const width = Math.min(video.videoWidth || maxWidth, maxWidth)
+    return { width, height: Math.round(width * ((video.videoHeight || 9) / (video.videoWidth || 16))) }
+  }
+
   const paint = () => {
-    if (session) draw(session.composite, session.context)
+    if (!session) return
+    const { composite, context } = session
+    const { width, height } = compositeSize()
+    if (video.videoWidth && (composite.width !== width || composite.height !== height)) {
+      Object.assign(composite, { width, height })
+    }
+    draw(composite, context)
   }
 
   const useFrameCallback = 'requestVideoFrameCallback' in video
@@ -344,14 +357,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   }
 
   const enter = async () => {
-    // Sized off the intrinsic dimensions, never the layout, so a resize cannot resize a canvas that a
-    // MediaStream is already capturing.
-    const width = Math.min(video.videoWidth || maxWidth, maxWidth)
-    const height = Math.round(width * ((video.videoHeight || 9) / (video.videoWidth || 16)))
-
-    const composite = document.createElement('canvas')
-    composite.width = width
-    composite.height = height
+    const composite = Object.assign(document.createElement('canvas'), compositeSize())
     // The alpha channel is unused but has to stay: with `{ alpha: false }` Chrome's captureStream
     // delivers the first frame and then nothing, with the track still "live" and no error anywhere.
     const context = composite.getContext('2d')
