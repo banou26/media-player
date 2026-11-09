@@ -14,15 +14,22 @@ const DEFAULT_MAX_WIDTH = 1280
  */
 const BURN_IN_MAX_WIDTH = 1920
 /**
- * Repaints whenever no frame callback came for this long: a paused video presents no frames, and frame callbacks follow
- * the BROWSER window's rendering, not the picture in picture window's. With the browser window off screen on Wayland,
- * Chrome still reads the page as visible and renders it about once a second (niri gives a window it does not show one
- * frame callback a second) or never (minimized on weston). Measured 2026-11-09, Chrome 156 on a headless weston, a
- * 24 fps video in the window: 24 frames a second with the page shown, in a hidden tab or minimized, 0 off screen, 4 off
- * screen with this timer. Four is the most a timer gets there: the element's picture then moves only on Chrome's 250 ms
- * background render, read through `drawImage`, `new VideoFrame` and `captureStream()` alike.
+ * Frame callbacks follow the BROWSER window's rendering, not the picture in picture window's: none with that window
+ * minimized or off screen (one a second on niri), while the picture in picture window is still shown. A timer paints
+ * once they have been silent this long. A paused video presents no frames either, and is repainted only every
+ * `PAUSED_REPAINT_MS`, for a seek or a subtitle change. `scripts/measure-picture-in-picture.mjs`, 2026-11-09, Chrome 156
+ * on weston, a 24 fps video, minimized or off screen: 0 different frames a second in the window before, 24 with this
+ * and `hidePicture`.
  */
-const REPAINT_INTERVAL = 250
+const STALLED_MS = 100
+const REPAINT_TICK_MS = 1000 / 60
+const PAUSED_REPAINT_MS = 250
+/**
+ * The subtitle surface is rendered on the same frame callbacks, from a worker whose frames reach the page only while
+ * the page renders, so with the browser window off screen it keeps its last line. Drawn only while it is at most this
+ * far behind the video's time, which a page rendering once a second still is.
+ */
+const STALE_SUBTITLES_S = 2
 /** Long enough for a paused mirror to present one frame of a fresh seek before it stops again. */
 const FLUSH_FRAME_MS = 100
 
@@ -149,6 +156,9 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   let handle: number | undefined
   let repaint: ReturnType<typeof setInterval> | undefined
   let lastFrame = 0
+  let lastPaint = 0
+  /** The video's time at the last frame callback, which the subtitle surface was rendered for. */
+  let frameTime = 0
   let syncing = false
   /** Burn-in only: a deliberate play/pause pair to push one frame, which must not reach the video. */
   let flushing = false
@@ -171,7 +181,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     // jassub has transferred reports the size of the last frame its worker committed, so the zero
     // check still keeps drawImage off a source with no dimensions to read.
     const surface = subtitles.querySelector('canvas')
-    if (surface && surface.width > 0 && surface.height > 0) {
+    if (surface && surface.width > 0 && surface.height > 0 && Math.abs(video.currentTime - frameTime) <= STALE_SUBTITLES_S) {
       context.drawImage(surface, 0, 0, composite.width, composite.height)
     }
   }
@@ -190,6 +200,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     if (video.videoWidth && (composite.width !== width || composite.height !== height)) {
       Object.assign(composite, { width, height })
     }
+    lastPaint = performance.now()
     draw(composite, context)
   }
 
@@ -197,6 +208,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   const loop = () => {
     lastFrame = performance.now()
+    frameTime = video.currentTime
     paint()
     schedule()
   }
@@ -296,8 +308,13 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   }
 
   const start = () => {
+    frameTime = video.currentTime
     schedule()
-    repaint = setInterval(() => { if (performance.now() - lastFrame >= REPAINT_INTERVAL) paint() }, REPAINT_INTERVAL)
+    repaint = setInterval(() => {
+      const now = performance.now()
+      if (now - lastFrame < STALLED_MS || (video.paused && now - lastPaint < PAUSED_REPAINT_MS)) return
+      paint()
+    }, REPAINT_TICK_MS)
   }
 
   const listen = (mirror: HTMLVideoElement) => {
@@ -339,6 +356,21 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   }
 
   const onLeave = () => teardown()
+
+  /**
+   * Window only, while it is open. A video shown in the page moves its picture on the page's rendering only, so with the
+   * browser window minimized or off screen every read got the same frame for 250 ms: 4 different frames a second
+   * however fast the timer painted. A hidden one gives a fresh frame on each read. Chrome's own picture in picture
+   * leaves only a placeholder in the page too.
+   */
+  const hidePicture = () => {
+    const visibility = video.style.visibility
+    video.style.visibility = 'hidden'
+    restore = () => {
+      restore = undefined
+      video.style.visibility = visibility
+    }
+  }
 
   /**
    * Swap the composite in as the player's picture.
@@ -419,6 +451,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     }
 
     await mirror.requestPictureInPicture()
+    if (session === mine) hidePicture()
   }
 
   const toggle = async () => {
@@ -460,6 +493,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     taken.context.fillRect(0, 0, taken.composite.width, taken.composite.height)
     start()
     listen(taken.mirror)
+    hidePicture()
   }
 
   return {
@@ -467,7 +501,11 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     mode,
     destroy: () => {
       destroyed = true
-      if (mode === 'window' && active()) return handOver(detach()!)
+      if (mode === 'window' && active()) {
+        const held = detach()!
+        restore?.()
+        return handOver(held)
+      }
       teardown()
       if (mode === 'burn-in') options.onBurnedInChange?.(false)
     },

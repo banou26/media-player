@@ -234,11 +234,14 @@ reflect the real element froze the window: seeking while paused left the old sce
 transport state is carried by the Media Session instead, which is what the window reads for its
 play/pause button.
 
-Frames are drawn from the page's rendering, which follows the browser window, not the picture in
-picture one. Chrome keeps that rendering at full rate in a hidden tab or a minimized window while
-the window is open, but with the browser window off screen on Wayland it still reads the page as
-visible and renders it about once a second. A timer then repaints instead, which Chrome caps at four
-frames a second, and the subtitles move only at the page's rate.
+Frames are painted on the page's frame callbacks, which follow the browser window, not the picture
+in picture one: they stop with the browser window minimized or off screen, while the window is still
+on screen. A timer then paints at 60 a second instead. The page's own video is hidden while the
+window is open, as Chrome's own picture in picture does, because a video shown in the page moves its
+picture only on the page's rendering, so every paint would read the same frame for 250 ms. The
+subtitles are rendered on the page's rendering too, so once they fall two seconds behind the video
+they are left out of the window rather than shown wrong. `scripts/measure-picture-in-picture.mjs`
+measures each state.
 
 The window outlives the player. A player unmounted while its window is open leaves it open for a
 second, and the next player mounted in the same document in that time plays in it, at the shape of

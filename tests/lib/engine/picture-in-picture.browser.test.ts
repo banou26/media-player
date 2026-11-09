@@ -202,11 +202,11 @@ describe('burn-in picture in picture', () => {
   })
 
   /**
-   * Frame callbacks follow the browser window's rendering, which stops, or drops to about once a second, with that window
-   * off screen while the page still reads as visible. The picture in picture window is on screen then, and the
-   * composite stood still with them.
+   * Frame callbacks follow the browser window's rendering, which stops with that window minimized or off screen while
+   * the picture in picture window is still shown. The composite stood still with them, and a 250 ms timer gave the
+   * window 4 frames a second, under any video's frame rate.
    */
-  it('keeps repainting a playing video when frame callbacks stop', async () => {
+  it('keeps painting a playing video at a video frame rate when frame callbacks stop', async () => {
     const { video, subtitles } = await playingVideo()
     stub(video, 'requestVideoFrameCallback', () => 0)
     const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
@@ -215,10 +215,34 @@ describe('burn-in picture in picture', () => {
 
     const drawn = vi.spyOn(CanvasRenderingContext2D.prototype, 'drawImage')
     cleanups.push(() => drawn.mockRestore())
-    await new Promise((resolve) => setTimeout(resolve, 1100))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     expect(video.paused).toBe(false)
-    expect(drawn.mock.calls.filter(([source]) => source === video).length).toBeGreaterThanOrEqual(3)
+    expect(drawn.mock.calls.filter(([source]) => source === video).length).toBeGreaterThanOrEqual(24)
+  })
+
+  /** The subtitle surface stops with the frame callbacks, so its line would stay over a picture that moves on. */
+  it('leaves out subtitles that fell behind the video while frame callbacks stopped', async () => {
+    const { video, subtitles, surface } = await playingVideo()
+    stub(video, 'requestVideoFrameCallback', () => 0)
+    stub(video, 'currentTime', 10)
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+
+    const drawn = vi.spyOn(CanvasRenderingContext2D.prototype, 'drawImage')
+    cleanups.push(() => drawn.mockRestore())
+    const paints = (source: CanvasImageSource) => drawn.mock.calls.filter(([drawnSource]) => drawnSource === source).length
+
+    video.currentTime = 11
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(paints(surface), 'a second behind is still drawn').toBeGreaterThan(0)
+
+    drawn.mockClear()
+    video.currentTime = 13
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(paints(video)).toBeGreaterThan(0)
+    expect(paints(surface)).toBe(0)
   })
 
   it('does not report itself on after a destroy landing inside the metadata wait', async () => {

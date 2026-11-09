@@ -72,6 +72,25 @@ const openWindow = async () => {
   return { screen, playNext, container, first: video, opened, pipWindow, closed, done }
 }
 
+/**
+ * A video shown in the page moves its picture only on the page's rendering, which stops with the browser window
+ * minimized or off screen, so the window got 4 frames a second there. Hidden, it gives a fresh frame on every paint.
+ */
+describe('the page while the window is open', () => {
+  it('hides its own picture, and shows it again once the window closes', async () => {
+    const open = await openWindow()
+    if (!open) return
+    const { first, done } = open
+    try {
+      expect(first.style.visibility).toBe('hidden')
+      await document.exitPictureInPicture()
+      await expect.poll(() => first.style.visibility, { timeout: 3000 }).toBe('')
+    } finally {
+      await done()
+    }
+  }, 90_000)
+})
+
 describe('picture in picture across the next episode', () => {
   it('stays open with the next player playing in it, at its shape', async () => {
     const open = await openWindow()
@@ -86,12 +105,14 @@ describe('picture in picture across the next episode', () => {
       const swapped = performance.now()
       const next = container.querySelector('video')!
       expect(next, 'a new player').not.toBe(first)
+      expect(first.style.visibility, 'the player before shows its picture again').toBe('')
       await expect.poll(() => !next.paused && next.currentTime > 0.5, { timeout: 30_000 }).toBe(true)
       // past the moment a window nobody took over closes
       await new Promise((resolve) => setTimeout(resolve, swapped + HAND_OVER_MS + 500 - performance.now()))
       const shown = sample(opened)
       await expect.poll(() => sample(opened), { timeout: 3000 }).not.toBe(shown)
       expect(document.pictureInPictureElement, 'the same window').toBe(opened)
+      expect(next.style.visibility, 'the next player hides its picture').toBe('hidden')
       expect(closed.at, 'never closed').toBeUndefined()
       // a media element taken out of the page is paused by the browser
       expect(opened.isConnected, 'still in the page').toBe(true)
