@@ -13,8 +13,16 @@ const DEFAULT_MAX_WIDTH = 1280
  * thumbnail-sized window does. A 4K source is still halved; see the note on `compositeWidth`.
  */
 const BURN_IN_MAX_WIDTH = 1920
-/** The frame callback fires only for presented frames, so a paused video needs its own repaint. */
-const PAUSED_REPAINT_INTERVAL = 250
+/**
+ * Repaints whenever no frame callback came for this long: a paused video presents no frames, and frame callbacks follow
+ * the BROWSER window's rendering, not the picture in picture window's. With the browser window off screen on Wayland,
+ * Chrome still reads the page as visible and renders it about once a second (niri gives a window it does not show one
+ * frame callback a second) or never (minimized on weston). Measured 2026-11-09, Chrome 156 on a headless weston, a
+ * 24 fps video in the window: 24 frames a second with the page shown, in a hidden tab or minimized, 0 off screen, 4 off
+ * screen with this timer. Four is the most a timer gets there: the element's picture then moves only on Chrome's 250 ms
+ * background render, read through `drawImage`, `new VideoFrame` and `captureStream()` alike.
+ */
+const REPAINT_INTERVAL = 250
 /** Long enough for a paused mirror to present one frame of a fresh seek before it stops again. */
 const FLUSH_FRAME_MS = 100
 
@@ -139,7 +147,8 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   let session: Session | undefined
   let handle: number | undefined
-  let pausedRepaint: ReturnType<typeof setInterval> | undefined
+  let repaint: ReturnType<typeof setInterval> | undefined
+  let lastFrame = 0
   let syncing = false
   /** Burn-in only: a deliberate play/pause pair to push one frame, which must not reach the video. */
   let flushing = false
@@ -187,6 +196,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   const useFrameCallback = 'requestVideoFrameCallback' in video
 
   const loop = () => {
+    lastFrame = performance.now()
     paint()
     schedule()
   }
@@ -201,9 +211,9 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
       if (useFrameCallback) video.cancelVideoFrameCallback(handle)
       else cancelAnimationFrame(handle)
     }
-    if (pausedRepaint !== undefined) clearInterval(pausedRepaint)
+    if (repaint !== undefined) clearInterval(repaint)
     handle = undefined
-    pausedRepaint = undefined
+    repaint = undefined
   }
 
   const publishState = () => {
@@ -287,7 +297,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   const start = () => {
     schedule()
-    pausedRepaint = setInterval(() => { if (video.paused) paint() }, PAUSED_REPAINT_INTERVAL)
+    repaint = setInterval(() => { if (performance.now() - lastFrame >= REPAINT_INTERVAL) paint() }, REPAINT_INTERVAL)
   }
 
   const listen = (mirror: HTMLVideoElement) => {

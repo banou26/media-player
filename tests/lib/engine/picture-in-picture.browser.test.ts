@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createPictureInPicture, pictureInPictureMode } from '../../../src/lib/engine/picture-in-picture'
 
@@ -199,6 +199,26 @@ describe('burn-in picture in picture', () => {
 
     void mirror.play()
     await expect.poll(() => video.paused, { timeout: 2000 }).toBe(false)
+  })
+
+  /**
+   * Frame callbacks follow the browser window's rendering, which stops, or drops to about once a second, with that window
+   * off screen while the page still reads as visible. The picture in picture window is on screen then, and the
+   * composite stood still with them.
+   */
+  it('keeps repainting a playing video when frame callbacks stop', async () => {
+    const { video, subtitles } = await playingVideo()
+    stub(video, 'requestVideoFrameCallback', () => 0)
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+
+    const drawn = vi.spyOn(CanvasRenderingContext2D.prototype, 'drawImage')
+    cleanups.push(() => drawn.mockRestore())
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+
+    expect(video.paused).toBe(false)
+    expect(drawn.mock.calls.filter(([source]) => source === video).length).toBeGreaterThanOrEqual(3)
   })
 
   it('does not report itself on after a destroy landing inside the metadata wait', async () => {
