@@ -234,6 +234,12 @@ reflect the real element froze the window: seeking while paused left the old sce
 transport state is carried by the Media Session instead, which is what the window reads for its
 play/pause button.
 
+Frames are drawn from the page's rendering, which follows the browser window, not the picture in
+picture one. Chrome keeps that rendering at full rate in a hidden tab or a minimized window while
+the window is open, but with the browser window off screen on Wayland it still reads the page as
+visible and renders it about once a second. A timer then repaints instead, which Chrome caps at four
+frames a second, and the subtitles move only at the page's rate.
+
 The window outlives the player. A player unmounted while its window is open leaves it open for a
 second, and the next player mounted in the same document in that time plays in it, at the shape of
 its own video. So an app that mounts a new player for the next episode keeps the window without a
