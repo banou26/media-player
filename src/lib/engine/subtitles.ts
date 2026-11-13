@@ -6,7 +6,7 @@ import { parse } from 'ass-compiler'
 
 export type SubtitleStream = { streamIndex: number, title: string, language: string }
 
-/** -1 turns subtitles off. It frees the track and matches no header, so nothing is set. */
+/** -1 turns subtitles off. It empties the track and matches no header, so nothing is set. */
 export const SUBTITLES_OFF = -1
 
 type SubtitleHeaderPart = { type: 'header', streamIndex: number, content: string, eventsContent: string, styles: Map<string, number> }
@@ -289,8 +289,8 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
    * `subtitle-paused-repaint.browser.test.tsx`'s turn-off case four runs out of four, while adding
    * back EITHER of the other two passes. Neither of those events fires in that test, so what the
    * extra listener buys is timing rather than a trigger, and the honest conclusion is that the clear
-   * after a `freeTrack` is more delicate than it looks. Do not shorten this list without running that
-   * case several times.
+   * when subtitles are turned off is more delicate than it looks. Do not shorten this list without
+   * running that case several times.
    */
   const REPAINT_ON = ['loadedmetadata', 'seeked', 'pause'] as const
   const onRepaintEvent = () => repaint()
@@ -401,12 +401,10 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     const header = headers.get(next)
     const events = [...dialogues.get(next)?.values() ?? []].map((part) => part.assEvent)
     onRenderer((renderer) => {
-      const calls: unknown[] = [renderer.freeTrack()]
-      if (header) {
-        calls.push(renderer.setTrack(header.content))
-        for (const event of events) calls.push(renderer.createEvent(event))
-      }
-      return Promise.all(calls)
+      // Off empties the track rather than freeing it. jassub redoes a draw asked for while one is in flight without
+      // its repaint flag, and from 2.5.30 an unforced draw of a freed track reports no change, so the line stayed up.
+      if (!header) return renderer.removeAllEvents()
+      return Promise.all([renderer.freeTrack(), renderer.setTrack(header.content), ...events.map((event) => renderer.createEvent(event))])
     })
     loadCjkFontFor(events)
     // outside the callback so that turning subtitles OFF while paused clears the picture too
