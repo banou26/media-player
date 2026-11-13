@@ -91,6 +91,11 @@ export default defineConfig({
       allow: ['..'],
     },
   },
+  // Vite's default scan, named so that the browser tests scan it too: Vitest starts theirs from the test files, and a
+  // missing file a test asks for is answered with this page (tests/optimize-deps.test.ts has what that cost).
+  optimizeDeps: {
+    entries: ['index.html'],
+  },
   /**
    * Two kinds of project, because they prove different things.
    *
