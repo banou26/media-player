@@ -193,11 +193,15 @@ export type MediaPlayerLocalOptions =
     jassubWorkerUrl: string
     /** jassub's SIMD build, `jassub-worker-modern.wasm`. */
     jassubWasmUrl: string
+    /** `jassub-worker-modern.js`, the script that runs `jassubWasmUrl`, from the same jassub version. */
+    jassubWasmWorkerUrl: string
     /**
-     * jassub's non-SIMD build, `jassub-worker.wasm`, for Safari before 16.4.
-     * Without it subtitles fail outright on those browsers rather than falling back to the slower build.
+     * jassub's non-SIMD build, `jassub-worker.wasm`, for browsers without relaxed SIMD and for devices
+     * reporting 2 GB of memory or less.
      */
     jassubLegacyWasmUrl?: string
+    /** `jassub-worker.js`, the script that runs `jassubLegacyWasmUrl`. Pass both or neither. */
+    jassubLegacyWasmWorkerUrl?: string
     /** Fallback face for `liberation sans`, used when a subtitle track names a font the file does not carry. */
     defaultFontUrl?: string
     /** `@banou/media-player/noto-sans-jp.otf`, the face for CJK text, fetched once the selected track shows some. */

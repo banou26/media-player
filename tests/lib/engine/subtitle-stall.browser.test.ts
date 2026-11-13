@@ -108,7 +108,9 @@ describe('a subtitle change during a buffering stall', () => {
       container,
       workerUrl: playerAssets.jassubWorkerUrl,
       wasmUrl: playerAssets.jassubWasmUrl,
+      wasmWorkerUrl: playerAssets.jassubWasmWorkerUrl,
       legacyWasmUrl: playerAssets.jassubLegacyWasmUrl,
+      legacyWasmWorkerUrl: playerAssets.jassubLegacyWasmWorkerUrl,
       defaultFontUrl: playerAssets.defaultFontUrl,
     })
     cleanups.push(() => renderer.destroy())
