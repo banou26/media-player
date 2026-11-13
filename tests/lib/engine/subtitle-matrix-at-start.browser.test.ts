@@ -1,7 +1,6 @@
 import type { SubtitleFragment } from 'libav-wasm/build/worker'
 
-import JASSUB from 'jassub'
-import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { createSubtitleRenderer } from '../../../src/lib/engine/subtitles'
 import { readSurface } from '../react/subtitle-surface.fixture'
@@ -12,19 +11,23 @@ import { playerAssets } from '../../../src/asset-urls'
  *
  * jassub reads the video's matrix off a presented frame, and from 2.5.30 it repaints for it only when its last draw
  * time is truthy, which a draw at 0 is not, while an unchanged frame is no longer drawn again. So a line drawn on a
- * picture paused at 0 kept its unconverted colours. Chrome reports this small untagged mp4 as BT.601, under a TV.709
- * script, so pure red converts to about (233, 0, 2). Chromium only, as `subtitle-matrix.browser.test.tsx`: Firefox's
- * video frames report no matrix (Firefox 157 draws it 255, 0, 0 here as well).
+ * picture paused at 0 kept its unconverted colours. Chromium only, as `subtitle-matrix.browser.test.tsx`: Firefox's
+ * video frames report no matrix.
  *
- * Whether the matrix lands before or after that first draw is a race, so the colour alone fails without the fix only
- * some of the time (3 runs in 6 here). The time each repaint asks for is what fails every time.
+ * Handed to the element whole, whether the matrix lands before or after that first draw is a race of a few
+ * milliseconds, so the source is appended in two parts: the init segment gives the metadata the line is drawn at and
+ * no frame, and the matrix comes only with the media appended after that draw. Appended this way Chrome reports the
+ * untagged mp4 as BT.709 (handed over whole, as BT.601), so the TV.601 line's pure red converts to about (255, 25, 0).
  */
+const SOURCE = '/stall-source.mp4'
+const MIME = 'video/mp4; codecs="avc1.42E01E"'
+
 const HEADER = [
   '[Script Info]',
   'ScriptType: v4.00+',
   'PlayResX: 1280',
   'PlayResY: 720',
-  'YCbCr Matrix: TV.709',
+  'YCbCr Matrix: TV.601',
   '',
   '[V4+ Styles]',
   'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
@@ -60,6 +63,22 @@ const fill = (container: HTMLElement) => {
   return null
 }
 
+/** Where the first `moof` starts, so everything before it is the init segment. */
+const initSegmentEnd = (bytes: ArrayBuffer) => {
+  const view = new DataView(bytes)
+  for (let offset = 0, size = 8; size >= 8 && offset + 8 <= bytes.byteLength; offset += size) {
+    if (view.getUint32(offset + 4) === 0x6d6f6f66) return offset
+    size = view.getUint32(offset)
+  }
+  throw new Error(`${SOURCE} has no moof`)
+}
+
+const append = (buffer: SourceBuffer, bytes: ArrayBuffer) => new Promise<void>((resolve, reject) => {
+  buffer.addEventListener('updateend', () => resolve(), { once: true })
+  buffer.addEventListener('error', () => reject(new Error('the append failed')), { once: true })
+  buffer.appendBuffer(bytes)
+})
+
 describe('the YCbCr Matrix header on a picture paused at the start', () => {
   it('converts the line once jassub learns the video matrix', async () => {
     const host = document.createElement('div')
@@ -71,8 +90,6 @@ describe('the YCbCr Matrix header on a picture paused at the start', () => {
     document.body.append(host)
     cleanups.push(() => host.remove())
 
-    const draws = vi.spyOn(JASSUB.prototype, 'manualRender')
-    cleanups.push(() => draws.mockRestore())
     const renderer = createSubtitleRenderer({
       video,
       container,
@@ -88,14 +105,21 @@ describe('the YCbCr Matrix header on a picture paused at the start', () => {
     // the worker and its font are ready, and with no picture yet nothing has been drawn
     await new Promise((resolve) => setTimeout(resolve, 1_000))
 
-    // metadata asks for the one draw, at 0, and only the first frame presented after it tells jassub the matrix
-    video.src = '/stall-source.mp4'
+    const media = new MediaSource()
+    const url = URL.createObjectURL(media)
+    cleanups.push(() => URL.revokeObjectURL(url))
+    video.src = url
+    await new Promise((resolve) => media.addEventListener('sourceopen', resolve, { once: true }))
+    const buffer = media.addSourceBuffer(MIME)
+    const bytes = await (await fetch(SOURCE)).arrayBuffer()
+    const split = initSegmentEnd(bytes)
+
+    await append(buffer, bytes.slice(0, split))
     await expect.poll(() => fill(container), { timeout: 30_000 }).not.toBeNull()
-    await expect.poll(() => fill(container)?.[0], { timeout: 5_000 }).toBeLessThan(245)
+    expect(fill(container), 'jassub knew the matrix before the line was drawn').toEqual([255, 0, 0])
+
+    await append(buffer, bytes.slice(split))
+    await expect.poll(() => fill(container)?.[1], { timeout: 5_000 }).toBeGreaterThan(15)
     expect(video.currentTime).toBe(0)
-    // the player's repaints are the forced ones; jassub's own frame callback draws at the frame's time, after the matrix
-    const repaints = draws.mock.calls.filter(([, repaint]) => repaint)
-    expect(repaints.length).toBeGreaterThan(0)
-    for (const [{ mediaTime }] of repaints) expect(mediaTime, 'a repaint asked for a draw at exactly 0').toBeGreaterThan(0)
   }, 60_000)
 })
