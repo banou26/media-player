@@ -12,8 +12,10 @@ import { playerAssets } from '../../../src/asset-urls'
  * so pure red draws as about (255, 25, 0): jassub's BT.601 to BT.709 matrix takes 0.0965 of red into
  * green. A renderer that never learns the video's matrix draws (255, 0, 0). In Chromium only, since
  * Firefox's video frames report no matrix and nothing is converted there.
+ *
+ * A script with no `YCbCr Matrix` at all is converted as TV.601 too, as libass recommends and mpv does. jassub before
+ * 2.5.30 drew it unconverted.
  */
-const FIXTURE = '/subtitle-matrix.mkv'
 const BOX = { width: 1920, height: 1080 }
 
 const sized = () => {
@@ -23,9 +25,9 @@ const sized = () => {
   return { container }
 }
 
-const httpSource = async () => {
+const httpSource = async (fixture: string) => {
   // the dev server answers a missing file with its page, ok and with no length
-  const head = await fetch(FIXTURE, { method: 'HEAD' })
+  const head = await fetch(fixture, { method: 'HEAD' })
   const size = Number(head.headers.get('content-length'))
   expect(size, 'run `node scripts/fixture.mjs` to generate the test media').toBeGreaterThan(0)
   return {
@@ -33,7 +35,7 @@ const httpSource = async () => {
     read: async (offset: number, length: number) => {
       const end = Math.min(offset + length, size) - 1
       if (end < offset) return new ArrayBuffer(0)
-      const res = await fetch(FIXTURE, { headers: { range: `bytes=${offset}-${end}` } })
+      const res = await fetch(fixture, { headers: { range: `bytes=${offset}-${end}` } })
       return res.arrayBuffer()
     },
   }
@@ -51,9 +53,12 @@ const fill = (root: ParentNode) => {
 }
 
 describe('the YCbCr Matrix header', () => {
-  it('converts a TV.601 line drawn over a BT.709 picture', async () => {
+  it.each([
+    ['a TV.601 line', '/subtitle-matrix.mkv'],
+    ['a line whose script names no matrix', '/subtitle-matrix-default.mkv'],
+  ])('converts %s drawn over a BT.709 picture', async (_, fixture) => {
     const screen = await render(
-      <MediaPlayer {...await httpSource()} {...playerAssets} title="YCbCr Matrix" autoplay />,
+      <MediaPlayer {...await httpSource(fixture)} {...playerAssets} title="YCbCr Matrix" autoplay />,
       sized(),
     )
 
