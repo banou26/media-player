@@ -27,16 +27,26 @@ export type SubtitleRendererOptions = {
    */
   container: HTMLElement
   workerUrl: string
-  /** The SIMD build, `jassub-worker-modern.wasm`. Used wherever WebAssembly SIMD is available. */
+  /**
+   * The SIMD build, `jassub-worker-modern.wasm`. Used wherever relaxed SIMD is available and the device
+   * reports more than 2 GB of memory.
+   */
   wasmUrl: string
   /**
-   * The non-SIMD build, `jassub-worker.wasm`, for anything without WebAssembly SIMD.
+   * The script that runs `wasmUrl`, `jassub-worker-modern.js` from the same jassub version, since each wasm
+   * build has its own. The worker imports it and starts its threads from it, so it is a same-origin url.
+   */
+  wasmWorkerUrl: string
+  /**
+   * The non-SIMD build, `jassub-worker.wasm`, for anything without relaxed SIMD or with 2 GB of memory or less.
    *
    * Optional in practice as well as in the type, unlike under jassub 1: v2 defaults both wasm urls to
    * its own files resolved against `import.meta.url`, so leaving this unset degrades to whatever the
    * bundler emitted rather than failing outright.
    */
   legacyWasmUrl?: string
+  /** The script that runs `legacyWasmUrl`, `jassub-worker.js`. Pass both or neither. */
+  legacyWasmWorkerUrl?: string
   /**
    * Fallback face for `liberation sans`. Without it jassub falls back to whatever the wasm build embeds.
    *
@@ -169,7 +179,9 @@ export type SubtitleRenderer = ReturnType<typeof createSubtitleRenderer>
 export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const { video, container, workerUrl } = options
   const wasmUrl = workerFetched(options.wasmUrl)!
+  const wasmWorkerUrl = workerFetched(options.wasmWorkerUrl)!
   const legacyWasmUrl = workerFetched(options.legacyWasmUrl)
+  const legacyWasmWorkerUrl = workerFetched(options.legacyWasmWorkerUrl)
   const defaultFontUrl = workerFetched(options.defaultFontUrl)
   const cjkFontUrl = workerFetched(options.cjkFontUrl)
   let cjkFontRequested = false
@@ -293,7 +305,9 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         subContent: header.content,
         workerUrl,
         modernWasmUrl: wasmUrl,
+        modernWasmWorkerUrl: wasmWorkerUrl,
         ...legacyWasmUrl ? { wasmUrl: legacyWasmUrl } : {},
+        ...legacyWasmWorkerUrl ? { wasmWorkerUrl: legacyWasmWorkerUrl } : {},
         fonts: attachments.map(([, data]) => data),
         availableFonts: {
           ...Object.fromEntries(attachments),
@@ -309,9 +323,6 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       rendererFailed(error)
       return
     }
-    // A boot that fails worker-side rejects `ready`, and jassub's own ResizeObserver awaits `ready`
-    // on every layout change, so an instance left in that state throws a fresh unhandled rejection
-    // for the rest of the session.
     void jassub.ready.catch(rendererFailed)
     for (const type of REPAINT_ON) video.addEventListener(type, onRepaintEvent)
     /*

@@ -6,15 +6,17 @@
 // something no browser can load. The bundler has to build that graph, which is what `?worker&url`
 // asks it to do.
 //
-// `?no-inline` on the three data assets is what keeps them files. Vite inlines every asset as a
-// base64 data url when `build.lib` is set, ignoring `assetsInlineLimit`, and the two wasm builds
-// plus the fallback font come to about 4.4 MB, which would land in the entry chunk of any consumer
-// that builds as a library. This repo builds as an app, where the limit applies and they would stay
-// files anyway; the query is here because README points at this file as the pattern to copy, and
-// the consumers that follow it do build as libraries.
+// `?no-inline` on the other five is what keeps them files. Vite inlines every asset as a base64 data
+// url when `build.lib` is set, ignoring `assetsInlineLimit`, and the two wasm builds, their two
+// scripts and the fallback font come to about 4.5 MB, which would land in the entry chunk of any
+// consumer that builds as a library. This repo builds as an app, where the limit applies and they
+// would stay files anyway; the query is here because README points at this file as the pattern to
+// copy, and the consumers that follow it do build as libraries.
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url'
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?no-inline&url'
+import jassubWasmWorkerUrl from 'jassub/dist/wasm/jassub-worker-modern.js?no-inline&url'
 import jassubLegacyWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?no-inline&url'
+import jassubLegacyWasmWorkerUrl from 'jassub/dist/wasm/jassub-worker.js?no-inline&url'
 import defaultFontUrl from 'jassub/dist/default.woff2?no-inline&url'
 import cjkFontUrl from './lib/assets/noto-sans-jp.otf?no-inline&url'
 // a consumer imports `@banou/media-player/volume-normalizer-worklet.js?no-inline&url`; the app resolves the
@@ -26,14 +28,19 @@ const origin = new URL(window.location.toString()).origin
 export const publicPath = new URL('/', origin).toString()
 export const libavWorkerUrl = new URL('/libav-worker.js', origin).toString()
 
-export { jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, normalizerWorkletUrl }
+export {
+  jassubWorkerUrl, jassubWasmUrl, jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl, defaultFontUrl,
+  cjkFontUrl, normalizerWorkletUrl,
+}
 
 export const playerAssets = {
   publicPath,
   libavWorkerUrl,
   jassubWorkerUrl,
   jassubWasmUrl,
+  jassubWasmWorkerUrl,
   jassubLegacyWasmUrl,
+  jassubLegacyWasmWorkerUrl,
   defaultFontUrl,
   cjkFontUrl,
   normalizerWorkletUrl,

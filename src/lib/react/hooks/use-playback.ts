@@ -79,11 +79,11 @@ export const usePlayback = (
   onOutput?: (output: PlaybackOutput) => void,
 ) => {
   const player = usePlayer()
-  // The four asset urls are required on the local arm, so a default only ever applies when options is
+  // The five asset urls are required on the local arm, so a default only ever applies when options is
   // null, and the effect below returns before touching them in that case.
   const {
-    read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '',
-    jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize, autoplay = false, chapters,
+    read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '', jassubWasmWorkerUrl = '',
+    jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl, defaultFontUrl, cjkFontUrl, bufferSize, autoplay = false, chapters,
     seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS,
   } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
 
@@ -378,7 +378,9 @@ export const usePlayback = (
           libavWorkerUrl,
           jassubWorkerUrl,
           jassubWasmUrl,
+          jassubWasmWorkerUrl,
           jassubLegacyWasmUrl,
+          jassubLegacyWasmWorkerUrl,
           defaultFontUrl,
           cjkFontUrl,
           bufferSize,
@@ -447,6 +449,7 @@ export const usePlayback = (
     // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
   }, [
     player, playingAudio, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
-    jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize, audioStreamIndex, autoplay, restartToken,
+    jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl, defaultFontUrl, cjkFontUrl, bufferSize,
+    audioStreamIndex, autoplay, restartToken,
   ])
 }

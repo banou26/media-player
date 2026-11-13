@@ -23,7 +23,9 @@ import MediaPlayer from '@banou/media-player'
   libavWorkerUrl="/libav-worker.js"
   jassubWorkerUrl={jassubWorkerUrl}
   jassubWasmUrl={jassubWasmUrl}
+  jassubWasmWorkerUrl={jassubWasmWorkerUrl}
   jassubLegacyWasmUrl={jassubLegacyWasmUrl}
+  jassubLegacyWasmWorkerUrl={jassubLegacyWasmWorkerUrl}
   defaultFontUrl={defaultFontUrl}
   cjkFontUrl={cjkFontUrl}
   title="episode.mkv"
@@ -116,28 +118,18 @@ vite that is one query each, in your own source:
 ```ts
 import jassubWorkerUrl from 'jassub/dist/worker/worker.js?worker&url'
 import jassubWasmUrl from 'jassub/dist/wasm/jassub-worker-modern.wasm?no-inline&url'
+import jassubWasmWorkerUrl from 'jassub/dist/wasm/jassub-worker-modern.js?no-inline&url'
 import jassubLegacyWasmUrl from 'jassub/dist/wasm/jassub-worker.wasm?no-inline&url'
+import jassubLegacyWasmWorkerUrl from 'jassub/dist/wasm/jassub-worker.js?no-inline&url'
 import defaultFontUrl from 'jassub/dist/default.woff2?no-inline&url'
 ```
 
 `?no-inline` is load bearing for anything built with `build.lib` set: vite inlines every asset as a
 base64 data url in library mode and ignores `assetsInlineLimit` while doing it, so without it the two
-wasm builds and the font land in your entry chunk as about 5.9 MB of base64. `src/asset-urls.ts` in
-this repo is the same four lines and is meant to be copied.
-
-**If you build with `build.lib` set, build these four in a separate pass with it UNSET.** `?no-inline`
-covers the assets you name, and it cannot cover the ones jassub names for itself: its emscripten glue
-resolves the wasm with `new URL('./wasm/...', import.meta.url)` inside the worker, and lib mode inlines
-those too. Measured on this version, one entry importing exactly the four lines above:
-
-| build | worker chunk | base64 wasm blobs |
-| --- | --- | --- |
-| `build.lib` set | 2,922,207 bytes | 2 |
-| no `build.lib` | 110,525 bytes | 0 |
-
-`assetsInlineLimit: 0` and the function form both make no difference, because lib mode decides to
-inline before it consults either. A second vite config with a single JS entry, no `lib`, and the same
-`outDir` produces the 110 KB worker, the 30 KB pthread glue and both wasm files as real files.
+wasm builds, their scripts and the font land in your entry chunk as about 6 MB of base64.
+`src/asset-urls.ts` in this repo is the same six lines and is meant to be copied. With them, one pass
+is enough even in library mode: from jassub 2.5.35 the worker loads its wasm script by url instead of
+bundling it, so the worker chunk comes out at 90,949 bytes with no base64 in it, with `build.lib` set or not.
 
 `?no-inline&url` needs a type declaration, because vite's own ambient `*?url` only matches a specifier
 ENDING in `?url`. See `src/vite-env.d.ts`.
@@ -146,12 +138,17 @@ The two wasm builds are picked at runtime:
 
 | option | file | when it is used |
 | --- | --- | --- |
-| `jassubWasmUrl` | `jassub/dist/wasm/jassub-worker-modern.wasm` | wherever RELAXED SIMD exists |
+| `jassubWasmUrl` | `jassub/dist/wasm/jassub-worker-modern.wasm` | wherever RELAXED SIMD exists and the device reports more than 2 GB of memory |
 | `jassubLegacyWasmUrl` | `jassub/dist/wasm/jassub-worker.wasm` | everywhere else |
+
+Each build runs from its own script, `jassubWasmWorkerUrl` and `jassubLegacyWasmWorkerUrl`, which jassub's worker
+imports and starts its threads from, so they are served from your origin as JavaScript and come from the same jassub
+version as the wasm beside them.
 
 The test is RELAXED simd, not baseline simd: jassub validates a module using `i8x16.relaxed_swizzle`.
 That is a much later feature than plain SIMD, so the second file is not a museum piece for ancient
-Safari the way it was under jassub 1. Serve both.
+Safari the way it was under jassub 1. The memory rule is jassub's own (`navigator.deviceMemory`): its SIMD
+build allocates with mimalloc, which grows the heap two to three times as far. Serve both.
 
 Serve the wasm as `application/wasm`: jassub instantiates it with `instantiateStreaming`, which
 refuses any other content type.

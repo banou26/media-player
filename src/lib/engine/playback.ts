@@ -53,8 +53,12 @@ export type PlaybackOptions = {
   libavWorkerUrl: string
   jassubWorkerUrl: string
   jassubWasmUrl: string
-  /** jassub's non-SIMD build; without it subtitles fail rather than degrade on Safari before 16.4 */
+  /** `jassub/dist/wasm/jassub-worker-modern.js`, the script that runs `jassubWasmUrl` */
+  jassubWasmWorkerUrl: string
+  /** jassub's non-SIMD build, for browsers without relaxed SIMD and devices with 2 GB of memory or less */
   jassubLegacyWasmUrl?: string
+  /** `jassub/dist/wasm/jassub-worker.js`, the script that runs `jassubLegacyWasmUrl` */
+  jassubLegacyWasmWorkerUrl?: string
   defaultFontUrl?: string
   cjkFontUrl?: string
   bufferSize?: number
@@ -165,7 +169,8 @@ export const terminateRemuxer = (remuxer: { worker: Worker, destroy: () => Promi
 export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackController> => {
   const {
     videoElement, subtitleContainer, read, length, publicPath, libavWorkerUrl,
-    jassubWorkerUrl, jassubWasmUrl, jassubLegacyWasmUrl, defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
+    jassubWorkerUrl, jassubWasmUrl, jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl,
+    defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, chooseAudioStream, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
     onAudioStreams, onOutput,
   } = options
@@ -212,7 +217,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       container: subtitleContainer,
       workerUrl: jassubWorkerUrl,
       wasmUrl: jassubWasmUrl,
+      wasmWorkerUrl: jassubWasmWorkerUrl,
       legacyWasmUrl: jassubLegacyWasmUrl,
+      legacyWasmWorkerUrl: jassubLegacyWasmWorkerUrl,
       defaultFontUrl,
       cjkFontUrl,
       onStreams: onSubtitleStreams,
