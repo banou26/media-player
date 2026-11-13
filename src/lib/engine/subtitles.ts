@@ -269,7 +269,9 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
             expectedDisplayTime: performance.now(),
             width: video.videoWidth,
             height: video.videoHeight,
-            mediaTime: video.currentTime,
+            // Never exactly 0: from 2.5.30 jassub redraws for a colour space it learns late only `if (this._lastDrawTime)`,
+            // so a picture paused at the start kept its unconverted colours. libass rounds to the millisecond.
+            mediaTime: video.currentTime || Number.MIN_VALUE,
           }, true)
         })
         .catch(rendererFailed)
