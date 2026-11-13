@@ -40,6 +40,34 @@ const httpSource = async () => {
   }
 }
 
+/**
+ * Every rejection nobody handled from now until the returned function is awaited.
+ *
+ * Chrome fires `unhandledrejection` in a task after the microtasks that rejected, so a check made as soon as the
+ * failure shows can run before it. Rejections are reported in the order they happened, so one made at the end and
+ * seen arriving means every earlier one has arrived. Vitest's own check counts none while a page listens for them.
+ */
+const unhandledRejections = () => {
+  const reasons: unknown[] = []
+  const record = (event: PromiseRejectionEvent) => { reasons.push(event.reason) }
+  window.addEventListener('unhandledrejection', record)
+  cleanups.push(() => window.removeEventListener('unhandledrejection', record))
+  return async () => {
+    const last = new Error('a marker: every unhandled rejection before this one has been reported')
+    await new Promise<void>((resolve) => {
+      const onLast = (event: PromiseRejectionEvent) => {
+        if (event.reason !== last) return
+        event.preventDefault()
+        window.removeEventListener('unhandledrejection', onLast)
+        resolve()
+      }
+      window.addEventListener('unhandledrejection', onLast)
+      void Promise.reject(last)
+    })
+    return reasons.filter((reason) => reason !== last)
+  }
+}
+
 const play = async (simd: boolean, props: Partial<Record<(typeof BUILDS)[number]['prop'], string>> = {}) => {
   const detected = JASSUB._supportsSIMD
   JASSUB._supportsSIMD = simd
@@ -71,16 +99,11 @@ describe.each(BUILDS)('the $build build', ({ simd, prop }) => {
   }, 60_000)
 
   it(`runs from ${prop}, not from a script jassub finds for itself`, async () => {
-    // jassub's own `setVideo` awaits the failed `ready` with no handler, out of the player's reach
-    const unhandled: unknown[] = []
-    const record = (event: PromiseRejectionEvent) => unhandled.push(event.reason)
-    window.addEventListener('unhandledrejection', record)
-    cleanups.push(() => window.removeEventListener('unhandledrejection', record))
-
+    const unhandled = unhandledRejections()
     const { drawn, failure } = await play(simd, { [prop]: MISSING })
     await expect.poll(failure, { timeout: 30_000 }).toBeDefined()
     expect(String(failure()![1])).toContain(MISSING)
     expect(drawn()).toBeNull()
-    for (const reason of unhandled) expect(String(reason)).toContain(MISSING)
+    expect(await unhandled()).toEqual([])
   }, 60_000)
 })

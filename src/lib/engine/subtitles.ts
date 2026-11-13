@@ -207,6 +207,8 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const rendererFailed = (error: unknown) => {
     console.warn('the subtitle renderer failed; the file plays without subtitles', error)
   }
+  // a renderer that never started is reported once, by `bootJassub`, not again by everything that waited on it
+  const startFailed = () => undefined
 
   /**
    * Run something against the worker, once there is a worker to run it against.
@@ -302,7 +304,6 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     container.append(canvas)
     try {
       jassub = new JASSUB({
-        video,
         canvas,
         subContent: header.content,
         workerUrl,
@@ -325,6 +326,9 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       rendererFailed(error)
       return
     }
+    // Not handed to the constructor, which attaches it with a `setVideo` nothing catches: that rejects with `ready`, so a
+    // renderer that cannot start would leave an unhandled rejection in the host page.
+    void jassub.setVideo(video).catch(startFailed)
     void jassub.ready.catch(rendererFailed)
     for (const type of REPAINT_ON) video.addEventListener(type, onRepaintEvent)
     /*
