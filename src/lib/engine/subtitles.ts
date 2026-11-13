@@ -232,7 +232,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     const instance = jassub
     if (!instance) return
     void instance.ready
-      .then(() => (jassub === instance ? run(instance.renderer) : undefined))
+      .then(() => (jassub === instance ? run(instance.renderer) : undefined), startFailed)
       .catch(rendererFailed)
   }
 
@@ -275,7 +275,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
             // so a picture paused at the start kept its unconverted colours. libass rounds to the millisecond.
             mediaTime: video.currentTime || Number.MIN_VALUE,
           }, true)
-        })
+        }, startFailed)
         .catch(rendererFailed)
     })
   }
