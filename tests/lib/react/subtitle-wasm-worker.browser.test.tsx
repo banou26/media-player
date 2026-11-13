@@ -87,8 +87,9 @@ const play = async (simd: boolean, props: Partial<Record<(typeof BUILDS)[number]
     const read = surface && readSurface(surface)
     return read ? ink(read) : null
   }
-  const failure = () => warn.mock.calls.find(([message]) => String(message).startsWith('the subtitle renderer failed'))
-  return { drawn, failure }
+  const failures = () => warn.mock.calls.filter(([message]) => String(message).startsWith('the subtitle renderer failed'))
+  const failure = () => failures()[0]
+  return { drawn, failure, failures }
 }
 
 describe.each(BUILDS)('the $build build', ({ simd, prop }) => {
@@ -100,10 +101,11 @@ describe.each(BUILDS)('the $build build', ({ simd, prop }) => {
 
   it(`runs from ${prop}, not from a script jassub finds for itself`, async () => {
     const unhandled = unhandledRejections()
-    const { drawn, failure } = await play(simd, { [prop]: MISSING })
+    const { drawn, failure, failures } = await play(simd, { [prop]: MISSING })
     await expect.poll(failure, { timeout: 30_000 }).toBeDefined()
     expect(String(failure()![1])).toContain(MISSING)
     expect(drawn()).toBeNull()
     expect(await unhandled()).toEqual([])
+    expect(failures()).toHaveLength(1)
   }, 60_000)
 })
