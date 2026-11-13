@@ -105,6 +105,12 @@ export default defineConfig({
    * reacting to real events.
    */
   test: {
+    // Vitest's own defaults, and a bound on a run that stops reporting, which no timeout of Vitest's covers
+    reporters: [
+      'default',
+      ...process.env.GITHUB_ACTIONS === 'true' ? ['github-actions'] : [],
+      new URL('./tests/stall-watchdog.ts', import.meta.url).pathname,
+    ],
     projects: [
       {
         extends: true,
