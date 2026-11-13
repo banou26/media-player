@@ -20,7 +20,7 @@ import { playerAssets } from '../../../src/asset-urls'
  * happen to press play.
  *
  * It doubles as the answer to a question that could not be settled by reading the wasm: whether
- * `rawRender` after a `freeTrack` yields an empty list (which clears the surface) or null (which
+ * `rawRender` of the emptied track yields an empty list (which clears the surface) or null (which
  * makes `_draw` return early and leaves the last frame up forever).
  */
 const FIXTURE = '/subtitle-scale.mkv'
