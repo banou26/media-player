@@ -242,12 +242,16 @@ export const MATRIX_HEADER = [
   '',
 ].join('\n')
 
-export const ensureMatrixFixture = async () => {
-  if (await exists(MATRIX_FIXTURE_PATH)) return MATRIX_FIXTURE_PATH
+/** The same picture and line under a script with no `YCbCr Matrix`, which libass reads as TV.601. */
+export const MATRIX_DEFAULT_FIXTURE = 'subtitle-matrix-default.mkv'
+export const MATRIX_DEFAULT_FIXTURE_PATH = PUBLIC_DIR + MATRIX_DEFAULT_FIXTURE
+
+const writeMatrixFixture = async (path, header) => {
+  if (await exists(path)) return path
   await mkdir(PUBLIC_DIR, { recursive: true })
 
-  const subs = MATRIX_FIXTURE_PATH + '.ass'
-  await writeFile(subs, MATRIX_HEADER)
+  const subs = path + '.ass'
+  await writeFile(subs, header)
   await run('ffmpeg', [
     '-y', '-loglevel', 'error',
     '-f', 'lavfi', '-i', 'color=c=0x101010:size=1920x1080:rate=24:duration=6',
@@ -259,11 +263,15 @@ export const ensureMatrixFixture = async () => {
     '-c:s', 'copy',
     '-map', '0:v', '-map', '1:a', '-map', '2:s',
     '-metadata:s:s:0', 'language=eng',
-    MATRIX_FIXTURE_PATH,
+    path,
   ])
   await rm(subs, { force: true })
-  return MATRIX_FIXTURE_PATH
+  return path
 }
+
+export const ensureMatrixFixture = () => writeMatrixFixture(MATRIX_FIXTURE_PATH, MATRIX_HEADER)
+export const ensureMatrixDefaultFixture = () =>
+  writeMatrixFixture(MATRIX_DEFAULT_FIXTURE_PATH, MATRIX_HEADER.replace('YCbCr Matrix: TV.601\n', ''))
 
 export const HEADER_FIXTURE = 'subtitle-header.mkv'
 export const HEADER_FIXTURE_PATH = PUBLIC_DIR + HEADER_FIXTURE
@@ -915,7 +923,7 @@ export const ensureNormalizerFixtures = async () => {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensurePictureTimeFixture, ensureLanguagesFixture, ensureLanguagesUndFixture]) {
+  for (const make of [ensureNormalizerFixtures, ensureLoudFixture, ensureCueFixture, ensureStepFixture, ensureLongGopFixture, ensureShortAudioFixture, ensureShortVideoFixture, ensureShorterAudioFixture, ensureShortGopFixture, ensureFixture, ensureNativeFixture, ensureScaleFixture, ensureSeekFixture, ensureSubRipFixture, ensureMatrixFixture, ensureMatrixDefaultFixture, ensureHeaderFixture, ensureCjkFixture, ensureStallFixture, ensureThumbnailFixture, ensureChapterFixture, ensureAnimeFixture, ensureFrameStepFixture, ensureFrameStep60Fixture, ensurePictureTimeFixture, ensureLanguagesFixture, ensureLanguagesUndFixture]) {
     const path = await make()
     const { size } = await stat(path)
     console.log(`fixture ready: ${path} (${size} bytes)`)
