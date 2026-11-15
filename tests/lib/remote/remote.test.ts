@@ -1185,6 +1185,30 @@ describe('the autoplay switch a mirror sets', () => {
     expect(second.autoplay).toEqual([])
   })
 
+  it('a mirror hears it change with no word of its own: the player going, then the next one\'s catch-up', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    flip(first.served, true)
+    await settled()
+    const heard: (boolean | null)[] = []
+    player.addEventListener('autoplaynextchange', () => heard.push(player.autoplayNext))
+
+    stopFirst()
+    await settled()
+    expect(heard, 'the `emptied` it goes with').toEqual([null])
+
+    // a host's prop, shown before the player is served, so no event of its own says it
+    const second = servedPlayer()
+    second.served.autoplayNext = false
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    await settled()
+    expect(heard).toEqual([null, false])
+  })
+
   it('a write between one player and the next is what the next one starts in', async () => {
     const first = servedPlayer()
     const { port1, port2 } = new MessageChannel()
