@@ -10,7 +10,7 @@ import { expose } from 'osra'
 import { exposePlayer, mediaPlayer, PLAYER_CHANNEL } from '../../../src/lib/remote/index'
 import type { ServedPlayer } from '../../../src/lib/remote/index'
 import type { PlayerService, PlayerUpdate } from '../../../src/lib/remote/protocol'
-import { EMPTY_SNAPSHOT } from '../../../src/lib/remote/protocol'
+import { EMPTY_SNAPSHOT, snapshotOf } from '../../../src/lib/remote/protocol'
 import type { MediaChapter } from '../../../src/lib/engine'
 
 /** A media that answers like an element and records what was done to it. */
@@ -808,13 +808,27 @@ describe('a player whose play() resolves without playing', () => {
 const servedPlayer = (chapters: MediaChapter[] = []) => {
   const told: (boolean | null)[] = []
   const asked: boolean[] = []
+  const autoplay: (boolean | null)[] = []
   const served = Object.assign(new EventTarget(), {
     chapters,
     endingOffered: true,
+    autoplayNext: null as boolean | null,
     onHostFullscreen: (active: boolean | null) => { told.push(active) },
     onEndingOffered: (offered: boolean) => { asked.push(offered) },
+    onAutoplayNext: (on: boolean | null) => { autoplay.push(on) },
   })
-  return { served: served as ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean }, told, asked }
+  return {
+    served: served as ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null },
+    told,
+    asked,
+    autoplay,
+  }
+}
+
+/** What a player does when its switch changes: it says so after its render. */
+const flip = (served: ServedPlayer & { autoplayNext: boolean | null }, on: boolean | null) => {
+  served.autoplayNext = on
+  served.dispatchEvent(new Event('autoplaynextchange'))
 }
 
 const OPENING: MediaChapter[] = [{ start: 0, end: 90, title: 'Opening' }, { start: 90, end: 120, title: 'Episode' }]
@@ -1099,5 +1113,173 @@ describe('the offer of a player\'s last ending', () => {
     expect(asked).toEqual([])
     await service.set('default', 'endingOffered', false)
     expect(asked).toEqual([false])
+  })
+})
+
+describe('the autoplay switch a mirror sets', () => {
+  it('reaches the player, and the mirror reads only what the player then says', async () => {
+    const { served, autoplay } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    expect(player.autoplayNext).toBe(null)
+
+    player.autoplayNext = false
+    await settled()
+    expect(autoplay).toEqual([false])
+    expect(player.autoplayNext, 'before the player said so').toBe(null)
+
+    const heard: (boolean | null)[] = []
+    player.addEventListener('autoplaynextchange', () => heard.push(player.autoplayNext))
+    flip(served, false)
+    await settled()
+    expect(heard).toEqual([false])
+
+    flip(served, true)
+    await settled()
+    expect(heard).toEqual([false, true])
+  })
+
+  it('is told to the next player served under the id, and so is the viewer\'s flip since', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    player.autoplayNext = false
+    await settled()
+    flip(first.served, false)
+    await settled()
+
+    stopFirst()
+    const second = servedPlayer()
+    const stopSecond = exposePlayer(fakeMedia(), { transport: port1, player: second.served })
+    expect(second.autoplay).toEqual([false])
+    flip(second.served, false)
+    flip(second.served, true)
+    await settled()
+    expect(player.autoplayNext).toBe(true)
+
+    stopSecond()
+    const third = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: third.served }))
+    expect(third.autoplay).toEqual([true])
+  })
+
+  it('keeps nothing a mirror did not set: a viewer\'s flip alone is the player\'s own', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    flip(first.served, true)
+    await settled()
+
+    stopFirst()
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.autoplay).toEqual([])
+  })
+
+  it('a write between one player and the next is what the next one starts in', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    stopFirst()
+    player.autoplayNext = true
+    await settled()
+
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.autoplay).toEqual([true])
+  })
+
+  it('is forgotten once the last mirror of the id goes, and the player is told null', async () => {
+    const { served, autoplay } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const one = mediaPlayer(port2)
+    const other = mediaPlayer(port2)
+    await Promise.all([one.ready, other.ready])
+    one.autoplayNext = false
+    await settled()
+    expect(autoplay).toEqual([false])
+
+    one.destroy()
+    await settled()
+    expect(autoplay, 'a mirror of the id is still open').toEqual([false])
+    other.destroy()
+    await settled()
+    expect(autoplay).toEqual([false, null])
+  })
+
+  it('a write before the player has answered goes out once it has', async () => {
+    const { served, autoplay } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    player.autoplayNext = true
+    await settled()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    await player.ready
+    await settled()
+    expect(autoplay).toEqual([true])
+  })
+
+  it('rides the snapshot, and a bare element reads null', async () => {
+    expect(snapshotOf(fakeMedia()).autoplayNext).toBe(null)
+    expect(snapshotOf(fakeMedia(), [], true, false).autoplayNext).toBe(false)
+    expect(EMPTY_SNAPSHOT.autoplayNext).toBe(null)
+
+    const { player, stop } = pair()
+    open.push(stop, player.destroy)
+    await player.ready
+    player.autoplayNext = false
+    await settled()
+    expect(player.autoplayNext).toBe(null)
+  })
+
+  it('a player older than this, which ignores the write and never says, reads null', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const { autoplayNext: _, ...older } = EMPTY_SNAPSHOT
+    const set = vi.fn()
+    const signal = new AbortController()
+    open.push(() => signal.abort())
+    void expose<unknown>({
+      subscribe: (_: string, port: MessagePort) => { port.postMessage({ event: 'loadstart', snapshot: older }) },
+      set,
+      call: async () => {},
+    }, { transport: port1, key: PLAYER_CHANNEL, unregisterSignal: signal.signal })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+    player.autoplayNext = false
+    await expect.poll(() => set.mock.calls.length).toBe(1)
+    expect(player.autoplayNext).toBe(null)
+  })
+
+  it('the peer\'s word is taken only as a boolean, and only for an id a mirror listens to', async () => {
+    const { served, autoplay } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    await service.set('default', 'autoplayNext', false)
+    expect(autoplay, 'nobody listens to the id').toEqual([])
+
+    const { port1: mine, port2: theirs } = new MessageChannel()
+    await service.subscribe('default', theirs)
+    open.push(() => mine.close())
+    await service.set('default', 'autoplayNext', 0)
+    await service.set('elsewhere', 'autoplayNext', false)
+    expect(autoplay).toEqual([])
+    await service.set('default', 'autoplayNext', false)
+    expect(autoplay).toEqual([false])
   })
 })

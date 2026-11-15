@@ -33,6 +33,8 @@ export type PlayerSnapshot = {
   chapters: MediaChapter[]
   /** Whether a `<MediaPlayer expose>` offers to skip its last ending. Set after its render, so false means the offer is off the screen. */
   endingOffered: boolean
+  /** The state of a `<MediaPlayer expose>`'s "Autoplay next episode" switch, null while it shows none or for a bare element. */
+  autoplayNext: boolean | null
 }
 
 /**
@@ -47,10 +49,10 @@ export const PLAYER_EVENTS = [
   'canplay', 'canplaythrough', 'emptied', 'resize', 'error',
 ] as const
 /**
- * The events a `<MediaPlayer expose>` raises beside its media's: its chapters changed, and its viewer pressed
- * fullscreen while a mirror made with `fullscreen: true` has it.
+ * The events a `<MediaPlayer expose>` raises beside its media's: its chapters changed, its viewer pressed
+ * fullscreen while a mirror made with `fullscreen: true` has it, and its autoplay switch changed.
  */
-export const SERVED_EVENTS = ['chapterschange', 'fullscreenrequest'] as const
+export const SERVED_EVENTS = ['chapterschange', 'fullscreenrequest', 'autoplaynextchange'] as const
 export type PlayerEvent = typeof PLAYER_EVENTS[number] | typeof SERVED_EVENTS[number]
 
 /** The properties an embedder may set. Everything else is read-only on a media, here as there. */
@@ -94,8 +96,11 @@ export type PlayerUpdate = { event: PlayerEvent, snapshot: PlayerSnapshot }
 export type PlayerService = {
   /** With `fullscreen`, the mirror takes the player's fullscreen over, in that state, until its port goes. */
   subscribe: (id: string, port: MessagePort, options?: { fullscreen?: boolean }) => void
-  /** `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise. */
-  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered', value: number | boolean) => void
+  /**
+   * `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise.
+   * `autoplayNext` is kept for the id while a mirror listens to it, and told to each player served under it.
+   */
+  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext', value: number | boolean) => void
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -126,7 +131,12 @@ const pairs = (ranges: TimeRangesLike | undefined): [number, number][] => {
 }
 
 /** A media as a snapshot. A NaN duration, which a bare element answers before it has metadata, is sent as 0. */
-export const snapshotOf = (media: PlayerMedia, chapters: MediaChapter[] = [], endingOffered = true): PlayerSnapshot => ({
+export const snapshotOf = (
+  media: PlayerMedia,
+  chapters: MediaChapter[] = [],
+  endingOffered = true,
+  autoplayNext: boolean | null = null,
+): PlayerSnapshot => ({
   currentTime: finite(media.currentTime),
   duration: finite(media.duration),
   paused: media.paused,
@@ -145,6 +155,7 @@ export const snapshotOf = (media: PlayerMedia, chapters: MediaChapter[] = [], en
   videoHeight: media.videoHeight ?? 0,
   chapters,
   endingOffered,
+  autoplayNext,
 })
 
 // NaN only. A live media reports `duration: Infinity` and means it, so sending 0 for it would mirror
@@ -156,6 +167,7 @@ export const EMPTY_SNAPSHOT: PlayerSnapshot = {
   currentTime: 0, duration: 0, paused: true, ended: false, seeking: false, readyState: 0,
   volume: 1, muted: false, playbackRate: 1, src: '', currentSrc: '',
   buffered: [], seekable: [], error: null, videoWidth: 0, videoHeight: 0, chapters: [], endingOffered: true,
+  autoplayNext: null,
 }
 
 /** Plain pairs back into the structural `TimeRanges` the player reads. */

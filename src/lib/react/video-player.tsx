@@ -71,6 +71,16 @@ type CommonOptions = {
   autoplay?: boolean
 
   /**
+   * The settings menu's "Autoplay next episode" switch, for a host that plays the next episode itself: the player plays
+   * nothing next. Without it, and with no embedder setting it through `expose`, there is no switch. The player keeps the
+   * switch's state from here and from the viewer's clicks; nothing is saved, so a host that wants it to stick saves
+   * what `onAutoplayNextChange` reports and passes it back. A value an embedder sets wins over this one.
+   */
+  autoplayNext?: boolean
+  /** The viewer flipped the switch, to `autoplayNext`: what a host saves to pass back as `autoplayNext`. */
+  onAutoplayNextChange?: (autoplayNext: boolean) => void
+
+  /**
    * Named spans of the timeline, drawn as segments on the seekbar.
    *
    * Common to both arms rather than remote-only, unlike `thumbnails`. A local file is just as likely
@@ -388,12 +398,20 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // mirror made with `fullscreen: true` takes the fullscreen over.
   const [embedderFullscreen, setEmbedderFullscreen] = useState<boolean | null>(null)
   const [endingOffered, setEndingOffered] = useState(true)
-  const [served] = useState<ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean }>(
+  const [embedderAutoplayNext, setEmbedderAutoplayNext] = useState<boolean | null>(null)
+  const [autoplayNext, setAutoplayNext] = useState(options.autoplayNext)
+  const [served] = useState<ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null }>(
     () => Object.assign(new EventTarget(), {
       chapters: [],
       endingOffered: true,
+      autoplayNext: null,
       onHostFullscreen: setEmbedderFullscreen,
       onEndingOffered: setEndingOffered,
+      // each write applies, even one equal to the last: the viewer may have flipped the switch since
+      onAutoplayNext: (on: boolean | null) => {
+        setEmbedderAutoplayNext(on)
+        if (on !== null) setAutoplayNext(on)
+      },
     }),
   )
   const exposeOptions = expose === true ? {} : expose || undefined
@@ -424,6 +442,15 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     served.endingOffered = endingOffered
     served.dispatchEvent(new Event('chapterschange'))
   }, [chaptersKey, endingOffered])
+
+  const autoplayNextProp = options.autoplayNext
+  useEffect(() => { if (embedderAutoplayNext === null) setAutoplayNext(autoplayNextProp) }, [autoplayNextProp, embedderAutoplayNext])
+  const onAutoplayNextChange = useRef(options.onAutoplayNextChange)
+  onAutoplayNextChange.current = options.onAutoplayNextChange
+  useEffect(() => {
+    served.autoplayNext = autoplayNext ?? null
+    served.dispatchEvent(new Event('autoplaynextchange'))
+  }, [autoplayNext])
 
   const fullscreen = options.fullscreen ?? (embedderFullscreen === null ? undefined : {
     active: embedderFullscreen,
@@ -535,6 +562,18 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   useEffect(() => {
     setSourceState({ volumeNormalizer })
   }, [setSourceState, volumeNormalizer])
+
+  useEffect(() => {
+    setSourceState({
+      autoplayNext: autoplayNext === undefined ? null : {
+        enabled: autoplayNext,
+        setEnabled: (enabled) => {
+          setAutoplayNext(enabled)
+          onAutoplayNextChange.current?.(enabled)
+        },
+      },
+    })
+  }, [setSourceState, autoplayNext])
 
   // its own effect: it changes on every hover of the control, and nothing else here does
   useEffect(() => {

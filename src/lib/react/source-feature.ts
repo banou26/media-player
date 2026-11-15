@@ -107,6 +107,12 @@ export type VolumeNormalizerControl = {
   setEnabled: (enabled: boolean) => void
 }
 
+/** The settings menu's "Autoplay next episode" switch, for a host or an embedder that offers one (see `autoplayNext`). */
+export type AutoplayNextControl = {
+  enabled: boolean
+  setEnabled: (enabled: boolean) => void
+}
+
 /**
  * Everything about the source that the chrome reads, carried on the player store next to the built-in
  * playback state so a component never has to know which of two channels owns a field.
@@ -225,6 +231,9 @@ export type SourceState = {
   /** null when the player offers no volume normalizer: a media it does not own, or no `normalizerWorkletUrl`. */
   volumeNormalizer: VolumeNormalizerControl | null
 
+  /** null when neither the host nor an embedder offers the switch. */
+  autoplayNext: AutoplayNextControl | null
+
   /**
    * Move the playhead, letting the pipeline get the data there first.
    *
@@ -302,6 +311,7 @@ const initialState: SourceState = {
   pictureInPictureMode: null,
   burnedInSubtitles: false,
   volumeNormalizer: null,
+  autoplayNext: null,
   playbackError: null,
   playbackErrors: [],
   ready: false,

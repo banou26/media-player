@@ -314,6 +314,13 @@ import normalizerWorkletUrl from '@banou/media-player/volume-normalizer-worklet.
 The player saves nothing, so an app that wants the choice to stick saves what `onNormalizeVolumeChange` reports and
 passes it back.
 
+### Autoplay next episode
+
+An app that plays the next episode itself passes `autoplayNext` to show an "Autoplay next episode" switch as the first
+row of the settings menu. The player plays nothing next and saves nothing: save what `onAutoplayNextChange` reports
+and pass it back, as for the volume normalizer. Without the prop there is no switch, unless a page framing the player
+sets one through [`<MediaPlayer expose>`](#layout).
+
 It works in two stages. A worker reads the file a second time, through `thumbnailRead` when you pass one and only
 within `downloadedRanges` (for a source that `readsDownload` it reads nothing and takes the audio playback fetched,
 about 30 s ahead of the playhead), decodes its audio with WebCodecs, learns the file's normal level (the median 400 ms
@@ -480,6 +487,12 @@ its published name so it stays an honest consumer.
   take the offer of the last ending away. The read is the far player's own word, from after its render, with a
   `chapterschange` event following each change: wait for the false before drawing over that corner, and a player that
   cannot take it (a bare element, an older version) stays true.
+
+  A page that plays the next episode itself sets `player.autoplayNext` to a boolean to have the far player show its
+  "Autoplay next episode" switch in that state. The far document keeps the value for the player's id while a mirror of
+  it is open, so every player it serves under that id shows it, and a viewer's flip there is kept the same way. Reads
+  are the far player's own word, with an `autoplaynextchange` event after each change, so a page saves the viewer's
+  flip from there; a bare element or an older version reads null.
 - `src/lib/react/` the player component, its chrome, and the hooks.
 - `src/lib/labels.ts` the chrome's text in English, and `src/lib/locales/` its other languages.
 

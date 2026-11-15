@@ -88,12 +88,18 @@ export type ExposePlayerOptions = {
  * with `fullscreen: true` takes over. While one has it, `onHostFullscreen` is told the state that mirror sets, and null
  * once none has it; the player then dispatches `fullscreenrequest` for each press of its fullscreen, which reaches the
  * mirror. `onEndingOffered` is told what a mirror sets on `endingOffered`.
+ *
+ * `autoplayNext` is the state of its "Autoplay next episode" switch, null while it shows none, and it raises
+ * `autoplaynextchange` after each change. `onAutoplayNext` is told the state a mirror last set for its id, at serve
+ * and on each write, and null once no mirror listens to the id any more.
  */
 export type ServedPlayer = EventTarget & {
   readonly chapters: MediaChapter[]
   readonly endingOffered: boolean
+  readonly autoplayNext: boolean | null
   onHostFullscreen: (active: boolean | null) => void
   onEndingOffered: (offered: boolean) => void
+  onAutoplayNext: (on: boolean | null) => void
 }
 
 /**
@@ -162,9 +168,14 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   const hosts = new Map<string, Set<MessagePort>>()
   const hostActive = new Map<string, boolean>()
   const tellHost = (id: string) => players.get(id)?.onHostFullscreen(hosts.get(id)?.size ? hostActive.get(id) ?? false : null)
+  // Kept per id rather than per player, since a document that puts up a player per file serves each under the same
+  // id, and the next one has to show the switch without the embedder writing it again.
+  const autoplayNext = new Map<string, boolean>()
+  const tellAutoplayNext = (id: string) => players.get(id)?.onAutoplayNext(autoplayNext.get(id) ?? null)
   const drop = (id: string, port: MessagePort) => {
     ports.get(id)?.delete(port)
     if (hosts.get(id)?.delete(port)) tellHost(id)
+    if (!ports.get(id)?.size && autoplayNext.delete(id)) tellAutoplayNext(id)
     try { port.onmessage = null; port.close() } catch {}
   }
   const post = (id: string, update: PlayerUpdate, to: Iterable<MessagePort> = listeners(id)) => {
@@ -177,7 +188,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   const snapshotAt = (id: string) => {
     const media = medias.get(id)
     const around = players.get(id)
-    return media ? snapshotOf(media, around?.chapters, around?.endingOffered) : undefined
+    return media ? snapshotOf(media, around?.chapters, around?.endingOffered, around?.autoplayNext) : undefined
   }
   const announce = (id: string, event: PlayerEvent) => {
     // a press of the fullscreen is for the mirrors that took it over: another one toggling too would undo it
@@ -231,6 +242,13 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         if (typeof value === 'boolean') players.get(id)?.onEndingOffered(value)
         return
       }
+      if (name === 'autoplayNext') {
+        // only for an id a mirror listens to, which bounds the map, and is what clears it again
+        if (typeof value !== 'boolean' || !ports.get(id)?.size) return
+        autoplayNext.set(id, value)
+        tellAutoplayNext(id)
+        return
+      }
       const media = medias.get(id)
       if (!media || !WRITABLE.includes(name)) return
       try { (media as unknown as Record<Writable, unknown>)[name] = value } catch {}
@@ -282,7 +300,14 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       const handlers = [
         ...PLAYER_EVENTS.map(event => [media, event] as const),
         ...around ? SERVED_EVENTS.map(event => [around, event] as const) : [],
-      ].map(([target, event]) => [target, event, () => { if (medias.get(player) === media) announce(player, event) }] as const)
+      ].map(([target, event]) => [target, event, () => {
+        if (medias.get(player) !== media) return
+        // the viewer's flip is what the next player under this id starts in
+        if (event === 'autoplaynextchange' && autoplayNext.has(player) && typeof around?.autoplayNext === 'boolean') {
+          autoplayNext.set(player, around.autoplayNext)
+        }
+        announce(player, event)
+      }] as const)
       for (const [target, event, handler] of handlers) target.addEventListener(event, handler)
       const replaced = medias.has(player)
       const previous = players.get(player)
@@ -291,6 +316,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (around) players.set(player, around)
       else players.delete(player)
       tellHost(player)
+      if (autoplayNext.has(player)) tellAutoplayNext(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
       if (replaced) post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
@@ -351,6 +377,18 @@ export type MediaPlayerHandle =
      * off the far screen, and a player that cannot take it (a bare element, a version older than this) stays true.
      */
     endingOffered: boolean
+    /**
+     * The far `<MediaPlayer expose>`'s "Autoplay next episode" switch, as it last said: null while it shows none. Set a
+     * boolean to have it show the switch in that state, for a page that plays the next episode itself and keeps the
+     * setting; the player plays nothing next and saves nothing. The far document keeps what was set for this player's
+     * id while any mirror of it is open, and shows it on every player it serves under that id, so a page that puts up
+     * a player per file needs to set it once. A viewer's flip there is kept the same way.
+     *
+     * Like `endingOffered`, a write does NOT move the mirror: a read answers what the far player reports, with an
+     * `autoplaynextchange` event following each change, so it stays null for a bare element or a version older than
+     * this. Nothing but a boolean is sent.
+     */
+    autoplayNext: boolean | null
     /**
      * Settles once the far side has first answered with its state; reads before that answer the
      * empty defaults. Stays pending for as long as nobody answers, and rejects with an AbortError on
@@ -435,7 +473,7 @@ type Subscriber = {
 
 type Link = {
   attach: (subscriber: Subscriber) => () => void
-  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered', value: number | boolean) => Promise<unknown> | undefined
+  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext', value: number | boolean) => Promise<unknown> | undefined
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -589,6 +627,7 @@ export const mediaPlayer = (
       const first = !answered
       answered = true
       const chapters = JSON.stringify(state.chapters)
+      const autoplayNext = state.autoplayNext
       Object.assign(state, snapshot)
       // a write the far side has not taken yet is the caller's intent, and outranks what the far
       // side is still reporting, first snapshot or any later one
@@ -597,6 +636,7 @@ export const mediaPlayer = (
       const events = first ? syncEventsFor(state) : [event]
       // told for any update that changes them: a catch-up or a switch's `emptied` brings chapters with no word of them
       if (!events.includes('chapterschange') && JSON.stringify(state.chapters) !== chapters) events.push('chapterschange')
+      if (!events.includes('autoplaynextchange') && state.autoplayNext !== autoplayNext) events.push('autoplaynextchange')
       for (const each of events) dispatch(each)
       if (first) settleReady()
     },
@@ -649,6 +689,11 @@ export const mediaPlayer = (
   Object.defineProperty(player, 'endingOffered', {
     get: () => state.endingOffered,
     set: (value: boolean) => { void after(() => link.set(playerId, 'endingOffered', value)) },
+    enumerable: true,
+  })
+  Object.defineProperty(player, 'autoplayNext', {
+    get: () => state.autoplayNext,
+    set: (value: boolean | null) => { if (typeof value === 'boolean') void after(() => link.set(playerId, 'autoplayNext', value)) },
     enumerable: true,
   })
 

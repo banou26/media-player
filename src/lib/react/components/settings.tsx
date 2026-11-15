@@ -36,6 +36,7 @@ ${popoverStyle}
   width: 28px;
   height: 16px;
   margin-right: 6px;
+  margin-left: 8px;
   border-radius: 8px;
   background-color: rgba(255,255,255,.3);
   transition: background-color 0.15s ease-in-out;
@@ -124,6 +125,7 @@ export const SettingsAction = () => {
   const selectAudioTrack = usePlayer((state) => state.selectAudioTrack)
   const quality = usePlayer((state) => state.quality)
   const volumeNormalizer = usePlayer((state) => state.volumeNormalizer)
+  const autoplayNext = usePlayer((state) => state.autoplayNext)
 
   const [popoverContent, setPopoverContent] = useState(PopoverContent.Default)
   const { open, toggle, containerRef, pending, failed, runSelect } = useTrackMenu({
@@ -180,7 +182,24 @@ export const SettingsAction = () => {
               so audio needs two tracks. Subtitles is NOT here: it has its own button in the bar,
               because it is the control in this player that gets reached for most and it does not
               belong two clicks deep next to playback speed.
+
+              Autoplay comes first: a host's next episode card sits over the lower right of the picture, where
+              the menu's last rows are.
             */}
+            {autoplayNext
+              ? (
+                <div
+                  role='switch'
+                  aria-checked={autoplayNext.enabled}
+                  onClick={() => autoplayNext.setEnabled(!autoplayNext.enabled)}
+                >
+                  <div>{format(LABELS.autoplayNext)}</div>
+                  <div>
+                    <span className={autoplayNext.enabled ? 'switch on' : 'switch'} />
+                  </div>
+                </div>
+              )
+              : null}
             {audioTracks.length > 1
               ? (
                 <div onClick={changePopoverContent(PopoverContent.Audio)}>
