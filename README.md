@@ -314,13 +314,6 @@ import normalizerWorkletUrl from '@banou/media-player/volume-normalizer-worklet.
 The player saves nothing, so an app that wants the choice to stick saves what `onNormalizeVolumeChange` reports and
 passes it back.
 
-### Autoplay next episode
-
-An app that plays the next episode itself passes `autoplayNext` to show an "Autoplay next episode" switch as the first
-row of the settings menu. The player plays nothing next and saves nothing: save what `onAutoplayNextChange` reports
-and pass it back, as for the volume normalizer. Without the prop there is no switch, unless a page framing the player
-sets one through [`<MediaPlayer expose>`](#layout).
-
 It works in two stages. A worker reads the file a second time, through `thumbnailRead` when you pass one and only
 within `downloadedRanges` (for a source that `readsDownload` it reads nothing and takes the audio playback fetched,
 about 30 s ahead of the playhead), decodes its audio with WebCodecs, learns the file's normal level (the median 400 ms
@@ -342,6 +335,13 @@ on the page's next click, tap or key press, and the video plays as it always did
 (`createMediaElementSource` in `@banou/ponyfill/web-audio`), since a routed element loses its volume and mute there.
 The refusal comes when routing would, once the switch is on and the AudioContext runs: until then the switch reads as
 available, and from then on it reads Unavailable, with the element never routed and playing as it always did.
+
+### Autoplay next episode
+
+An app that plays the next episode itself passes `autoplayNext` to show an "Autoplay next episode" switch as the first
+row of the settings menu. The player plays nothing next and saves nothing: save what `onAutoplayNextChange` reports
+and pass it back, as for the volume normalizer. Without the prop there is no switch, unless a page framing the player
+sets one through [`<MediaPlayer expose>`](#layout).
 
 ### Preferred languages
 
