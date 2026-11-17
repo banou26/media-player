@@ -241,6 +241,35 @@ describe('normalizeVolume', () => {
     expect(await advancing(video)).toBeGreaterThan(0.3)
   }, 60_000)
 
+  it('suspends while paused, and plays on with its sound at once, after a pause and after a quick pause and play', async () => {
+    const { routed } = watchWebAudio()
+    const { video } = await mount({})
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const { level } = await meter(video)
+    const { context } = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
+    // the control: running and heard while it plays
+    expect(context.state).toBe('running')
+    expect(await level(3)).toBeGreaterThan(-50)
+
+    video.pause()
+    await expect.poll(() => context.state, { timeout: 3000 }).toBe('suspended')
+    // and it stays so, where the resume that follows any other suspend would have run it again
+    await sleep(1000)
+    expect(context.state).toBe('suspended')
+
+    await video.play()
+    await expect.poll(() => context.state, { timeout: 1000 }).toBe('running')
+    expect(await level(3)).toBeGreaterThan(-50)
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+
+    video.pause()
+    await video.play()
+    await sleep(300)
+    expect(context.state).toBe('running')
+    expect(await level(3)).toBeGreaterThan(-50)
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+  }, 60_000)
+
   it('offers no switch without the worklet url', async () => {
     const { openSettings, row, screen } = await mount({ normalizerWorkletUrl: undefined })
     openSettings()
