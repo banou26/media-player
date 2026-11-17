@@ -73,6 +73,9 @@ describe('seekbar previews on a reopened torrent', () => {
     await expect.poll(() => boots.length, { timeout: 10_000 }).toBe(2)
     expect(boots[1]! - landedAt).toBeLessThan(1000)
     await expect.poll(() => result.current.thumbnails.filter(({ url }) => url).length, { timeout: 20_000 }).toBeGreaterThan(0)
+    // and the backoff timer the refusal set does not boot a third
+    await sleep(boots[0]! + 6000 - performance.now())
+    expect(boots.length).toBe(2)
   }, 40_000)
 
   it('boots again at once when the head showed while the refused boot was still failing', async () => {
