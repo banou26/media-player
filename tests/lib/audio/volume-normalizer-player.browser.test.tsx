@@ -270,6 +270,27 @@ describe('normalizeVolume', () => {
     expect(await advancing(video)).toBeGreaterThan(0.3)
   }, 60_000)
 
+  it('plays on with its sound when the play comes before the pause has finished suspending', async () => {
+    const { routed } = watchWebAudio()
+    const { video } = await mount({})
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const { level } = await meter(video)
+    const { context } = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
+    const states: string[] = []
+    context.addEventListener('statechange', () => states.push(context.state))
+    // a suspend that lands 50 ms late, so the play still reads the context as running
+    const suspend = context.suspend.bind(context)
+    context.suspend = () => sleep(50).then(suspend)
+    video.addEventListener('pause', () => { void video.play() }, { once: true })
+    video.pause()
+    await sleep(500)
+    // the control: the late suspend did land, after the play
+    expect(states).toContain('suspended')
+    expect(context.state).toBe('running')
+    expect(await level(3)).toBeGreaterThan(-50)
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+  }, 60_000)
+
   it('offers no switch without the worklet url', async () => {
     const { openSettings, row, screen } = await mount({ normalizerWorkletUrl: undefined })
     openSettings()
