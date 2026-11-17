@@ -42,7 +42,7 @@ jobs:
         github.event.workflow_run.event == 'push' &&
         github.event.workflow_run.head_sha == github.sha
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       # the OIDC token npm exchanges for short-lived publish credentials. Without it the job has no
