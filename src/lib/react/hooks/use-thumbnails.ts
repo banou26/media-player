@@ -60,6 +60,7 @@ export const useSeekThumbnails = ({
     let retry: ReturnType<typeof setTimeout> | undefined
     let delay = RETRY_DELAY
     const boot = () => {
+      retryOnHead.current = null
       const early = !holdsHead(rangesRef.current, length)
       createThumbnailGenerator({
         publicPath,
@@ -83,7 +84,6 @@ export const useSeekThumbnails = ({
         // the head was readable goes again as soon as it is. Only that boot: any other failure keeps the backoff.
         if (!early) return
         const again = () => {
-          retryOnHead.current = null
           clearTimeout(retry)
           boot()
         }
