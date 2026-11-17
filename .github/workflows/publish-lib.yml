@@ -26,6 +26,9 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 concurrency:
   group: publish-lib
   cancel-in-progress: false
@@ -48,13 +51,15 @@ jobs:
       # the OIDC token npm exchanges for short-lived publish credentials. Without it the job has no
       # way to authenticate at all, because there is deliberately no token secret anywhere.
       id-token: write
-      # only to push the release tag
+      # only to create the release tag
       contents: write
       # reading the test workflow's runs is how a manual dispatch proves it was gated
       actions: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # A dispatch must not satisfy the gate merely by existing: the button stays, it just has to
       # point at a commit Test has already passed on. `! -ge` rather than `-lt`, because `[` fails
@@ -79,18 +84,17 @@ jobs:
       # workflow skips its install whenever the version has not moved, which is most runs. With
       # nothing to save that post-step errors and the JOB goes red while every step in it reports
       # success.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           package-manager-cache: false
 
-      # Trusted publishing needs npm >= 11.5.1. Node 24 ships something recent enough today, which is
-      # exactly why this runs rather than being assumed: the day the runner image moves, an unpinned
-      # npm would fail at the publish step with an auth error that looks like a revoked credential
-      # rather than a stale CLI.
+      # Trusted publishing needs npm >= 11.5.1, and a stale CLI fails the publish step with an auth
+      # error that looks like a revoked credential. Exact, so a new npm only arrives by a bump here:
+      # 12.2.2 is what run 44008693246 (2026-11-17) published 0.10.42 with.
       - name: Use an npm that supports trusted publishing
         run: |
-          npm install -g npm@latest
+          npm install -g npm@12.2.2
           echo "npm $(npm --version)"
 
       # Decided BEFORE installing, so an unchanged version costs seconds rather than a full build.
@@ -194,10 +198,10 @@ jobs:
         if: steps.decide.outputs.changed == 'true'
         run: npm publish --access public --loglevel verbose
 
+      # Through the API, so the checkout keeps no write token on disk while npm ci runs install scripts.
       - name: Tag the release
         if: steps.decide.outputs.changed == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.decide.outputs.local }}
-        run: |
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
+        run: gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$GITHUB_SHA"
