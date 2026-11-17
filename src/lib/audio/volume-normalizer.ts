@@ -114,8 +114,9 @@ export const attachVolumeNormalizer = (
     // the live detector describes where the playhead was, and a new file owes nothing to the last one's level
     element.addEventListener('seeking', () => created.port.postMessage({ reset: 'seek' }))
     element.addEventListener('emptied', () => created.port.postMessage({ reset: 'source' }))
-    // Paused, a running context wakes the audio threads 410 to 445 times a second, a suspended one 21 to 25 (Chrome
-    // 156, 2026-11-17). Resumed by play, the sound flows on within 25 ms in Chrome 156 and 40 ms in Firefox 157.
+    // Paused, a running context wakes the audio threads 390 to 620 times a second and a suspended one 20 to 30 (Chrome
+    // 156, 2026-11-17), while Firefox 157 wakes about 700 times a second either way. Resumed by play, the sound flows
+    // on within 45 ms in Chrome 156 and 80 ms in Firefox 157.
     element.addEventListener('pause', () => {
       held = true
       if (context.state === 'running') context.suspend().catch(() => {})
