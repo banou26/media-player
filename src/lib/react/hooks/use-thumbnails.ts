@@ -8,6 +8,11 @@ import { createThumbnailGenerator } from '../../engine'
 // backs off because each failed init costs a wasm worker
 const RETRY_DELAY = 5_000
 const MAX_RETRY_DELAY = 60_000
+// libav-wasm's thumbnailer starts with a read of this much from offset 0
+const HEAD_BYTES = 1_000_000
+
+const holdsHead = (ranges: [number, number][] | undefined, length: number) =>
+  !ranges || ranges.some(([start, end]) => start <= 0 && end >= Math.min(HEAD_BYTES, length))
 
 export type UseSeekThumbnailsOptions = {
   /** Optional alongside `length`/`read`: with no bytes there is nothing to generate from. */
@@ -46,6 +51,7 @@ export const useSeekThumbnails = ({
   )
   const rangesRef = useRef(ranges)
   rangesRef.current = ranges
+  const retryOnHead = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     if (!length || !read || !publicPath || !workerUrl) return
@@ -54,6 +60,7 @@ export const useSeekThumbnails = ({
     let retry: ReturnType<typeof setTimeout> | undefined
     let delay = RETRY_DELAY
     const boot = () => {
+      const early = !holdsHead(rangesRef.current, length)
       createThumbnailGenerator({
         publicPath,
         workerUrl,
@@ -72,11 +79,22 @@ export const useSeekThumbnails = ({
         if (cancelled) return
         retry = setTimeout(boot, delay)
         delay = Math.min(delay * 2, MAX_RETRY_DELAY)
+        // A reopened torrent refuses the head until the engine reports its pieces, so a boot that began before
+        // the head was readable goes again as soon as it is. Only that boot: any other failure keeps the backoff.
+        if (!early) return
+        const again = () => {
+          retryOnHead.current = null
+          clearTimeout(retry)
+          boot()
+        }
+        if (holdsHead(rangesRef.current, length)) again()
+        else retryOnHead.current = again
       })
     }
     boot()
     return () => {
       cancelled = true
+      retryOnHead.current = null
       clearTimeout(retry)
       generatorRef.current = null
       generator?.destroy()
@@ -84,7 +102,10 @@ export const useSeekThumbnails = ({
     }
   }, [length, publicPath, workerUrl])
 
-  useEffect(() => { generatorRef.current?.update(ranges) }, [ranges])
+  useEffect(() => {
+    generatorRef.current?.update(ranges)
+    if (length && holdsHead(ranges, length)) retryOnHead.current?.()
+  }, [ranges])
 
   const requestThumbnail = useCallback((time: number | undefined) => {
     generatorRef.current?.prioritize(time)
