@@ -251,11 +251,14 @@ describe('normalizeVolume', () => {
     expect(context.state).toBe('running')
     expect(await level(3)).toBeGreaterThan(-50)
 
+    let changes = 0
+    context.addEventListener('statechange', () => changes++)
     video.pause()
     await expect.poll(() => context.state, { timeout: 3000 }).toBe('suspended')
-    // and it stays so, where the resume that follows any other suspend would have run it again
+    // and it stays so, never resumed in between, where the resume that follows any other suspend would run it again
     await sleep(1000)
     expect(context.state).toBe('suspended')
+    expect(changes).toBe(1)
 
     await video.play()
     await expect.poll(() => context.state, { timeout: 1000 }).toBe('running')
@@ -287,6 +290,30 @@ describe('normalizeVolume', () => {
     // the control: the late suspend did land, after the play
     expect(states).toContain('suspended')
     expect(context.state).toBe('running')
+    expect(await level(3)).toBeGreaterThan(-50)
+    expect(await advancing(video)).toBeGreaterThan(0.3)
+  }, 60_000)
+
+  it('stays suspended when the pause comes before the play has finished resuming', async () => {
+    const { routed } = watchWebAudio()
+    const { video } = await mount({})
+    await expect.poll(() => routed.mock.calls.length, { timeout: 10_000 }).toBe(1)
+    const { level } = await meter(video)
+    const { context } = attachVolumeNormalizer(video, playerAssets.normalizerWorkletUrl)
+    video.pause()
+    await expect.poll(() => context.state, { timeout: 3000 }).toBe('suspended')
+    let changes = 0
+    context.addEventListener('statechange', () => changes++)
+    video.play().catch(() => {})
+    video.pause()
+    await sleep(1000)
+    // the control: the play's resume did land after the pause. Counted, since Chrome 156 already reads the state
+    // the suspend that follows it set
+    expect(changes).toBeGreaterThan(0)
+    expect(context.state).toBe('suspended')
+
+    await video.play()
+    await expect.poll(() => context.state, { timeout: 1000 }).toBe('running')
     expect(await level(3)).toBeGreaterThan(-50)
     expect(await advancing(video)).toBeGreaterThan(0.3)
   }, 60_000)

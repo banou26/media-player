@@ -80,7 +80,7 @@ export const attachVolumeNormalizer = (
   let enabled = options.enabled !== false
   let node: AudioWorkletNode | undefined
   let released = false
-  // suspended by the element's own pause, which `follow` leaves alone
+  // paused, so `follow` keeps the context suspended rather than resuming it
   let held = false
   const inputGainDb = () => 20 * Math.log10(Math.max(element.volume, 1e-6))
 
@@ -94,6 +94,7 @@ export const attachVolumeNormalizer = (
     }
   }
   const follow = () => {
+    if (held && context.state === 'running') context.suspend().catch(() => {})
     const suspended = !released && !held && context.state === 'suspended'
     listen(suspended)
     // Suspended by something else once routed: Chrome freezes the element and Firefox plays it silent until the
