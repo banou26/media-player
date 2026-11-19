@@ -118,6 +118,16 @@ describe('normalizeVolume', () => {
     await expect.poll(() => video.currentTime, { timeout: 15_000 }).toBeGreaterThan(6)
     const engaged = await loudSecond()
 
+    // At half volume the output drops 6 dB with the normalizer still engaged. Were it judging the level after
+    // the element's volume, the loud seconds would read as nearer the normal and be cut 6 dB less. Read before the
+    // switch, whose turning back on starts the analysis again: on two loaded CPUs the first loud second after it came
+    // 3.8 dB short of the cut in 9 runs of 10 (2026-11-20).
+    video.volume = 0.5
+    const half = await loudSecond()
+    expect(engaged - half).toBeGreaterThan(5)
+    expect(engaged - half).toBeLessThan(7)
+    video.volume = 1
+
     row()!.click()
     await expect.poll(() => row()!.getAttribute('aria-checked')).toBe('false')
     expect(changes).toEqual([false])
@@ -133,14 +143,6 @@ describe('normalizeVolume', () => {
     expect(changes).toEqual([false, true])
     await expect.poll(() => video.currentTime % 3 > 0.3 && video.currentTime % 3 < 0.8, { timeout: 10_000, interval: 10 }).toBe(true)
     expect(Math.abs(await level(3) - quietBypassed)).toBeLessThan(1)
-
-    // At half volume the output drops 6 dB with the normalizer still engaged. Were it judging the level after
-    // the element's volume, the loud seconds would read as nearer the normal and be cut 6 dB less.
-    const full = await loudSecond()
-    video.volume = 0.5
-    const half = await loudSecond()
-    expect(full - half).toBeGreaterThan(5)
-    expect(full - half).toBeLessThan(7)
 
     expect(contexts).toHaveBeenCalledTimes(1)
     expect(routed).toHaveBeenCalledTimes(1)
