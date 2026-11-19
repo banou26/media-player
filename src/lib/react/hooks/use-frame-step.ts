@@ -125,8 +125,10 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
           ? played.mediaTime + (direction > 0 ? 1.5 : -0.5) * length
           : video.currentTime + direction * length
       const time = Math.max(0, Math.min(target, video.duration || target))
+      // Only a backstop for a seek that never lands, as the chrome's seek display has: in Firefox 157 on one loaded CPU a
+      // step at the end of a GOP took up to 1.96 s to land, and a next step sent at 1 s left its frame unshown (2026-11-20)
       const landed = new Promise<void>((done) => {
-        const timer = setTimeout(done, 1000)
+        const timer = setTimeout(done, 15_000)
         video.addEventListener('seeked', () => { clearTimeout(timer); done() }, { once: true })
       })
       const { requestSeek } = player.state

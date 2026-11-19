@@ -150,9 +150,10 @@ describe('frame step on < and >', () => {
     const onFrame = () => { if (watching) { sample(); video.requestVideoFrameCallback(onFrame) } }
     video.requestVideoFrameCallback(onFrame)
     try {
-      // repeats faster than a step decodes at the end of a GOP, stopped short of the keyframe at 240
+      // repeats faster than a step decodes at the end of a GOP, up to short of the keyframe at 240: on GitHub's runners
+      // as few as two steps landed in 1.5 s in Firefox, so the press runs to a frame, not for a time
       const start = performance.now()
-      while (performance.now() - start < 1500 && painted(video) < 236) await userEvent.keyboard('>')
+      while (performance.now() - start < 20_000 && painted(video) < 236) await userEvent.keyboard('>')
       await wait(1000)
     } finally {
       watching = false
@@ -160,7 +161,7 @@ describe('frame step on < and >', () => {
     }
     expect(shown.length).toBeGreaterThan(3)
     expect(shown.slice(1).map((n, i) => n - shown[i]!), `frames shown: ${shown.join(', ')}`).toEqual(shown.slice(1).map(() => 1))
-  })
+  }, 45_000)
 
   it('pauses a playing video and steps from the frame it shows', async () => {
     const { video } = await mount()
@@ -316,6 +317,23 @@ describe('frame step on < and >', () => {
     await userEvent.keyboard('>')
     // the middle of the frame after the last one played
     await expect.poll(() => media.currentTime * 60, { timeout: 1000 }).toBeCloseTo(frame + 1.5, 1)
+  })
+
+  it('waits for a step that is slow to land before the next, so the frame between shows', async () => {
+    const media = createFakeRemoteMedia()
+    Object.assign(media, { requestVideoFrameCallback: () => 0, cancelVideoFrameCallback: () => {} })
+    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    media.pause()
+    media.currentTime = 10
+    await userEvent.keyboard('>>')
+    const first = media.currentTime
+    expect(first).toBeCloseTo(10 + 1 / FPS, 6)
+    // longer than the 1.96 s a step at the end of a GOP took to land in Firefox 157 on one loaded CPU (2026-11-20)
+    await wait(2500)
+    expect(media.currentTime, 'the second step went before the first landed').toBe(first)
+    media.dispatchEvent(new Event('seeked'))
+    await expect.poll(() => media.currentTime, { timeout: 1000 }).toBeCloseTo(10 + 2 / FPS, 6)
   })
 
   it('drops a press still waiting when the player goes away', async () => {
