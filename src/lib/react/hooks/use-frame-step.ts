@@ -107,7 +107,10 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
       return near.reduce((sum, gap) => sum + gap, 0) / near.length
     }
 
+    let active = true
     const stepFrame = oneAtATime(async (direction) => {
+      // a press queued behind a step still landing when the player went away, whose store is destroyed by now
+      if (!active) return
       if (!video.paused) {
         video.pause()
         // Chrome can still report the frame on screen after the pause
@@ -133,6 +136,7 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     })
     setSourceState({ stepFrame })
     return () => {
+      active = false
       video.removeEventListener('seeking', onSeeking)
       video.removeEventListener('emptied', onEmptied)
       video.cancelVideoFrameCallback(handle)

@@ -318,6 +318,28 @@ describe('frame step on < and >', () => {
     await expect.poll(() => media.currentTime * 60, { timeout: 1000 }).toBeCloseTo(frame + 1.5, 1)
   })
 
+  it('drops a press still waiting when the player goes away', async () => {
+    const media = createFakeRemoteMedia()
+    Object.assign(media, { requestVideoFrameCallback: () => 0, cancelVideoFrameCallback: () => {} })
+    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    media.pause()
+    await userEvent.keyboard('>>')
+    const stepped = media.currentTime
+    await screen.unmount()
+    const rejected: unknown[] = []
+    const record = (event: PromiseRejectionEvent) => { rejected.push(event.reason); event.preventDefault() }
+    window.addEventListener('unhandledrejection', record)
+    try {
+      media.dispatchEvent(new Event('seeked'))
+      await wait(200)
+    } finally {
+      window.removeEventListener('unhandledrejection', record)
+    }
+    expect(rejected).toEqual([])
+    expect(media.currentTime).toBe(stepped)
+  })
+
   it('moves one frame a step through a run of steps, with the frame length learned while playing', async () => {
     const { video } = await mount()
     await land(video, 20)
