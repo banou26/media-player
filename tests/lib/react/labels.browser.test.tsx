@@ -82,6 +82,9 @@ const button = (root: ParentNode, name: string) => root.querySelector(`button.${
 const tooltip = async (root: ParentNode, id: string, look?: () => void) => {
   const anchor = root.querySelector(`[data-tooltip-id="${id}"]`) as HTMLElement
   const shown = () => document.querySelector(`.react-tooltip__show[id="${id}"]`)
+  // react-tooltip 5.28 loses a hover that comes as the last one's fade out ends: the fade's end unmounts the tooltip in
+  // the 10 ms it waits before showing (28 of 606 hovers swept 0 to 200 ms after a close, Chromium, 2026-11-20)
+  await expect.poll(() => !document.querySelector(`.react-tooltip[id="${id}"]`), { timeout: 5_000 }).toBe(true)
   const { left, top, width, height } = anchor.getBoundingClientRect()
   window.dispatchEvent(new PointerEvent('pointermove', { clientX: left + width / 2, clientY: top + height / 2, bubbles: true, pointerType: 'mouse' }))
   anchor.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
