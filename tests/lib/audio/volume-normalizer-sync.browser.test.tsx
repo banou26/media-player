@@ -70,12 +70,27 @@ const primingOf = async (url: string) => {
   return best / 48000
 }
 
+/** Whether the normalizer's analysis has said it reached the end of the file, heard on the worker it runs in. */
+const watchAnalysis = () => {
+  const analysed = { end: false }
+  const Native = Worker
+  vi.stubGlobal('Worker', class extends Native {
+    constructor(url: string | URL, options?: WorkerOptions) {
+      super(url, options)
+      if (!String(url).includes('volume-normalizer')) return
+      this.addEventListener('message', ({ data }) => { if (data?.type === 'ended' && data.end !== null) analysed.end = true })
+    }
+  })
+  return analysed
+}
+
 /**
  * Plays a fixture in the player and records, for every output sample, the input it came from: the element's audio
  * through a DelayNode of the normalizer's own 10 ms, beside the normalizer's output.
  */
 const play = async (url: string, readsDownload = false) => {
   const routed = vi.spyOn(AudioContext.prototype, 'createMediaElementSource')
+  const analysed = watchAnalysis()
   const container = document.createElement('div')
   container.style.cssText = 'width: 640px; height: 360px;'
   document.body.append(container)
@@ -103,7 +118,7 @@ const play = async (url: string, readsDownload = false) => {
     await screen.unmount()
     return { batches, marks, rate: context.sampleRate, delay }
   }
-  return { video, finish }
+  return { video, finish, analysed }
 }
 
 /*
@@ -249,6 +264,16 @@ describe('the normalizer in step with the media, live', () => {
     const until = (time: number) => expect.poll(() => video.currentTime, { timeout: 30_000, interval: 5 }).toBeGreaterThanOrEqual(time)
     // six seconds played from the start, before the first loud sound, for the ahead stage to match the audio
     await until(6)
+    // Following playback, nothing is analysed before playback fetched it, which is 30 to 60 s ahead, and a cut is known
+    // only with the 8 s after it or the end: on two loaded CPUs the analysis was still short of the end when the seek to
+    // 50.76 s came, and that burst went uncut for 23 to 91 ms in 10 runs of 10 (2026-11-20). So the seeks wait, paused
+    // at 30 s, from where playback fetches to the end, for the analysis to reach it.
+    if (readsDownload) {
+      video.pause()
+      video.currentTime = 30
+      await expect.poll(() => run.analysed.end, { timeout: 60_000 }).toBe(true)
+      await video.play()
+    }
     // a few ms either side of an onset, after the analysis of the whole file, the last one 46 s back into audio still
     // buffered, which Chrome plays sooner than a cut can be computed under load
     for (const time of [10.1234 - 0.003, 14.5678 + 0.005, 22.2468 - 0.001, 26.7531 + 0.06 - 0.002, 50.7654 - 0.002, 6.3337 - 0.003]) {
@@ -276,8 +301,8 @@ describe('the normalizer in step with the media, live', () => {
     await sleep(500)
 
     // Following playback, the level is learned from what playback fetched and held at -26 LUFS until the whole file
-    // is known, about 1.3 dB over this signal's -27.3 for most of the run, so every cut is that much short (HOR-660,
-    // 2026-10-17). A cut out of step is short by far more.
+    // is known, about 1.3 dB over this signal's -27.3, so a cut can be that much short (HOR-660, 2026-10-17). A cut out
+    // of step is short by far more.
     const { results, located, priming } = await measure(url, run, events, readsDownload ? 2 : 1)
     console.log(url, `located ${(100 * located).toFixed(1)}%, priming ${(priming * 1000).toFixed(2)} ms`, JSON.stringify(results.map(({ label, heard, short, worst }) => [label, heard, short, +worst.toFixed(2)])))
     // the control: the recording holds the events, and their cuts
