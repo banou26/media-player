@@ -293,6 +293,31 @@ describe('frame step on < and >', () => {
     }
   })
 
+  it('learns the frame length from the shortest gaps, though the display dropped most of the frames played', async () => {
+    const media = createFakeRemoteMedia()
+    const callbacks = new Map<number, VideoFrameRequestCallback>()
+    let handles = 0
+    Object.assign(media, {
+      requestVideoFrameCallback: (callback: VideoFrameRequestCallback) => { callbacks.set(++handles, callback); return handles },
+      cancelVideoFrameCallback: (handle: number) => { callbacks.delete(handle) },
+    })
+    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    expect(media.paused).toBe(false)
+    // in frames of a 60 fps file, the gaps Chrome 156 presented on one loaded CPU in a run that stepped two frames
+    let frame = 0
+    for (const [presentedFrames, gap] of [0, 1, 3, 4, 3, 2, 1, 2, 1, 2, 2, 2, 1, 2].entries()) {
+      frame += gap
+      const due = [...callbacks.values()]
+      callbacks.clear()
+      for (const callback of due) callback(performance.now(), { mediaTime: frame / 60, presentedFrames } as VideoFrameCallbackMetadata)
+    }
+    media.pause()
+    await userEvent.keyboard('>')
+    // the middle of the frame after the last one played
+    await expect.poll(() => media.currentTime * 60, { timeout: 1000 }).toBeCloseTo(frame + 1.5, 1)
+  })
+
   it('moves one frame a step through a run of steps, with the frame length learned while playing', async () => {
     const { video } = await mount()
     await land(video, 20)

@@ -40,9 +40,9 @@ const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
  * so the step starts from the last frame presented while playing and aims at the middle of the next one. A frame a
  * seek presented is never read for its time: Firefox reports the seek's target as its `mediaTime`.
  *
- * The frame's length is learned from the gaps between frames presented one after another while playing at up to 1x:
- * faster, a 60 Hz display presents every other frame of a 60 fps file. A step while a seek waits for its data starts
- * from that seek's target.
+ * The frame's length is learned from the shortest gaps between frames presented one after another while playing at up
+ * to 1x: faster, a 60 Hz display presents every other frame of a 60 fps file. A step while a seek waits for its data
+ * starts from that seek's target.
  *
  * A media without `requestVideoFrameCallback` is stepped by `hostStep`, when its host can step it.
  */
@@ -97,10 +97,13 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const frameLength = () => {
       if (gaps.length < 5) return FALLBACK_FRAME
       const sorted = [...gaps].sort((a, b) => a - b)
-      const median = sorted[sorted.length >> 1]!
-      // Matroska's millisecond timestamps give gaps of 41 and 42 ms for a 41.708 ms frame: steps by their median of 42
-      // drift by a frame within about 65, steps by the mean of the gaps near it do not
-      const near = sorted.filter((gap) => Math.abs(gap - median) <= median / 4)
+      // A frame the display drops lengthens a gap and nothing shortens one, so the frame is read a fifth of the way up:
+      // on one loaded CPU, Chrome 156 played a 60 fps file with as few as 29% of its gaps one frame long, and their
+      // median stepped two frames (2026-11-20)
+      const short = sorted[Math.floor(sorted.length / 5)]!
+      // Matroska's millisecond timestamps give gaps of 41 and 42 ms for a 41.708 ms frame: steps by 42 alone drift by a
+      // frame within about 65, steps by the mean of the gaps near it do not
+      const near = sorted.filter((gap) => Math.abs(gap - short) <= short / 4)
       return near.reduce((sum, gap) => sum + gap, 0) / near.length
     }
 
