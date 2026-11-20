@@ -97,3 +97,14 @@ describe('a release waits on Test', () => {
     })
   })
 })
+
+// setup-node 6 and later turn npm's cache on by themselves when package.json carries a devEngines npm block, which
+// Vite+ has written into it before; a publish restores nothing another job wrote (HOR-1416)
+describe('the publish job', () => {
+  it('restores no cache, even when setup-node would turn one on by itself', () => {
+    const setup = steps.split(/\n\s*- /).find((step) => step.includes('actions/setup-node@')) ?? ''
+    expect(setup, 'the publish job has a setup-node step').toMatch(/node-version: \d+/)
+    expect(setup).toMatch(/^\s*package-manager-cache: false$/m)
+    expect(setup).not.toMatch(/^\s*cache:/m)
+  })
+})
