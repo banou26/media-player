@@ -29,7 +29,7 @@ const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
       if (queued) void run(queued)
     }
   }
-  return Object.assign(run, { drop: () => { next = undefined } })
+  return run
 }
 
 /**
@@ -75,8 +75,8 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const onSeeking = () => { bySeek = true; played = undefined }
     let settleLanding = () => {}
     // a new media on the same element, or a rebuild of this one: its load ends a step's seek with no seeked (Chrome 156
-    // and Firefox 157), and a press waiting for that step is dropped, as it may have been meant for the media that went
-    const onEmptied = () => { played = undefined; gaps.length = 0; stepFrame.drop(); settleLanding() }
+    // and Firefox 157)
+    const onEmptied = () => { played = undefined; gaps.length = 0; settleLanding() }
     video.addEventListener('seeking', onSeeking)
     video.addEventListener('emptied', onEmptied)
     let handle = 0
@@ -113,7 +113,8 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const stepFrame = oneAtATime(async (direction) => {
       // a press queued behind a step still landing when the player went away, whose store is destroyed by now
       if (!active) return
-      // nothing to step from while a rebuild has emptied the element: its currentTime reads 0 until the media is back
+      // nothing to step from while a new media or a rebuild has emptied the element: its currentTime reads 0 until a
+      // media is back. This also drops a press that was waiting for a step the load ended
       if (video.readyState === HTMLMediaElement.HAVE_NOTHING) return
       if (!video.paused) {
         video.pause()

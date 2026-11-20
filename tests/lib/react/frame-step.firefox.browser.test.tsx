@@ -412,11 +412,12 @@ describe('frame step on < and >', () => {
     media.currentTime = 10
     await userEvent.keyboard('>>')
     expect(media.currentTime).toBeCloseTo(10 + 1 / FPS, 6)
-    // a new media on the element: its load ends the seek with no seeked
-    media.currentTime = 0
+    // a new media on the element: its load empties it and ends the seek with no seeked
+    Object.assign(media, { currentTime: 0, readyState: 0 })
     media.dispatchEvent(new Event('emptied'))
     await wait(200)
     expect(media.currentTime, 'a press for the previous media stepped the new one').toBe(0)
+    media.readyState = 4
     await userEvent.keyboard('>')
     await expect.poll(() => media.currentTime, { timeout: 1000 }).toBeCloseTo(1 / FPS, 6)
   })
