@@ -117,6 +117,7 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
         video.pause()
         // Chrome can still report the frame on screen after the pause
         await presented(video, 100)
+        if (!active) return
       }
       const length = frameLength()
       // off `state`: the store has a getter only for the fields it was created with

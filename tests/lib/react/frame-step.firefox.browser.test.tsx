@@ -358,6 +358,28 @@ describe('frame step on < and >', () => {
     expect(media.currentTime).toBe(stepped)
   })
 
+  it('drops a step pausing the video when the player goes away', async () => {
+    const media = createFakeRemoteMedia()
+    Object.assign(media, { requestVideoFrameCallback: () => 0, cancelVideoFrameCallback: () => {} })
+    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    expect(media.paused).toBe(false)
+    const rejected: unknown[] = []
+    const record = (event: PromiseRejectionEvent) => { rejected.push(event.reason); event.preventDefault() }
+    window.addEventListener('unhandledrejection', record)
+    try {
+      // dispatched rather than typed, so the unmount comes inside the 100 ms the step waits for the paused frame
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '>', bubbles: true, cancelable: true }))
+      expect(media.paused, 'the step did not start').toBe(true)
+      await screen.unmount()
+      await wait(300)
+    } finally {
+      window.removeEventListener('unhandledrejection', record)
+    }
+    expect(rejected).toEqual([])
+    expect(media.currentTime).toBe(0)
+  })
+
   it('ends a step still landing when a new media comes, and drops the press waiting for it', async () => {
     const media = createFakeRemoteMedia()
     Object.assign(media, { requestVideoFrameCallback: () => 0, cancelVideoFrameCallback: () => {} })
