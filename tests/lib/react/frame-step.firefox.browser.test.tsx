@@ -446,12 +446,24 @@ describe('frame step on < and >', () => {
   }, 30_000)
 
   it('ignores a press while the player rebuilds after the element failed, rather than stepping from 0', async () => {
-    const { video } = await mount()
+    const source = await httpSource(FILE)
+    // the rebuild's reads wait for the press: unheld, the element was empty for as little as 76 ms (Chrome 156,
+    // 2026-11-20)
+    let held: Promise<void> | undefined
+    const read = async (offset: number, length: number) => {
+      await held
+      return source.read(offset, length)
+    }
+    const { video } = await mount({ ...source, read })
     await land(video, 200)
     const { currentTime, src } = video
+    let release = () => {}
+    held = new Promise((done) => { release = done })
     video.dispatchEvent(new Event('error'))
     await expect.poll(() => video.readyState, { timeout: 3000, interval: 5 }).toBe(0)
     await userEvent.keyboard('>')
+    expect(video.readyState, 'the element had its media back before the press').toBe(0)
+    release()
     await expect.poll(() => video.src !== src && video.readyState >= 2 && !video.seeking, { timeout: 30_000 }).toBe(true)
     await wait(1000)
     expect(video.currentTime).toBeCloseTo(currentTime, 3)
