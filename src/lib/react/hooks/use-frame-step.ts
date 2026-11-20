@@ -29,7 +29,7 @@ const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
       if (queued) void run(queued)
     }
   }
-  return run
+  return Object.assign(run, { drop: () => { next = undefined } })
 }
 
 /**
@@ -73,8 +73,10 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     let bySeek = false
     const gaps: number[] = []
     const onSeeking = () => { bySeek = true; played = undefined }
-    // a new media on the same element
-    const onEmptied = () => { played = undefined; gaps.length = 0 }
+    let settleLanding = () => {}
+    // a new media on the same element: its load ends a step's seek with no seeked (Chrome 156 and Firefox 157), and a
+    // press waiting for that step was meant for the media that went
+    const onEmptied = () => { played = undefined; gaps.length = 0; stepFrame.drop(); settleLanding() }
     video.addEventListener('seeking', onSeeking)
     video.addEventListener('emptied', onEmptied)
     let handle = 0
@@ -128,8 +130,10 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
       // Only a backstop for a seek that never lands, as the chrome's seek display has: in Firefox 157 on one loaded CPU a
       // step at the end of a GOP took up to 1.96 s to land, and a next step sent at 1 s left its frame unshown (2026-11-20)
       const landed = new Promise<void>((done) => {
-        const timer = setTimeout(done, 15_000)
-        video.addEventListener('seeked', () => { clearTimeout(timer); done() }, { once: true })
+        const settle = () => { clearTimeout(timer); video.removeEventListener('seeked', settle); done() }
+        const timer = setTimeout(settle, 15_000)
+        settleLanding = settle
+        video.addEventListener('seeked', settle)
       })
       const { requestSeek } = player.state
       if (requestSeek) requestSeek(time)

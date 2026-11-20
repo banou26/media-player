@@ -358,6 +358,24 @@ describe('frame step on < and >', () => {
     expect(media.currentTime).toBe(stepped)
   })
 
+  it('ends a step still landing when a new media comes, and drops the press waiting for it', async () => {
+    const media = createFakeRemoteMedia()
+    Object.assign(media, { requestVideoFrameCallback: () => 0, cancelVideoFrameCallback: () => {} })
+    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+    await userEvent.click(screen.container.querySelector('.video')!)
+    media.pause()
+    media.currentTime = 10
+    await userEvent.keyboard('>>')
+    expect(media.currentTime).toBeCloseTo(10 + 1 / FPS, 6)
+    // a new media on the element: its load ends the seek with no seeked
+    media.currentTime = 0
+    media.dispatchEvent(new Event('emptied'))
+    await wait(200)
+    expect(media.currentTime, 'a press for the previous media stepped the new one').toBe(0)
+    await userEvent.keyboard('>')
+    await expect.poll(() => media.currentTime, { timeout: 1000 }).toBeCloseTo(1 / FPS, 6)
+  })
+
   it('moves one frame a step through a run of steps, with the frame length learned while playing', async () => {
     const { video } = await mount()
     await land(video, 20)
