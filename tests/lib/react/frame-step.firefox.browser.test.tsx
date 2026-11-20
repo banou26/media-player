@@ -107,6 +107,30 @@ const firefox = server.browser === 'firefox'
 // one (2026-10-23)
 const learnsAt60 = !firefox
 
+/** A player on a fake 60 fps media whose frames the test presents: `present(gap)` shows the frame `gap` on. */
+const presenting = async () => {
+  const media = createFakeRemoteMedia()
+  const callbacks = new Map<number, VideoFrameRequestCallback>()
+  let handles = 0
+  Object.assign(media, {
+    requestVideoFrameCallback: (callback: VideoFrameRequestCallback) => { callbacks.set(++handles, callback); return handles },
+    cancelVideoFrameCallback: (handle: number) => { callbacks.delete(handle) },
+  })
+  const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
+  await userEvent.click(screen.container.querySelector('.video')!)
+  expect(media.paused).toBe(false)
+  let frame = 0
+  let presentedFrames = 0
+  const present = (gap: number) => {
+    frame += gap
+    const due = [...callbacks.values()]
+    callbacks.clear()
+    for (const callback of due) callback(performance.now(), { mediaTime: frame / 60, presentedFrames: presentedFrames++ } as VideoFrameCallbackMetadata)
+    return frame
+  }
+  return { media, present }
+}
+
 const bufferedTo = (video: HTMLVideoElement) => video.buffered.length ? video.buffered.end(video.buffered.length - 1) : 0
 
 describe('frame step on < and >', () => {
@@ -295,27 +319,26 @@ describe('frame step on < and >', () => {
   })
 
   it('learns the frame length from the shortest gaps, though the display dropped most of the frames played', async () => {
-    const media = createFakeRemoteMedia()
-    const callbacks = new Map<number, VideoFrameRequestCallback>()
-    let handles = 0
-    Object.assign(media, {
-      requestVideoFrameCallback: (callback: VideoFrameRequestCallback) => { callbacks.set(++handles, callback); return handles },
-      cancelVideoFrameCallback: (handle: number) => { callbacks.delete(handle) },
-    })
-    const screen = await render(<MediaPlayer media={media} />, sized(480, 270))
-    await userEvent.click(screen.container.querySelector('.video')!)
-    expect(media.paused).toBe(false)
-    // in frames of a 60 fps file, the gaps Chrome 156 presented on one loaded CPU in a run that stepped two frames
-    let frame = 0
-    for (const [presentedFrames, gap] of [0, 1, 3, 4, 3, 2, 1, 2, 1, 2, 2, 2, 1, 2].entries()) {
-      frame += gap
-      const due = [...callbacks.values()]
-      callbacks.clear()
-      for (const callback of due) callback(performance.now(), { mediaTime: frame / 60, presentedFrames } as VideoFrameCallbackMetadata)
-    }
+    const { media, present } = await presenting()
+    // in frames, the gaps Chrome 156 presented on one loaded CPU in a run that stepped two frames with the frame read a
+    // fifth of the way up (2026-11-20)
+    let frame = present(0)
+    for (const gap of [2, 3, 2, 2, 5, 1, 3, 4, 3, 2, 3, 3, 1, 3]) frame = present(gap)
     media.pause()
     await userEvent.keyboard('>')
     // the middle of the frame after the last one played
+    await expect.poll(() => media.currentTime * 60, { timeout: 1000 }).toBeCloseTo(frame + 1.5, 1)
+  })
+
+  it('learns the frame length only from playing at up to 1x', async () => {
+    const { media, present } = await presenting()
+    let frame = present(0)
+    for (let i = 0; i < 6; i++) frame = present(1)
+    // at 2x a 60 Hz display presents every other frame of a 60 fps file
+    media.playbackRate = 2
+    for (let i = 0; i < 54; i++) frame = present(2)
+    media.pause()
+    await userEvent.keyboard('>')
     await expect.poll(() => media.currentTime * 60, { timeout: 1000 }).toBeCloseTo(frame + 1.5, 1)
   })
 

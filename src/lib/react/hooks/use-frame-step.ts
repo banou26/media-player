@@ -99,10 +99,10 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const frameLength = () => {
       if (gaps.length < 5) return FALLBACK_FRAME
       const sorted = [...gaps].sort((a, b) => a - b)
-      // A frame the display drops lengthens a gap and nothing shortens one, so the frame is read a fifth of the way up:
-      // on one loaded CPU, Chrome 156 played a 60 fps file with as few as 29% of its gaps one frame long, and their
-      // median stepped two frames (2026-11-20)
-      const short = sorted[Math.floor(sorted.length / 5)]!
+      // A frame the display drops lengthens a gap and nothing shortens one, so the frame is read a tenth of the way up:
+      // on one loaded CPU, Chrome 156 played a 60 fps file with as few as 14% of its gaps one frame long, and their
+      // median, or a fifth of the way up, stepped two frames (2026-11-20)
+      const short = sorted[Math.floor(sorted.length / 10)]!
       // Matroska's millisecond timestamps give gaps of 41 and 42 ms for a 41.708 ms frame: steps by 42 alone drift by a
       // frame within about 65, steps by the mean of the gaps near it do not
       const near = sorted.filter((gap) => Math.abs(gap - short) <= short / 4)
