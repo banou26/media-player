@@ -12,7 +12,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 60, not 30: the runner's apt mirror can be slow. Run 44708370270 (2026-11-20) spent 13 min installing ffmpeg and
+    # 11.5 more on the browsers' system packages, and was cut off at 30 with npm test, about 5 min, nearly done
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
