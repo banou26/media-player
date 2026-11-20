@@ -395,9 +395,9 @@ export const usePlayback = (
             const resume = resumeRef.current
             resumeRef.current = null
             // only a position belonging to THIS media, or a new file opens where the last one stopped
-            if (resume && resume.size === size && resume.time > 0) {
-              video.currentTime = resume.time
-            }
+            if (resume && resume.size === size && resume.time > 0) video.currentTime = resume.time
+            // a seek carried to 0 is where the new element already is, so no 'seeked' comes to take it off the clock
+            else player.setSourceState({ seekingTo: undefined })
             if (autoplay) video.play().catch(() => {})
           },
           onError: fail,

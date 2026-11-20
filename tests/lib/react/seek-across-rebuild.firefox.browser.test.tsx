@@ -9,6 +9,8 @@ import { playerAssets } from '../../../src/asset-urls'
 const FILE = '/frame-step.mkv'
 /** 10 s at 60 fps. */
 const OTHER_FILE = '/frame-step-60.mkv'
+/** A minute at 23.976 fps, keyframes every 10.01 s. */
+const LONG_FILE = '/picture-time.mkv'
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
@@ -29,6 +31,23 @@ type Source = Awaited<ReturnType<typeof httpSource>> & { seekPrepareBudgetMs?: n
 const player = (source: Source) =>
   <MediaPlayer {...source} bufferSize={16_384} {...playerAssets} normalizeVolume={false} title="Rebuild" />
 
+const mount = async (source: Source) => {
+  const container = document.createElement('div')
+  container.style.cssText = 'width: 1280px; height: 720px;'
+  document.body.append(container)
+  const screen = await render(player(source), { container })
+  await expect.poll(() => screen.container.querySelector('video')?.readyState ?? 0, { timeout: 60_000 }).toBeGreaterThanOrEqual(2)
+  const video = screen.container.querySelector('video')!
+  video.muted = true
+  const clock = () => screen.container.querySelector('.time')?.textContent ?? ''
+  return { screen, video, clock }
+}
+
+const seekElement = (video: HTMLVideoElement, time: number) => {
+  video.currentTime = time
+  return new Promise((done) => video.addEventListener('seeked', done, { once: true }))
+}
+
 /** Paused at 8.4 s on a source whose reads from 12 s on take 6 s until `fast()`, so a seek there stays on its way. */
 const mountSlow = async (options: { seekPrepareBudgetMs?: number } = {}) => {
   const source = await httpSource(FILE)
@@ -37,17 +56,9 @@ const mountSlow = async (options: { seekPrepareBudgetMs?: number } = {}) => {
     if (slow && offset > source.size * 0.6) await wait(6000)
     return source.read(offset, length)
   }
-  const container = document.createElement('div')
-  container.style.cssText = 'width: 1280px; height: 720px;'
-  document.body.append(container)
-  const screen = await render(player({ ...source, read, ...options }), { container })
-  await expect.poll(() => screen.container.querySelector('video')?.readyState ?? 0, { timeout: 60_000 }).toBeGreaterThanOrEqual(2)
-  const video = screen.container.querySelector('video')!
-  video.muted = true
-  video.currentTime = 8.4
-  await new Promise((done) => video.addEventListener('seeked', done, { once: true }))
-  const clock = () => screen.container.querySelector('.time')?.textContent ?? ''
-  return { screen, video, clock, fast: () => { slow = false } }
+  const mounted = await mount({ ...source, read, ...options })
+  await seekElement(mounted.video, 8.4)
+  return { ...mounted, fast: () => { slow = false } }
 }
 
 /** `ArrowRight` to 13.4 s, returning while the seek still waits for its data and the element has not moved. */
@@ -107,4 +118,32 @@ it('starts a new media at its beginning, though a seek on the previous one was s
   await wait(2500 - (performance.now() - pressed))
   expect(video.currentTime, 'the new media went where the previous one was seeking').toBeLessThan(1)
   expect(clock()).toMatch(/^0:00/)
+}, 60_000)
+
+it('lets the clock follow playback once a rebuild has carried a seek to the start', async () => {
+  const source = await httpSource(LONG_FILE)
+  let slow = false
+  const read = async (offset: number, length: number) => {
+    if (slow && offset < source.size * 0.25) await wait(6000)
+    return source.read(offset, length)
+  }
+  const { screen, video, clock } = await mount({ ...source, read })
+  await seekElement(video, 30)
+  // the start is evicted once the playhead is 20 s past it, and only then does a seek back there wait for its data
+  await expect.poll(() => video.buffered.length && video.buffered.start(0), { timeout: 10_000 }).toBeGreaterThan(5)
+  slow = true
+  const bar = screen.container.querySelector('.progress-bar .padding')
+  expect(bar, 'the seek bar must exist').not.toBeNull()
+  for (const type of ['pointerdown', 'pointerup']) {
+    bar!.dispatchEvent(new PointerEvent(type, { clientX: 0, bubbles: true, pointerId: 1, pointerType: 'mouse' }))
+  }
+  await expect.poll(clock, { timeout: 400, interval: 5 }).toMatch(/^0:00/)
+  const src = video.src
+  slow = false
+  video.dispatchEvent(new Event('error'))
+  await expect.poll(() => video.src !== src && video.readyState >= 2, { timeout: 30_000 }).toBe(true)
+  await video.play()
+  await expect.poll(() => video.currentTime, { timeout: 10_000 }).toBeGreaterThan(2)
+  expect(video.currentTime, 'the seek to the start was lost').toBeLessThan(10)
+  await expect.poll(clock, { timeout: 1000 }).toMatch(/^0:0[2-9]/)
 }, 60_000)
