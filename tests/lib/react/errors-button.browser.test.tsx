@@ -85,6 +85,30 @@ describe('the playback error log', () => {
     }
   }, 120_000)
 
+  // An unset locale is the browser's own, which here is English, so a Persian browser is stood in for by
+  // reading an unset one as fa-IR, the one place Chromium writes its digits as ۰ to ۹ by default
+  it('writes the time of a failure in 0 to 9 when it was given no language, as its numbers are', async () => {
+    const original = Date.prototype.toLocaleTimeString
+    Date.prototype.toLocaleTimeString = function (this: Date, locales?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+      return original.call(this, locales ?? 'fa-IR', options)
+    }
+    try {
+      expect(new Date(0).toLocaleTimeString(), 'the stand in writes Persian digits').toMatch(/[\u06F0-\u06F9]/)
+      const screen = await render(
+        <MediaPlayer {...playerAssets} size={4096} read={() => Promise.reject(new Error('the source refused'))} title="Broken" />,
+        sized(),
+      )
+      const button = () => screen.container.querySelector('button.errors') as HTMLButtonElement | null
+      await expect.poll(() => !!button(), { timeout: 60_000 }).toBe(true)
+      button()!.click()
+      const when = () => screen.container.querySelector('.error-list .when')?.textContent ?? ''
+      await expect.poll(when, { timeout: 10_000 }).toMatch(/\d/)
+      expect(when()).not.toMatch(/[\u0660-\u0669\u06F0-\u06F9]/)
+    } finally {
+      Date.prototype.toLocaleTimeString = original
+    }
+  }, 120_000)
+
   /**
    * The clipboard payload, pinned on its own.
    *

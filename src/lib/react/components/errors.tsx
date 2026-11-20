@@ -103,7 +103,8 @@ ${popoverStyle}
 }
 `
 
-const clock = (at: number, locale: string | undefined) => new Date(at).toLocaleTimeString(locale)
+// English when the player was given no language, as its numbers are, never the browser's own digits
+const clock = (at: number, locale: string | undefined) => new Date(at).toLocaleTimeString(locale ?? 'en')
 
 // the chrome's own formatter, so a position in the log reads exactly like the one on the seekbar
 const mediaTime = (seconds: number | undefined) =>
