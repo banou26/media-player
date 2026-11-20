@@ -455,7 +455,10 @@ describe('frame step on < and >', () => {
       return source.read(offset, length)
     }
     const { video } = await mount({ ...source, read })
-    await land(video, 200)
+    // a seek and not land(): this test reads the time, not the picture, and Firefox 153 showed frame 199 at frame 200's
+    // time and 200 at none in 8 of 12 runs on two loaded CPUs, after this seek re-read its GOP (2026-11-20)
+    video.currentTime = 200.5 / FPS
+    await seeked(video)
     const { currentTime, src } = video
     let release = () => {}
     held = new Promise((done) => { release = done })
