@@ -508,9 +508,13 @@ describe('frame step on < and >', () => {
 
   it('redraws the subtitles for the frame it lands on', async () => {
     const { screen, video } = await mount()
+    const surface = () => screen.container.querySelector('canvas')
+    // read only once the renderer has sized its surface to the player, 0.2 to 0.9 s after it loaded on one loaded CPU:
+    // read while still the canvas's default 300 by 150, its worker starting, the copy held Firefox 153's page for 10 s
+    // in 6 of 20 runs (2026-11-20)
+    await expect.poll(() => surface()?.width, { timeout: 5000 }).toBe(1280)
     const lineShown = () => {
-      const surface = screen.container.querySelector('canvas')
-      const read = surface && readSurface(surface)
+      const read = readSurface(surface()!)
       return read ? !!ink(read) : false
     }
     // the line starts at 2.00 s: frame 47 of the timeline runs from 1.960 s, frame 48 from 2.002 s
