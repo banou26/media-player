@@ -457,12 +457,14 @@ describe('frame step on < and >', () => {
     await seeked(video)
     await wait(100)
     expect(painted(video)).toBe(100)
+    // each step waits for its picture, so the test took 13 to 23 s in Firefox 157 on two loaded CPUs, and up to 10.4 s
+    // on GitHub's runners (2026-11-20)
     for (let n = 101; n <= 120; n++) {
       await userEvent.keyboard('>')
       await expect.poll(() => painted(video), { timeout: 3000 }).toBe(n)
       await wait(150)
     }
-  })
+  }, 45_000)
 
   it('steps back across a keyframe into the previous GOP', async () => {
     const { video } = await mount()
