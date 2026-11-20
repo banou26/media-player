@@ -74,8 +74,8 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const gaps: number[] = []
     const onSeeking = () => { bySeek = true; played = undefined }
     let settleLanding = () => {}
-    // a new media on the same element: its load ends a step's seek with no seeked (Chrome 156 and Firefox 157), and a
-    // press waiting for that step was meant for the media that went
+    // a new media on the same element, or a rebuild of this one: its load ends a step's seek with no seeked (Chrome 156
+    // and Firefox 157), and a press waiting for that step is dropped, as it may have been meant for the media that went
     const onEmptied = () => { played = undefined; gaps.length = 0; stepFrame.drop(); settleLanding() }
     video.addEventListener('seeking', onSeeking)
     video.addEventListener('emptied', onEmptied)
@@ -113,6 +113,8 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
     const stepFrame = oneAtATime(async (direction) => {
       // a press queued behind a step still landing when the player went away, whose store is destroyed by now
       if (!active) return
+      // nothing to step from while a rebuild has emptied the element: its currentTime reads 0 until the media is back
+      if (video.readyState === HTMLMediaElement.HAVE_NOTHING) return
       if (!video.paused) {
         video.pause()
         // Chrome can still report the frame on screen after the pause

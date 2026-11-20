@@ -444,6 +444,18 @@ describe('frame step on < and >', () => {
     await expect.poll(() => video.currentTime, { timeout: 3000 }).toBeCloseTo(1 / FPS, 3)
   }, 30_000)
 
+  it('ignores a press while the player rebuilds after the element failed, rather than stepping from 0', async () => {
+    const { video } = await mount()
+    await land(video, 200)
+    const { currentTime, src } = video
+    video.dispatchEvent(new Event('error'))
+    await expect.poll(() => video.readyState, { timeout: 3000, interval: 5 }).toBe(0)
+    await userEvent.keyboard('>')
+    await expect.poll(() => video.src !== src && video.readyState >= 2 && !video.seeking, { timeout: 30_000 }).toBe(true)
+    await wait(1000)
+    expect(video.currentTime).toBeCloseTo(currentTime, 3)
+  }, 30_000)
+
   it('moves one frame a step through a run of steps, with the frame length learned while playing', async () => {
     const { video } = await mount()
     await land(video, 20)
