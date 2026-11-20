@@ -476,7 +476,7 @@ describe('frame step on < and >', () => {
       await expect.poll(() => painted(video), { timeout: 3000 }).toBe(n)
       await wait(150)
     }
-  }, 45_000)
+  }, 30_000)
 
   it('steps back across a keyframe into the previous GOP', async () => {
     const { video } = await mount()
