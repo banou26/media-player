@@ -119,10 +119,11 @@ export const usePlayback = (
   const restarts = useRef({ count: 0, at: 0 })
   const restartTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   // The streak belongs to one media, not to the player, and a pending rebuild of the old one must
-  // not land on the new one.
+  // not land on the new one. Nor may a seek still on its way to the old one stay on the clock: cleared
+  // here and not on `emptied`, which a rebuild of the same media fires too.
   useEffect(() => {
     restarts.current = { count: 0, at: 0 }
-    player.setSourceState({ playbackErrors: [] })
+    player.setSourceState({ playbackErrors: [], seekingTo: undefined })
     return () => { if (restartTimer.current) clearTimeout(restartTimer.current) }
     // `player` is stable; listing it would not re-run this, and the reset belongs to the media
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -271,15 +272,12 @@ export const usePlayback = (
     const video = controller.videoElement
     const settled = () => {
       video?.removeEventListener('seeked', settled)
-      video?.removeEventListener('emptied', settled)
       clearTimeout(giveUp)
       player.setSourceState({ seekingTo: undefined })
     }
     // a seek the element never completes must not leave the clock stuck on a time it never reached
     const giveUp = setTimeout(settled, SEEK_DISPLAY_LIMIT_MS)
     video?.addEventListener('seeked', settled)
-    // nor one a new media ended: its load fires no seeked (Chrome 156 and Firefox 157)
-    video?.addEventListener('emptied', settled)
 
     const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)
     void controller
