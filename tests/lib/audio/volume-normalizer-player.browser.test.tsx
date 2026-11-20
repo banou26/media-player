@@ -118,10 +118,10 @@ describe('normalizeVolume', () => {
     await expect.poll(() => video.currentTime, { timeout: 15_000 }).toBeGreaterThan(6)
     const engaged = await loudSecond()
 
-    // At half volume the output drops 6 dB with the normalizer still engaged. Were it judging the level after
-    // the element's volume, the loud seconds would read as nearer the normal and be cut 6 dB less. Read before the
-    // switch, whose turning back on starts the analysis again: on two loaded CPUs the first loud second after it came
-    // 3.8 dB short of the cut in 9 runs of 10 (2026-11-20).
+    // At half volume the output drops 6 dB with the normalizer still engaged, so the volume is applied once. The live
+    // stage judging the level after the volume does not show here, under the ahead stage's cut from the file: the
+    // worklet's tests pin it. Read before the switch, whose turning back on starts the analysis again: on two loaded
+    // CPUs the first loud second after it came 3.8 dB short of the cut in 9 runs of 10 (2026-11-20).
     video.volume = 0.5
     const half = await loudSecond()
     expect(engaged - half).toBeGreaterThan(5)

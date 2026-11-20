@@ -95,11 +95,14 @@ const lateWorker = (latency: number) => {
 /**
  * Plays the signal into a processor one render quantum at a time, as a context would: the context's frame starts
  * `lag` frames in, the main thread's clock pairs come every 50 ms, and an output sample's truth is the cut asked at
- * the reference time of the input sample it came from.
+ * the reference time of the input sample it came from. At a `volume` under 1 the signal comes in that much quieter, as
+ * the element's volume makes it, and the processor is told so.
  */
-const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: boolean, worker?: ReturnType<typeof lateWorker> } = {}) => {
+type RigOptions = { lag?: number, analysis?: boolean, worker?: ReturnType<typeof lateWorker>, volume?: number }
+const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) => {
   const Processor = registered.Processor!
   const node = new Processor({ processorOptions: {} })
+  if (volume !== 1) node.port.onmessage({ data: { inputGainDb: 20 * Math.log10(volume) } })
   const port = { onmessage: null as null | ((event: { data: unknown }) => void), close() {} }
   const connect = () => node.port.onmessage({ data: { analysis: port } })
   if (analysis) connect()
@@ -139,8 +142,8 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
     for (let i = 0; i < 128; i++) {
       const index = position + shift + (paused ? 0 : i)
       const live = !paused && index >= 0 && index < signal.left.length
-      inputs[0]![i] = live ? signal.left[index]! : 0
-      inputs[1]![i] = live ? signal.right[index]! : 0
+      inputs[0]![i] = live ? signal.left[index]! * volume : 0
+      inputs[1]![i] = live ? signal.right[index]! * volume : 0
       history.set(frame + i, live ? { index, time: index / RATE } : null)
     }
     const outputs = [new Float32Array(128), new Float32Array(128)]
@@ -155,7 +158,7 @@ const rig = ({ lag = 0, analysis = true, worker }: { lag?: number, analysis?: bo
       record.push({
         time: source.time,
         reference: (source.index + PRIMING) / RATE,
-        applied: 20 * Math.log10(Math.abs(outputs[0]![i]! / input)),
+        applied: 20 * Math.log10(Math.abs(outputs[0]![i]! / (input * volume))),
         asked: askedAt((source.index + PRIMING) / RATE),
         handover: node.handover,
       })
@@ -385,5 +388,20 @@ describe('the live stage, and the handover to the ahead one', () => {
     // and from then on, the ahead stage's cut
     const after = both.record.filter(({ time }) => time > both.record[to]!.time + 0.05)
     expect(Math.max(...after.map(({ applied, asked }) => Math.abs(applied - asked)))).toBeLessThan(0.5)
+  })
+
+  it('judges the level as it was before the element\'s volume', () => {
+    const full = rig({ analysis: false })
+    const half = rig({ analysis: false, volume: 0.5 })
+    for (const r of [full, half]) r.playTo(30)
+    expect(half.record.length).toBe(full.record.length)
+    let deepest = 0, apart = 0
+    for (const [k, { applied }] of full.record.entries()) {
+      deepest = Math.min(deepest, applied)
+      apart = Math.max(apart, Math.abs(half.record[k]!.applied - applied))
+    }
+    // the control: the live stage cuts in these 30 s
+    expect(deepest).toBeLessThan(-3)
+    expect(apart).toBeLessThan(0.01)
   })
 })
