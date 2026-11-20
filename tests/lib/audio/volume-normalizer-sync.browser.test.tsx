@@ -90,7 +90,7 @@ const watchAnalysis = () => {
  */
 const play = async (url: string, readsDownload = false) => {
   const routed = vi.spyOn(AudioContext.prototype, 'createMediaElementSource')
-  const analysed = watchAnalysis()
+  const analysed = readsDownload ? watchAnalysis() : undefined
   const container = document.createElement('div')
   container.style.cssText = 'width: 640px; height: 360px;'
   document.body.append(container)
@@ -271,7 +271,7 @@ describe('the normalizer in step with the media, live', () => {
     if (readsDownload) {
       video.pause()
       video.currentTime = 30
-      await expect.poll(() => run.analysed.end, { timeout: 60_000 }).toBe(true)
+      await expect.poll(() => run.analysed?.end, { timeout: 60_000 }).toBe(true)
       await video.play()
     }
     // a few ms either side of an onset, after the analysis of the whole file, the last one 46 s back into audio still
