@@ -163,28 +163,35 @@ describe('frame step on < and >', () => {
   it('shows every frame on the way while a key is held', async () => {
     const { video } = await mount()
     await expect.poll(() => bufferedTo(video), { timeout: 30_000 }).toBeGreaterThan(19)
+    // counted by the browser, not sampled by the page: a press waiting behind a step starts its own as the first lands,
+    // and in a full Chrome suite frame 227 was presented and gone again before the page's next 5 ms tick or frame
+    // callback (1 run in 20, 2026-11-20)
+    let presented = 0
+    let seen = -1
+    let counting = true
+    const count = (_: number, frame: VideoFrameCallbackMetadata) => {
+      presented = frame.presentedFrames
+      seen = painted(video)
+      if (counting) video.requestVideoFrameCallback(count)
+    }
+    video.requestVideoFrameCallback(count)
     await land(video, 225)
-    const shown = [painted(video)]
-    const sample = () => { const n = painted(video); if (n !== shown.at(-1)) shown.push(n) }
-    // on a timer and on every presented frame: a press waiting behind a step starts its own as the first lands, so a
-    // frame can show for less than a 5 ms tick (Firefox under load, 1 run in 8), and Firefox's frame callbacks alone
-    // missed the first step's frame (3 of 3, 2026-10-23)
-    let watching = true
-    const timer = setInterval(sample, 5)
-    const onFrame = () => { if (watching) { sample(); video.requestVideoFrameCallback(onFrame) } }
-    video.requestVideoFrameCallback(onFrame)
+    await expect.poll(() => seen).toBe(225)
+    const from = presented
     try {
       // repeats faster than a step decodes at the end of a GOP, up to short of the keyframe at 240: on GitHub's runners
       // as few as two steps landed in 1.5 s in Firefox, so the press runs to a frame, not for a time
       const start = performance.now()
       while (performance.now() - start < 20_000 && painted(video) < 236) await userEvent.keyboard('>')
       await wait(1000)
+      await expect.poll(() => seen).toBe(painted(video))
     } finally {
-      watching = false
-      clearInterval(timer)
+      counting = false
     }
-    expect(shown.length).toBeGreaterThan(3)
-    expect(shown.slice(1).map((n, i) => n - shown[i]!), `frames shown: ${shown.join(', ')}`).toEqual(shown.slice(1).map(() => 1))
+    const moved = seen - 225
+    expect(moved).toBeGreaterThan(3)
+    // a step that moved two frames, or a frame never presented, leaves fewer frames presented than moved
+    expect(presented - from, `frames presented while the picture moved ${moved}`).toBe(moved)
   }, 45_000)
 
   it('pauses a playing video and steps from the frame it shows', async () => {
