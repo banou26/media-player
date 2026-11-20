@@ -271,12 +271,15 @@ export const usePlayback = (
     const video = controller.videoElement
     const settled = () => {
       video?.removeEventListener('seeked', settled)
+      video?.removeEventListener('emptied', settled)
       clearTimeout(giveUp)
       player.setSourceState({ seekingTo: undefined })
     }
     // a seek the element never completes must not leave the clock stuck on a time it never reached
     const giveUp = setTimeout(settled, SEEK_DISPLAY_LIMIT_MS)
     video?.addEventListener('seeked', settled)
+    // nor one a new media ended: its load fires no seeked (Chrome 156 and Firefox 157)
+    video?.addEventListener('emptied', settled)
 
     const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)
     void controller

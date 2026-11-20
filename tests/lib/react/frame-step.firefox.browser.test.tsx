@@ -376,6 +376,29 @@ describe('frame step on < and >', () => {
     await expect.poll(() => media.currentTime, { timeout: 1000 }).toBeCloseTo(1 / FPS, 6)
   })
 
+  it('steps a new media from its own position, though a step on the previous one was still landing', async () => {
+    const source = await httpSource(FILE)
+    // every read from 12 s on takes 6 s, so the seeks there are still on their way when the media changes
+    const read = async (offset: number, length: number) => {
+      if (offset > source.size * 0.6) await wait(6000)
+      return source.read(offset, length)
+    }
+    const { screen, video } = await mount({ ...source, read, bufferSize: 16_384 })
+    video.currentTime = 200.5 / FPS
+    await seeked(video)
+    const from = video.currentTime
+    await userEvent.keyboard('{ArrowRight}>')
+    await expect.poll(() => video.currentTime, { timeout: 3000 }).toBeCloseTo(from + 5 + 1 / FPS, 3)
+    expect(video.seeking, 'the step landed before the media changed').toBe(true)
+    const emptied = new Promise((done) => video.addEventListener('emptied', done, { once: true }))
+    await screen.rerender(player(await httpSource(FILE_60)))
+    await emptied
+    await expect.poll(() => video.readyState, { timeout: 30_000 }).toBeGreaterThanOrEqual(2)
+    expect(screen.container.querySelector('.time')!.textContent, 'the clock shows the previous media\'s seek').toMatch(/^0:00/)
+    await userEvent.keyboard('>')
+    await expect.poll(() => video.currentTime, { timeout: 3000 }).toBeCloseTo(1 / FPS, 3)
+  }, 30_000)
+
   it('moves one frame a step through a run of steps, with the frame length learned while playing', async () => {
     const { video } = await mount()
     await land(video, 20)
