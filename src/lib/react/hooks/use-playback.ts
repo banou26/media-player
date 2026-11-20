@@ -245,6 +245,8 @@ export const usePlayback = (
     const move = () => {
       if (moved) return
       moved = true
+      // the pipeline went away: a new media starts at its own beginning, and a rebuild resumes at this seek itself
+      if (controllerRef.current !== controller) return
       player.seek(time)
       if (debug) {
         // eslint-disable-next-line no-console
@@ -439,7 +441,8 @@ export const usePlayback = (
     })()
     return () => {
       cancelled = true
-      resumeRef.current = { time: video.currentTime, size }
+      // a seek still waiting for its data has not moved the element yet, and it is where the viewer asked to be
+      resumeRef.current = { time: player.state.seekingTo ?? video.currentTime, size }
       controllerRef.current?.destroy()
       controllerRef.current = null
       player.setSourceState({ ready: false })
