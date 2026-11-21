@@ -125,8 +125,8 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
       const length = frameLength()
       // off `state`: the store has a getter only for the fields it was created with
       const pending = player.state.seekingTo
-      // `seeking` turns true as `currentTime` is set, but the event that clears `played` is queued, and a key handled
-      // before it stepped from the last frame played (Chrome 156 and Firefox 153, 2026-11-21)
+      // `seeking` turns true as `currentTime` is set, but the event that clears `played` is queued, so a key handled
+      // before it would step from the last frame played (Chrome 156 and Firefox 153, 2026-11-21)
       const target = pending !== undefined
         ? pending + direction * length
         : played && !video.seeking

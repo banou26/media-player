@@ -262,7 +262,7 @@ describe('frame step on < and >', () => {
     expect(stepped).toBe(painted(video) + 1)
   })
 
-  it.each([['>', 1], ['<', -1]] as const)('steps %s from a seek the element has not yet fired seeking for', async (key, direction) => {
+  it.each([['forward', '>', 1], ['back', '<', -1]] as const)('steps %s from a seek the element has not yet fired seeking for', async (_, key, direction) => {
     const { video } = await mount()
     video.currentTime = 60.5 / FPS
     await seeked(video)
