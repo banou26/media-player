@@ -197,6 +197,15 @@ export const usePlayback = (
     if (language && playsIn(playingAudio(), language)) onAlwaysSubtitlesRef.current?.(true)
   }, [player, playingAudio])
 
+  /*
+   * Counts the seeks asked for, so a seek that a newer one replaced never moves the playhead.
+   *
+   * A newer remuxer task (the newer seek's prepare, or the engine seek its move starts) aborts the older seek's
+   * prepare, which then resolves as if its data were in. Firefox 153 landed on the older seek; Chrome 156 moved to it
+   * first, into ground with no data (2026-11-21).
+   */
+  const seeks = useRef(0)
+
   /**
    * Seek with the data already there, or after the deadline, whichever comes first.
    *
@@ -209,6 +218,7 @@ export const usePlayback = (
    * A seek into buffered ground resolves immediately, so scrubbing inside the buffer is unaffected.
    */
   const requestSeek = useCallback((time: number) => {
+    const seek = ++seeks.current
     const controller = controllerRef.current
     // no budget means the feature is off: seek at once and do not spend a read preparing something
     // nobody is going to wait for
@@ -224,8 +234,8 @@ export const usePlayback = (
      * quick taps of the arrow keys would have done the same.
      *
      * The chrome knows what gesture it is in and now says so by only calling this for settled seeks,
-     * which is knowledge rather than inference. Rapid calls are safe here anyway: each supersedes
-     * the last through the engine's seek generation.
+     * which is knowledge rather than inference. Rapid calls are safe here anyway: each replaces
+     * the last through `seeks`.
      */
     /*
      * A debug trace, off unless asked for.
@@ -245,8 +255,9 @@ export const usePlayback = (
     const move = () => {
       if (moved) return
       moved = true
-      // the pipeline went away: a new media starts at its own beginning, and a rebuild resumes at this seek itself
-      if (controllerRef.current !== controller) return
+      // a newer seek replaced this one, or the pipeline went away (a new media starts at its own beginning, and a
+      // rebuild resumes at this seek itself)
+      if (controllerRef.current !== controller || seeks.current !== seek) return
       player.seek(time)
       if (debug) {
         // eslint-disable-next-line no-console

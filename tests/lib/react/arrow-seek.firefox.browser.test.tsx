@@ -76,11 +76,36 @@ describe('the arrow keys while a seek is on its way', () => {
     return { video, release }
   }
 
-  it('moves 10 s on two ArrowRight presses while the first waits for its data', async () => {
+  // every time the element is sent to from now on
+  const sentTo = (video: HTMLVideoElement) => {
+    const times: number[] = []
+    const { get, set } = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime')!
+    Object.defineProperty(video, 'currentTime', { get, set(time: number) { times.push(time); set!.call(this, time) } })
+    return times
+  }
+
+  const clickBarStart = () => {
+    const bar = document.querySelector('.progress-bar .padding')!
+    const { left, top, height } = bar.getBoundingClientRect()
+    for (const type of ['pointerdown', 'pointerup']) {
+      bar.dispatchEvent(new PointerEvent(type, { clientX: left + 1, clientY: top + height / 2, bubbles: true, pointerId: 1, pointerType: 'mouse' }))
+    }
+  }
+
+  it.each([
+    ['a second ArrowRight', () => userEvent.keyboard('{ArrowRight}'), 18.4, '0:18'],
+    // in Firefox 153 the start is loaded, so this seek moves at once, and the replaced one landed after it (2026-11-21)
+    ['a click at the start of the bar', clickBarStart, 0, '0:00'],
+  ] as const)('goes only where %s goes, once it replaces an ArrowRight waiting for its data', async (_, replace, to, clock) => {
     const { video, release } = await mountHeld()
-    await userEvent.keyboard('{ArrowRight}{ArrowRight}')
+    const sent = sentTo(video)
+    await userEvent.keyboard('{ArrowRight}')
+    await replace()
     release()
-    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 18.4, clock: '0:18' })
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: expect.closeTo(to, 1), clock })
+    // past the replaced seek's 13.4 s and the runway it waited for
+    await expect.poll(() => video.buffered.length && video.buffered.end(video.buffered.length - 1), { timeout: 10_000 }).toBeGreaterThan(17)
+    expect(sent).toEqual([expect.closeTo(to, 1)])
   }, 30_000)
 
   it('comes back on ArrowLeft from an ArrowRight still waiting for its data', async () => {
