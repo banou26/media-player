@@ -262,6 +262,20 @@ describe('frame step on < and >', () => {
     expect(stepped).toBe(painted(video) + 1)
   })
 
+  it.each([['>', 1], ['<', -1]] as const)('steps %s from a seek the element has not yet fired seeking for', async (key, direction) => {
+    const { video } = await mount()
+    video.currentTime = 60.5 / FPS
+    await seeked(video)
+    await video.play()
+    await expect.poll(() => video.currentTime * FPS, { timeout: 10_000 }).toBeGreaterThan(75)
+    video.pause()
+    video.currentTime = 300.5 / FPS
+    // in the same task, so before the queued seeking: on a loaded CPU, Firefox 153 handled a typed > there and stepped
+    // from the last frame played (2026-11-20)
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+    await expect.poll(() => video.currentTime * FPS, { timeout: 3000 }).toBeCloseTo(300.5 + direction, 1)
+  })
+
   it('steps from where a seek still waiting for its data is going', async () => {
     const source = await httpSource(FILE)
     // every read from 12 s on takes 3 s, and a small buffer keeps them from being made ahead of the seek

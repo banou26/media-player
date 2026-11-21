@@ -41,8 +41,8 @@ const oneAtATime = (step: (direction: 1 | -1) => Promise<void>) => {
  * seek presented is never read for its time: Firefox reports the seek's target as its `mediaTime`.
  *
  * The frame's length is learned from the shortest gaps between frames presented one after another while playing at up
- * to 1x: faster, a 60 Hz display presents every other frame of a 60 fps file. A step while a seek waits for its data
- * starts from that seek's target.
+ * to 1x: faster, a 60 Hz display presents every other frame of a 60 fps file. A step while a seek is on its way, or
+ * waits for its data, starts from that seek's target.
  *
  * A media without `requestVideoFrameCallback` is stepped by `hostStep`, when its host can step it.
  */
@@ -125,9 +125,11 @@ export const useFrameStep = (media: PlayerMedia | null, hostStep?: (direction: 1
       const length = frameLength()
       // off `state`: the store has a getter only for the fields it was created with
       const pending = player.state.seekingTo
+      // `seeking` turns true as `currentTime` is set, but the event that clears `played` is queued, and a key handled
+      // before it stepped from the last frame played (Chrome 156 and Firefox 153, 2026-11-21)
       const target = pending !== undefined
         ? pending + direction * length
-        : played
+        : played && !video.seeking
           ? played.mediaTime + (direction > 0 ? 1.5 : -0.5) * length
           : video.currentTime + direction * length
       const time = Math.max(0, Math.min(target, video.duration || target))
