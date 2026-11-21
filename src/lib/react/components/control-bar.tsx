@@ -1,5 +1,6 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { RefObject } from 'react'
+import type { PlayerMedia } from '../media'
 import type { HostFullscreen } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -226,6 +227,10 @@ export const ControlBar = (
 
   useEffect(() => {
     const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
+    // Where the playhead is going. A seek waiting for its data is only in `seekingTo`, and the store hears of a seek set
+    // in this task on the element's queued `seeking`, while the element already reads its target (Chrome 156 and
+    // Firefox 153, 2026-11-21). Off `state`: the store has a getter only for the fields it was created with.
+    const position = () => player.state.seekingTo ?? (player.target?.media as PlayerMedia | undefined)?.currentTime ?? 0
     // the path, not ev.target, which a shadow root around the player retargets to its host
     const targetOf = (ev: Event) => ev.composedPath()[0] as HTMLElement | undefined
     const engage = (ev: Event) => { engaged.current = !!root.current?.contains(targetOf(ev) ?? null) }
@@ -254,10 +259,10 @@ export const ControlBar = (
       }
       else if (ev.key === 'ArrowRight') {
         if (!player.duration) return
-        seek(Math.min(player.currentTime + SEEK_STEP, player.duration))
+        seek(Math.min(position() + SEEK_STEP, player.duration))
       }
       else if (ev.key === 'ArrowLeft') {
-        seek(Math.max(player.currentTime - SEEK_STEP, 0))
+        seek(Math.max(position() - SEEK_STEP, 0))
       }
       else if ((ev.key === '<' || ev.key === '>') && stepFrame) stepFrame(ev.key === '>' ? 1 : -1)
       else {
