@@ -229,7 +229,7 @@ export const usePlayback = (
     }
 
     /*
-     * Every call gets the data first. There is deliberately no "this looks like a drag" shortcut.
+     * Every settled seek gets the data first. There is deliberately no "this looks like a drag" shortcut.
      *
      * The first version of this guessed at drags from the gap between calls, and that is what let
      * the fault through in production: the seek bar reports a change on the PRESS and again on every
