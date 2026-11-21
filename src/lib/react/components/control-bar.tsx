@@ -227,10 +227,6 @@ export const ControlBar = (
 
   useEffect(() => {
     const seek = (time: number) => requestSeek ? requestSeek(time) : player.seek(time)
-    // Where the playhead is going. A seek waiting for its data is only in `seekingTo`, and the store hears of a seek set
-    // in this task on the element's queued `seeking`, while the element already reads its target (Chrome 156 and
-    // Firefox 153, 2026-11-21). Off `state`: the store has a getter only for the fields it was created with.
-    const position = () => player.state.seekingTo ?? (player.target?.media as PlayerMedia | undefined)?.currentTime ?? 0
     // the path, not ev.target, which a shadow root around the player retargets to its host
     const targetOf = (ev: Event) => ev.composedPath()[0] as HTMLElement | undefined
     const engage = (ev: Event) => { engaged.current = !!root.current?.contains(targetOf(ev) ?? null) }
@@ -257,12 +253,17 @@ export const ControlBar = (
       else if (ev.key === 'ArrowDown') {
         modifyVolume({ direction: 'down', stepSize: VOLUME_STEP })
       }
-      else if (ev.key === 'ArrowRight') {
-        if (!player.duration) return
-        seek(Math.min(position() + SEEK_STEP, player.duration))
-      }
-      else if (ev.key === 'ArrowLeft') {
-        seek(Math.max(position() - SEEK_STEP, 0))
+      else if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
+        const media = player.target?.media as PlayerMedia | undefined
+        const forward = ev.key === 'ArrowRight'
+        // Nothing to seek from while a new media or a rebuild has emptied the element: it reads 0, and Chrome 156 lands
+        // the seek after the rebuild has resumed (2026-11-21)
+        if (!media?.readyState || (forward && !player.duration)) return
+        // Where the playhead is going. A seek waiting for its data is only in `seekingTo`, and the store hears of a seek
+        // set in this task on the element's queued `seeking`, while the element already reads its target (Chrome 156
+        // and Firefox 153, 2026-11-21). Off `state`: the store has a getter only for the fields it was created with.
+        const from = player.state.seekingTo ?? media.currentTime
+        seek(forward ? Math.min(from + SEEK_STEP, player.duration) : Math.max(from - SEEK_STEP, 0))
       }
       else if ((ev.key === '<' || ev.key === '>') && stepFrame) stepFrame(ev.key === '>' ? 1 : -1)
       else {

@@ -92,3 +92,50 @@ describe('the arrow keys while a seek is on its way', () => {
     await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 8.4, clock: '0:08' })
   }, 30_000)
 })
+
+describe('the arrow keys while the player rebuilds after the element failed', () => {
+  const arm = {
+    // the rebuild empties the element by taking its src away, and queues emptied
+    'in the task that empties the element': (video: HTMLVideoElement, press: () => void) => {
+      const observer = new MutationObserver(() => {
+        if (video.hasAttribute('src')) return
+        observer.disconnect()
+        press()
+      })
+      observer.observe(video, { attributeFilter: ['src'] })
+    },
+    'once the element has emptied': (video: HTMLVideoElement, press: () => void) =>
+      video.addEventListener('emptied', press, { once: true }),
+  }
+
+  it.each([
+    ['ArrowLeft', 'once the element has emptied'],
+    ['ArrowLeft', 'in the task that empties the element'],
+    ['ArrowRight', 'in the task that empties the element'],
+  ] as const)('ignores %s pressed %s, rather than seeking from 0', async (key, when) => {
+    const source = await httpSource(FILE)
+    // the rebuild's reads wait for the release, so the element is still empty after the press
+    const { promise: held, resolve: release } = Promise.withResolvers<void>()
+    let rebuilding = false
+    const read = async (offset: number, length: number) => {
+      if (rebuilding) await held
+      return source.read(offset, length)
+    }
+    const video = await mount({ ...source, read })
+    await seekElement(video, 8.4)
+    const { src } = video
+    rebuilding = true
+    let emptied = false
+    video.addEventListener('emptied', () => { emptied = true }, { once: true })
+    const { promise: pressed, resolve } = Promise.withResolvers<{ readyState: number, emptied: boolean }>()
+    arm[when](video, () => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+      resolve({ readyState: video.readyState, emptied })
+    })
+    video.dispatchEvent(new Event('error'))
+    expect(await pressed).toEqual({ readyState: 0, emptied: when === 'once the element has emptied' })
+    release()
+    await expect.poll(() => video.src !== src && video.readyState >= 2 && !video.seeking, { timeout: 30_000 }).toBe(true)
+    expect(settled(video)).toEqual({ seeking: false, at: 8.4, clock: '0:08' })
+  }, 60_000)
+})
