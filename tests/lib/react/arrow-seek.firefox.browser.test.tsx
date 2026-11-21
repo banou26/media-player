@@ -26,16 +26,18 @@ type Source = Awaited<ReturnType<typeof httpSource>> & { bufferSize?: number, se
 const added: Element[] = []
 afterEach(() => { for (const element of added.splice(0)) element.remove() })
 
+const player = (source: Source) => <MediaPlayer {...source} {...playerAssets} normalizeVolume={false} title="Arrow seek" />
+
 const mount = async (source: Source) => {
   const container = document.createElement('div')
   container.style.cssText = 'width: 1280px; height: 720px;'
   document.body.append(container)
   added.push(container)
-  const screen = await render(<MediaPlayer {...source} {...playerAssets} normalizeVolume={false} title="Arrow seek" />, { container })
+  const screen = await render(player(source), { container })
   await expect.poll(() => screen.container.querySelector('video')?.readyState ?? 0, { timeout: 60_000 }).toBeGreaterThanOrEqual(2)
   const video = screen.container.querySelector('video')!
   video.muted = true
-  return video
+  return { video, screen }
 }
 
 const seekElement = (video: HTMLVideoElement, time: number) => {
@@ -53,7 +55,7 @@ const settled = (video: HTMLVideoElement) => ({
 
 describe('the arrow keys while a seek is on its way', () => {
   it.each([['ArrowRight', 17.53], ['ArrowLeft', 7.53]] as const)('%s moves 5 s from a seek set in the same task', async (key, to) => {
-    const video = await mount(await httpSource(FILE))
+    const { video } = await mount(await httpSource(FILE))
     await seekElement(video, 3)
     video.currentTime = 12.53
     // before the element's queued seeking, which is when the store hears of the seek
@@ -72,9 +74,15 @@ describe('the arrow keys while a seek is on its way', () => {
       if (offset > from && offset < source.size * 0.99) await held
       return source.read(offset, length)
     }
-    const video = await mount({ ...source, read, bufferSize: 16_384, seekPrepareBudgetMs: 60_000 })
+    const props = { ...source, read, bufferSize: 16_384, seekPrepareBudgetMs: 60_000 }
+    const { video, screen } = await mount(props)
     await seekElement(video, 8.4)
-    return { video, release, holdAll: () => { from = -1 } }
+    return {
+      video,
+      release,
+      holdAll: () => { from = -1 },
+      budget: (seekPrepareBudgetMs: number) => screen.rerender(player({ ...props, seekPrepareBudgetMs })),
+    }
   }
 
   // every time the element is sent to from now on
@@ -110,10 +118,11 @@ describe('the arrow keys while a seek is on its way', () => {
     expect(sent).toEqual([expect.closeTo(to, 1)])
   }, 30_000)
 
-  it('comes back on ArrowLeft from an ArrowRight still waiting for its data', async () => {
-    const { video, release } = await mountHeld()
+  it.each([60_000, 0])('comes back on ArrowLeft with a budget of %i ms from an ArrowRight still waiting for its data', async (ms) => {
+    const { video, release, budget } = await mountHeld()
     await userEvent.keyboard('{ArrowRight}')
     await expect.poll(() => settled(video), { timeout: 1000 }).toEqual({ seeking: false, at: 8.4, clock: '0:13' })
+    await budget(ms)
     await userEvent.keyboard('{ArrowLeft}')
     release()
     await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 8.4, clock: '0:08' })
@@ -200,7 +209,7 @@ describe('the arrow keys while the player rebuilds after the element failed', ()
       if (rebuilding) await held
       return source.read(offset, length)
     }
-    const video = await mount({ ...source, read })
+    const { video } = await mount({ ...source, read })
     await seekElement(video, 8.4)
     const { src } = video
     rebuilding = true
