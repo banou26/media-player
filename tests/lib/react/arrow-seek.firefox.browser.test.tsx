@@ -43,6 +43,14 @@ const seekElement = (video: HTMLVideoElement, time: number) => {
   return new Promise((done) => video.addEventListener('seeked', done, { once: true }))
 }
 
+// where the playhead has come to rest: a seek another seek replaces moves at once, so the element passes through a time
+// on its way somewhere else
+const settled = (video: HTMLVideoElement) => ({
+  seeking: video.seeking,
+  at: Number(video.currentTime.toFixed(2)),
+  clock: document.querySelector('.time')?.textContent?.split(' ')[0],
+})
+
 describe('the arrow keys while a seek is on its way', () => {
   it.each([['ArrowRight', 17.53], ['ArrowLeft', 7.53]] as const)('%s moves 5 s from a seek set in the same task', async (key, to) => {
     const video = await mount(await httpSource(FILE))
@@ -53,10 +61,11 @@ describe('the arrow keys while a seek is on its way', () => {
     await expect.poll(() => video.currentTime, { timeout: 5000 }).toBeCloseTo(to, 2)
   })
 
-  it('moves 10 s on two ArrowRight presses while the first waits for its data', async () => {
+  /** Paused at 8.4 s, with the data from 12 s on held until `release()`. */
+  const mountHeld = async () => {
     const source = await httpSource(FILE)
-    // the data from 12 s on waits for the release, and the budget outlasts the test, so the first seek waits until the
-    // second takes its place. Not the file's last bytes, which the player reads before it plays
+    // the budget outlasts the test, so a seek there waits until another takes its place. Not the file's last bytes,
+    // which the player reads before it plays
     const { promise: held, resolve: release } = Promise.withResolvers<void>()
     const read = async (offset: number, length: number) => {
       if (offset > source.size * 0.6 && offset < source.size * 0.99) await held
@@ -64,8 +73,22 @@ describe('the arrow keys while a seek is on its way', () => {
     }
     const video = await mount({ ...source, read, bufferSize: 16_384, seekPrepareBudgetMs: 60_000 })
     await seekElement(video, 8.4)
+    return { video, release }
+  }
+
+  it('moves 10 s on two ArrowRight presses while the first waits for its data', async () => {
+    const { video, release } = await mountHeld()
     await userEvent.keyboard('{ArrowRight}{ArrowRight}')
     release()
-    await expect.poll(() => video.currentTime, { timeout: 10_000 }).toBeCloseTo(18.4, 2)
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 18.4, clock: '0:18' })
+  }, 30_000)
+
+  it('comes back on ArrowLeft from an ArrowRight still waiting for its data', async () => {
+    const { video, release } = await mountHeld()
+    await userEvent.keyboard('{ArrowRight}')
+    await expect.poll(() => settled(video), { timeout: 1000 }).toEqual({ seeking: false, at: 8.4, clock: '0:13' })
+    await userEvent.keyboard('{ArrowLeft}')
+    release()
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 8.4, clock: '0:08' })
   }, 30_000)
 })
