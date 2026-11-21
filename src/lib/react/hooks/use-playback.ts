@@ -198,11 +198,11 @@ export const usePlayback = (
   }, [player, playingAudio])
 
   /*
-   * Counts the seeks asked for, so a seek that a newer one replaced never moves the playhead.
+   * Counts the seeks asked for, so a seek that a newer one replaced never moves the playhead, nor clears `seekingTo`.
    *
-   * A newer remuxer task (the newer seek's prepare, or the engine seek its move starts) aborts the older seek's
-   * prepare, which then resolves as if its data were in. Firefox 153 landed on the older seek; Chrome 156 moved to it
-   * first, into ground with no data (2026-11-21).
+   * A newer remuxer task (the newer seek's prepare, or the engine seek its move or a scrub starts) aborts the older
+   * seek's prepare, which then resolves as if its data were in. Firefox 153 landed on the older seek; Chrome 156 moved
+   * to it first, into ground with no data (2026-11-21).
    */
   const seeks = useRef(0)
 
@@ -215,14 +215,18 @@ export const usePlayback = (
    * is worse than the fault it avoids. So the playhead moves either when the data lands or when the
    * budget runs out, once, whichever happens first.
    *
-   * A seek into buffered ground resolves immediately, so scrubbing inside the buffer is unaffected.
+   * A seek into buffered ground resolves immediately, and a scrub (`now`) never waits.
    */
-  const requestSeek = useCallback((time: number) => {
+  const requestSeek = useCallback((time: number, now = false) => {
     const seek = ++seeks.current
     const controller = controllerRef.current
     // no budget means the feature is off: seek at once and do not spend a read preparing something
-    // nobody is going to wait for
-    if (!controller || seekPrepareBudgetMs <= 0) { player.seek(time); return }
+    // nobody is going to wait for. A seek that moves at once leaves none on its way.
+    if (!controller || seekPrepareBudgetMs <= 0 || now) {
+      player.setSourceState({ seekingTo: undefined })
+      player.seek(time)
+      return
+    }
 
     /*
      * Every call gets the data first. There is deliberately no "this looks like a drag" shortcut.
@@ -233,9 +237,9 @@ export const usePlayback = (
      * read as a drag, and the playhead jumped onto unbuffered ground before its data existed. Two
      * quick taps of the arrow keys would have done the same.
      *
-     * The chrome knows what gesture it is in and now says so by only calling this for settled seeks,
-     * which is knowledge rather than inference. Rapid calls are safe here anyway: each replaces
-     * the last through `seeks`.
+     * The chrome knows what gesture it is in and says so: a scrub passes `now`, and only a settled
+     * seek waits, which is knowledge rather than inference. Rapid calls are safe here anyway: each
+     * replaces the last through `seeks`.
      */
     /*
      * A debug trace, off unless asked for.
@@ -284,13 +288,16 @@ export const usePlayback = (
     player.setSourceState({ seekingTo: time })
     const video = controller.videoElement
     const settled = () => {
-      video?.removeEventListener('seeked', settled)
+      video?.removeEventListener('seeked', onSeeked)
       clearTimeout(giveUp)
-      player.setSourceState({ seekingTo: undefined })
+      if (seeks.current === seek) player.setSourceState({ seekingTo: undefined })
     }
+    // Before this seek has moved, a seeked is an earlier seek landing (Firefox 153, 2026-11-21). A pipeline going away
+    // ends the prepare, so a rebuild's resume at this seek comes after the move.
+    const onSeeked = () => { if (moved) settled() }
     // a seek the element never completes must not leave the clock stuck on a time it never reached
     const giveUp = setTimeout(settled, SEEK_DISPLAY_LIMIT_MS)
-    video?.addEventListener('seeked', settled)
+    video?.addEventListener('seeked', onSeeked)
 
     const deadline = setTimeout(() => { movedBecause = 'deadline'; move() }, seekPrepareBudgetMs)
     void controller

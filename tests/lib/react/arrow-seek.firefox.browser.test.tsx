@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { userEvent } from 'vitest/browser'
+import { server, userEvent } from 'vitest/browser'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
@@ -84,18 +84,19 @@ describe('the arrow keys while a seek is on its way', () => {
     return times
   }
 
-  const clickBarStart = () => {
+  const onBar = (type: string, fraction: number) => {
     const bar = document.querySelector('.progress-bar .padding')!
-    const { left, top, height } = bar.getBoundingClientRect()
-    for (const type of ['pointerdown', 'pointerup']) {
-      bar.dispatchEvent(new PointerEvent(type, { clientX: left + 1, clientY: top + height / 2, bubbles: true, pointerId: 1, pointerType: 'mouse' }))
-    }
+    const { left, width, top, height } = bar.getBoundingClientRect()
+    bar.dispatchEvent(new PointerEvent(type, { clientX: left + width * fraction, clientY: top + height / 2, bubbles: true, pointerId: 1, pointerType: 'mouse' }))
   }
+  const clickBar = (fraction: number) => { for (const type of ['pointerdown', 'pointerup']) onBar(type, fraction) }
+
+  const frame = () => new Promise((done) => requestAnimationFrame(done))
 
   it.each([
     ['a second ArrowRight', () => userEvent.keyboard('{ArrowRight}'), 18.4, '0:18'],
     // in Firefox 153 the start is loaded, so this seek moves at once, and the replaced one landed after it (2026-11-21)
-    ['a click at the start of the bar', clickBarStart, 0, '0:00'],
+    ['a click at the start of the bar', () => clickBar(0), 0, '0:00'],
   ] as const)('goes only where %s goes, once it replaces an ArrowRight waiting for its data', async (_, replace, to, clock) => {
     const { video, release } = await mountHeld()
     const sent = sentTo(video)
@@ -115,6 +116,44 @@ describe('the arrow keys while a seek is on its way', () => {
     await userEvent.keyboard('{ArrowLeft}')
     release()
     await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: 8.4, clock: '0:08' })
+  }, 30_000)
+
+  // In Chromium 156 the click's seek still waits for the frames before 6 s when the ArrowRight moves the reader to
+  // 11 s, so it never lands first (2026-11-21)
+  it.runIf(server.browser === 'firefox').each([
+    ['ArrowRight', '{ArrowRight}', 16, '0:16'],
+    ['a frame step', '>', 11.05, '0:11'],
+  ] as const)('starts %s from an ArrowRight waiting for its data, once a bar click before it has landed', async (_, key, to, clock) => {
+    const { video, release } = await mountHeld()
+    // pressed while the click's seek to 6 s is on its way, so its seeked comes after the ArrowRight to 11 s
+    video.addEventListener('seeking', () => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+    }, { once: true })
+    const clickLanded = new Promise((done) => video.addEventListener('seeked', done, { once: true }))
+    clickBar(0.3)
+    await clickLanded
+    await frame()
+    expect(settled(video).clock).toBe('0:11')
+    await userEvent.keyboard(key)
+    release()
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: expect.closeTo(to, 1), clock })
+  }, 30_000)
+
+  it('follows only a drag on the bar that starts while an ArrowRight waits for its data', async () => {
+    const { video, release } = await mountHeld()
+    const sent = sentTo(video)
+    await userEvent.keyboard('{ArrowRight}')
+    // a frame each, so the bar follows every move
+    for (const [type, fraction] of [['pointerdown', 0.1], ['pointermove', 0.15], ['pointermove', 0.2]] as const) {
+      onBar(type, fraction)
+      await frame()
+    }
+    await expect.poll(() => settled(video), { timeout: 5000 }).toEqual({ seeking: false, at: expect.closeTo(4, 1), clock: '0:04' })
+    expect(sent).toEqual([expect.closeTo(3, 1), expect.closeTo(4, 1)])
+    onBar('pointerup', 0.2)
+    release()
+    await expect.poll(() => sent, { timeout: 10_000 }).toEqual([expect.closeTo(3, 1), expect.closeTo(4, 1), expect.closeTo(4, 1)])
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: expect.closeTo(4, 1), clock: '0:04' })
   }, 30_000)
 })
 

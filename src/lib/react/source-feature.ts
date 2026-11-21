@@ -242,10 +242,13 @@ export type SourceState = {
    * Waiting is bounded by a deadline, so a source that cannot answer in time costs that deadline and
    * not the whole read.
    *
+   * `now` moves at once without waiting, as a scrub following the pointer does. Any call replaces a seek still
+   * waiting for its data.
+   *
    * Undefined for a media this player does not own, where there is no pipeline to prepare and the
    * caller should seek directly.
    */
-  requestSeek?: (time: number) => void
+  requestSeek?: (time: number, now?: boolean) => void
 
   /**
    * One frame back or forward, pausing first. Undefined for a media whose frames this document cannot see, unless its

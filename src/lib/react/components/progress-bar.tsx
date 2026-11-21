@@ -425,8 +425,9 @@ export const ProgressBar = () => {
   useEffect(() => {
     if (seekFraction === undefined || !duration) return
     if (!dragging || !isScrub.current) return
-    player.seek(seekFraction * duration)
-  }, [player, dragging, seekFraction, duration])
+    if (requestSeek) requestSeek(seekFraction * duration, true)
+    else player.seek(seekFraction * duration)
+  }, [player, requestSeek, dragging, seekFraction, duration])
 
   /*
    * Where the bar is drawn, which is not always where the element is.

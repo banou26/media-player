@@ -91,7 +91,7 @@ it('keeps the seek on its way on the clock while the player rebuilds after the e
 
 it('lands a seek still waiting for its data when the element fails, once the player has rebuilt', async () => {
   const mounted = await mountSlow()
-  const { video, fast } = mounted
+  const { video, clock, fast } = mounted
   await seekStillPreparing(mounted)
   const src = video.src
   fast()
@@ -101,6 +101,9 @@ it('lands a seek still waiting for its data when the element fails, once the pla
   await wait(1000)
   await expect.poll(() => video.seeking, { timeout: 10_000 }).toBe(false)
   expect(video.currentTime).toBeCloseTo(13.4, 1)
+  // and off the clock, well inside the 15 s the chrome shows a seek that never lands
+  video.currentTime = 2
+  await expect.poll(clock, { timeout: 3000 }).toMatch(/^0:02/)
 }, 60_000)
 
 it('starts a new media at its beginning, though a seek on the previous one was still waiting for its data', async () => {
