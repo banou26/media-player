@@ -61,19 +61,20 @@ describe('the arrow keys while a seek is on its way', () => {
     await expect.poll(() => video.currentTime, { timeout: 5000 }).toBeCloseTo(to, 2)
   })
 
-  /** Paused at 8.4 s, with the data from 12 s on held until `release()`. */
+  /** Paused at 8.4 s, with the data from 12 s on, or all of it from `holdAll()`, held until `release()`. */
   const mountHeld = async () => {
     const source = await httpSource(FILE)
     // the budget outlasts the test, so a seek there waits until another takes its place. Not the file's last bytes,
     // which the player reads before it plays
     const { promise: held, resolve: release } = Promise.withResolvers<void>()
+    let from = source.size * 0.6
     const read = async (offset: number, length: number) => {
-      if (offset > source.size * 0.6 && offset < source.size * 0.99) await held
+      if (offset > from && offset < source.size * 0.99) await held
       return source.read(offset, length)
     }
     const video = await mount({ ...source, read, bufferSize: 16_384, seekPrepareBudgetMs: 60_000 })
     await seekElement(video, 8.4)
-    return { video, release }
+    return { video, release, holdAll: () => { from = -1 } }
   }
 
   // every time the element is sent to from now on
@@ -154,6 +155,20 @@ describe('the arrow keys while a seek is on its way', () => {
     release()
     await expect.poll(() => sent, { timeout: 10_000 }).toEqual([expect.closeTo(3, 1), expect.closeTo(4, 1), expect.closeTo(4, 1)])
     await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: expect.closeTo(4, 1), clock: '0:04' })
+  }, 30_000)
+
+  it('follows a drag on the bar at once, though none of its data is in', async () => {
+    const { video, release, holdAll } = await mountHeld()
+    holdAll()
+    const sent = sentTo(video)
+    for (const [type, fraction] of [['pointerdown', 0.7], ['pointermove', 0.75], ['pointermove', 0.8]] as const) {
+      onBar(type, fraction)
+      await frame()
+    }
+    await expect.poll(() => sent, { timeout: 2000 }).toEqual([expect.closeTo(15, 0), expect.closeTo(16, 0)])
+    onBar('pointerup', 0.8)
+    release()
+    await expect.poll(() => settled(video), { timeout: 10_000 }).toEqual({ seeking: false, at: expect.closeTo(16, 0), clock: '0:16' })
   }, 30_000)
 })
 
