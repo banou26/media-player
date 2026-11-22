@@ -233,6 +233,38 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const mime = `video/mp4; codecs="${codecs}"`
     if (!MediaSource.isTypeSupported(mime)) throw labelledError('This browser cannot play the codecs in this file: {codecs}', { codecs })
 
+    let outstandingError = false
+    // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
+    const reportError = (error: unknown, aborted: boolean, terminal = false) => {
+      const cancelled = (error as Error)?.message === 'Cancelled'
+      if (aborted && cancelled) return
+      console.error(error)
+      // A terminal failure of the element outranks whatever was already outstanding. It is the one
+      // error whose HANDLING differs, and the sequence that produces it starts with a starved
+      // buffer, which is also when a read is most likely to have reported first. Swallowing it
+      // behind that earlier report would leave the caller holding a dead element, able to fix it
+      // and never told to.
+      if (outstandingError && !terminal) return
+      outstandingError = true
+      onError?.(cancelled ? labelledError('Reading the video file failed', undefined, { cause: error }) : error)
+    }
+
+    /**
+     * A terminal failure of the media element, attached before the MediaSource is bound so an error
+     * during init append cannot pass unobserved and leave the interval stopped for good.
+     */
+    let elementFailed = false
+    const onElementError = () => {
+      if (elementFailed || destroyed) return
+      elementFailed = true
+      const error = videoElement.error
+      reportError(
+        new MediaElementError(`the media element failed: ${error?.message ?? 'unknown'}`, { cause: error }),
+        false,
+        true,
+      )
+    }
+
     const mediaSource = new MediaSource()
     const mediaSourceUrl = URL.createObjectURL(mediaSource)
     teardown.push(() => URL.revokeObjectURL(mediaSourceUrl))
@@ -259,6 +291,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       // without firing `error`, so this cannot manufacture the failure it exists to prevent
       videoElement.load()
     })
+    // Pushed AFTER the load() reset so reversed teardown detaches the error listener first.
+    videoElement.addEventListener('error', onElementError)
+    teardown.push(() => videoElement.removeEventListener('error', onElementError))
 
     const sourceBuffer = await new Promise<SourceBuffer>((resolve, reject) => {
       const timeout = setTimeout(() => { cleanup(); reject(labelledError('The MediaSource never opened')) }, SOURCE_OPEN_TIMEOUT)
@@ -289,11 +324,15 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     })
 
     const { appendBuffer, unbufferRange, endOfStream } = updateSourceBuffer(sourceBuffer, mediaSource)
-    await appendBuffer(metadata.data)
-    onOutput?.({ type: 'init', data: metadata.data, audioMimeType: metadata.info.output.audioMimeType, audioStreamIndex: selectedAudio })
-    onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: 0 })
-    if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
-    onReady?.()
+    try {
+      await appendBuffer(metadata.data)
+    } catch (error) {
+      // MSE fires SourceBuffer `error` before the queued media element `error` task runs, so yield
+      // one turn before deciding whether this was a terminal MediaError rather than an append error.
+      if (!elementFailed && !videoElement.error) await new Promise((resolve) => setTimeout(resolve, 0))
+      if (!elementFailed && !videoElement.error) throw error
+    }
+    if (videoElement.error) onElementError()
 
     let reading = false
     let seeking = false
@@ -318,54 +357,44 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     let pending: ArrayBuffer | null = null
     let pendingAttempts = 0
     let lastAppendedEnd = 0
-    let outstandingError = false
     // where the remuxer was last positioned, which is the floor of what it can still read forward from
     let lastSeekPosition = 0
     // whether nothing was removed since, so everything read forward from there is still buffered
     let positioned = true
-
-    // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek
-    const reportError = (error: unknown, aborted: boolean, terminal = false) => {
-      const cancelled = (error as Error)?.message === 'Cancelled'
-      if (aborted && cancelled) return
-      console.error(error)
-      // A terminal failure of the element outranks whatever was already outstanding. It is the one
-      // error whose HANDLING differs, and the sequence that produces it starts with a starved
-      // buffer, which is also when a read is most likely to have reported first. Swallowing it
-      // behind that earlier report would leave the caller holding a dead element, able to fix it
-      // and never told to.
-      if (outstandingError && !terminal) return
-      outstandingError = true
-      onError?.(cancelled ? labelledError('Reading the video file failed', undefined, { cause: error }) : error)
-    }
+    let evicting = 0
 
     const evict = async (tight = false) => {
       /*
-       * Hold off while data is being put in place for a position the playhead has not reached.
+       * Hold off while a prior eviction, a remuxer seek, or a seek prepare is in flight.
        *
        * Eviction is anchored on the playhead, and `prepareSeek` deliberately appends far from it, so
-       * running now deletes exactly what was just fetched. The 100ms interval below made that a
-       * certainty. The benchmark caught it as prepared seeks being the SLOWEST arm, which is the
-       * opposite of the point.
+       * running now deletes exactly what was just fetched. The 100ms interval below also stacked
+       * duplicate removes onto the SourceBuffer queue whenever a remove or append took over 100ms.
        *
        * `tight` still runs, because that one is the answer to a quota refusal and has to be able to
        * free space no matter what else is happening.
        */
-      if (preparing > 0 && !tight) return
-      const ct = videoElement.currentTime
-      const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
-      const post = tight ? POST_EVICT_TIGHT : POST_EVICT
-      const ranges = getTimeRanges(sourceBuffer)
-      const remove = (start: number, end: number) => {
-        positioned = false
-        return unbufferRange(start, end)
-      }
-      // From 0, never from the reported start: once a group is removed, Firefox 151 reports the start
-      // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
-      // (measured 2026-10-11).
-      if (ranges.length && ranges[0].start < ct + pre) await remove(0, ct + pre)
-      for (const { end } of ranges) {
-        if (end > ct + post) await remove(ct + post, end)
+      if (!tight && (evicting > 0 || preparing > 0 || seeking)) return
+      evicting++
+      try {
+        const ct = videoElement.currentTime
+        const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
+        const post = tight ? POST_EVICT_TIGHT : POST_EVICT
+        const ranges = getTimeRanges(sourceBuffer)
+        const remove = (start: number, end: number) => {
+          positioned = false
+          return unbufferRange(start, end)
+        }
+        // From 0, never from the reported start: once a group is removed, Firefox 151 reports the start
+        // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
+        // (measured 2026-10-11).
+        if (ranges.length && ranges[0].start < ct + pre) await remove(0, ct + pre)
+        if (destroyed || (!tight && (preparing > 0 || seeking))) return
+        const afterCt = videoElement.currentTime
+        const farEnd = getTimeRanges(sourceBuffer).at(-1)?.end ?? 0
+        if (farEnd > afterCt + post) await remove(afterCt + post, farEnd)
+      } finally {
+        evicting--
       }
     }
 
@@ -721,37 +750,12 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     videoElement.addEventListener('seeking', onSeeking)
     teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
 
-    /**
-     * A terminal failure of the media element, which NOTHING here used to observe.
-     *
-     * `MediaError` is set once and the element never plays again, but the pump below kept running,
-     * and every `appendBuffer` after it throws `InvalidStateError: The HTMLMediaElement.error
-     * attribute is not null`. `updateSourceBuffer`'s chain deliberately survives a rejection, so that
-     * repeated forever, and `flushPending` swallows four attempts and rethrows the fifth. What
-     * reached the viewer was therefore the FIFTH `InvalidStateError` rather than the real cause, and
-     * the real cause never appeared anywhere at all.
-     *
-     * That cost a session: a decode failure presented as an append bug, which is a completely
-     * different place to look. Report what actually happened, then stop.
-     *
-     * It is reported as a MediaElementError because the caller can do something about this one that
-     * it cannot do about any other: nothing appended here will ever decode again, but a rebuilt
-     * element gets a fresh decoder, and the pipeline already knows how to come back at the same
-     * position. See `isMediaElementError`.
-     */
-    let elementFailed = false
-    const onElementError = () => {
-      if (elementFailed) return
-      elementFailed = true
-      const error = videoElement.error
-      reportError(
-        new MediaElementError(`the media element failed: ${error?.message ?? 'unknown'}`, { cause: error }),
-        false,
-        true,
-      )
+    if (!elementFailed && !destroyed) {
+      onOutput?.({ type: 'init', data: metadata.data, audioMimeType: metadata.info.output.audioMimeType, audioStreamIndex: selectedAudio })
+      onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: 0 })
+      if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
+      onReady?.()
     }
-    videoElement.addEventListener('error', onElementError)
-    teardown.push(() => videoElement.removeEventListener('error', onElementError))
 
     const interval = setInterval(() => {
       // Nothing below can succeed against a failed element, and retrying only buries the real error.
