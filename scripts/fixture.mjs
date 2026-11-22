@@ -698,26 +698,6 @@ export const SHORT_GOP_FIXTURE = 'short-gop-tone.mkv'
 export const SHORT_GOP_FIXTURE_PATH = PUBLIC_DIR + SHORT_GOP_FIXTURE
 
 /** The loud tone with a keyframe every 20 frames, 0.833 s, so a remuxer seek can leave a hole under 1 s. */
-export const EAC3_FIXTURE = 'eac3-tone.mkv'
-export const EAC3_FIXTURE_PATH = PUBLIC_DIR + EAC3_FIXTURE
-
-/** Short 5.1 E-AC-3 tone: libav-wasm transcodes it to AAC whose first audio sample lands past 0 s. */
-export const ensureEac3Fixture = async () => {
-  if (await exists(EAC3_FIXTURE_PATH)) return EAC3_FIXTURE_PATH
-  await mkdir(PUBLIC_DIR, { recursive: true })
-  await run('ffmpeg', [
-    '-y', '-loglevel', 'error',
-    '-f', 'lavfi', '-i', 'color=c=black:s=160x90:r=24:d=6',
-    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=6',
-    '-filter_complex', '[1:a]pan=5.1|FL=c0|FR=c0|FC=0.5*c0|LFE=0.1*c0|BL=0.3*c0|BR=0.3*c0[a]',
-    '-map', '0:v', '-map', '[a]',
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '24',
-    '-c:a', 'eac3', '-b:a', '384k',
-    EAC3_FIXTURE_PATH,
-  ])
-  return EAC3_FIXTURE_PATH
-}
-
 export const ensureShortGopFixture = async () => {
   if (await exists(SHORT_GOP_FIXTURE_PATH)) return SHORT_GOP_FIXTURE_PATH
   await mkdir(PUBLIC_DIR, { recursive: true })
@@ -732,6 +712,26 @@ export const ensureShortGopFixture = async () => {
     SHORT_GOP_FIXTURE_PATH,
   ])
   return SHORT_GOP_FIXTURE_PATH
+}
+
+export const EAC3_FIXTURE = 'eac3-tone.mkv'
+export const EAC3_FIXTURE_PATH = PUBLIC_DIR + EAC3_FIXTURE
+
+/** 12 s 5.1 E-AC-3 tone: libav-wasm transcodes it to AAC whose first audio sample lands past 0 s. */
+export const ensureEac3Fixture = async () => {
+  if (await exists(EAC3_FIXTURE_PATH)) return EAC3_FIXTURE_PATH
+  await mkdir(PUBLIC_DIR, { recursive: true })
+  await run('ffmpeg', [
+    '-y', '-loglevel', 'error',
+    '-f', 'lavfi', '-i', 'color=c=black:s=160x90:r=24:d=12',
+    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=12',
+    '-filter_complex', '[1:a]pan=5.1|FL=c0|FR=c0|FC=0.5*c0|LFE=0.1*c0|BL=0.3*c0|BR=0.3*c0[a]',
+    '-map', '0:v', '-map', '[a]',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-g', '24',
+    '-c:a', 'eac3', '-b:a', '384k',
+    EAC3_FIXTURE_PATH,
+  ])
+  return EAC3_FIXTURE_PATH
 }
 
 export const FRAME_STEP_FIXTURE = 'frame-step.mkv'

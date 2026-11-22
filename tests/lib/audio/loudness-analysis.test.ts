@@ -192,6 +192,42 @@ describe('the analysis, as the file is read', () => {
     analysis.flushBlocks()
     for (const [block, { gain }] of blocks) expect(maxDifference(gain, curve, block * 10_000), `block ${block}`).toBeLessThan(0.05)
   })
+
+  it('reports the first bin of a start run as coverage.start, even when an earlier run already covered it', () => {
+    const tone = new Float32Array(4800).fill(0.1)
+    const a = createAnalysis({ toWorklet: () => {} })
+    expect(a.coverage().start).toBeNull()
+    a.startRun(0, 10, false)
+    a.push([tone, tone], tone.length, RATE, 10)
+    a.endRun(false)
+    expect(a.coverage().start).toBeNull()
+    a.startRun(1, 0, true)
+    a.push([tone, tone], tone.length, RATE, 0.005)
+    a.endRun(false)
+    expect(a.coverage().start).toBe(0.005)
+
+    // earlier non-start run already covered [0.06, 0.2): a start run from 0.06 still records 0.06, never null
+    const b = createAnalysis({ toWorklet: () => {} })
+    b.startRun(0, 0, false)
+    b.push([tone, tone], tone.length, RATE, 0.06)
+    b.endRun(true)
+    expect(b.coverage().start).toBeNull()
+    b.startRun(1, 0, true)
+    b.push([tone, tone], tone.length, RATE, 0.06)
+    b.endRun(false)
+    expect(b.coverage().start).toBe(0.06)
+
+    // earlier non-start run covered [0.1, 0.2): a start run covering [0.1, 0.3) records 0.1, not 0.2
+    const c = createAnalysis({ toWorklet: () => {} })
+    c.startRun(0, 0, false)
+    c.push([tone, tone], tone.length, RATE, 0.1)
+    c.endRun(false)
+    const longTone = new Float32Array(9600).fill(0.1)
+    c.startRun(1, 0, true)
+    c.push([longTone, longTone], longTone.length, RATE, 0.1)
+    c.endRun(false)
+    expect(c.coverage().start).toBe(0.1)
+  })
 })
 
 describe('the bins, from decoded audio', () => {
@@ -214,20 +250,6 @@ describe('the bins, from decoded audio', () => {
   })
 
   // libav's first audio sample of a run lasts until the video's first frame is due, which MediaSource plays as a gap
-  it('reports the first bin of a start run as coverage.start', () => {
-    const analysis = createAnalysis({ toWorklet: () => {} })
-    const tone = new Float32Array(4800).fill(0.1)
-    expect(analysis.coverage().start).toBeNull()
-    analysis.startRun(0, 10, false)
-    analysis.push([tone, tone], tone.length, RATE, 10)
-    analysis.endRun(false)
-    expect(analysis.coverage().start).toBeNull()
-    analysis.startRun(1, 0, true)
-    analysis.push([tone, tone], tone.length, RATE, 0.005)
-    analysis.endRun(false)
-    expect(analysis.coverage().start).toBe(0.005)
-  })
-
   it('takes a gap of more than 10 ms in the timestamps as silence, and places what follows at its timestamp', () => {
     const energy = binned([{ from: 0, frames: 1024, time: 0 }, { from: 1024, frames: 48_000, time: 0.082 }])
     for (let bin = 22; bin < 82; bin++) expect(energy.get(bin), `bin ${bin}`).toBe(0)

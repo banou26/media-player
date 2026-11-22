@@ -377,12 +377,7 @@ describe('the analysis ahead, in the player', () => {
     await expect.poll(() => last()?.normal, { timeout: 10_000 }).toBeLessThan(-28)
     await screen.unmount()
   }, 90_000)
-})
 
-describe('the analysis, stopped', () => {
-  afterEach(() => { vi.unstubAllGlobals() })
-
-  // React's StrictMode runs an effect, cleans it up and runs it again at once, which stops the first analysis here
   it('terminates its remuxer after one pass when audio starts past 0 s', async () => {
     const file = await bytesOf('/eac3-tone.mkv')
     const size = file.byteLength
@@ -415,12 +410,13 @@ describe('the analysis, stopped', () => {
     }
   }, 60_000)
 
-  it('terminates its remuxer when analysis starts mid-file on audio that starts past 0 s', async () => {
+  it('terminates its remuxer and closes the final run when analysis starts mid-file on audio starting past 0 s', async () => {
     const file = await bytesOf('/eac3-tone.mkv')
     const size = file.byteLength
     const { workers, analysis, last } = watchWorkers()
     const video = document.createElement('video')
-    Object.defineProperty(video, 'currentTime', { value: 4, configurable: true })
+    // past CATCH_UP_SECONDS (5 s) so the first pass seeks mid-file instead of reading straight from 0
+    Object.defineProperty(video, 'currentTime', { value: 8, configurable: true })
     const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode
     const running = startLoudnessAnalysis({
       node,
@@ -437,18 +433,82 @@ describe('the analysis, stopped', () => {
     try {
       const remuxers = () => workers.filter(({ url }) => url.includes('libav'))
       await expect.poll(() => remuxers().length > 0 && remuxers()[0]!.terminated, { timeout: 30_000 }).toBe(true)
+      const msgs = analysis()!.messages
+      // the control: analysis actually sought mid-file first (first non-empty span starts past 5 s)
+      const firstCovered = msgs.find(({ spans }) => spans?.length > 0)
+      expect(firstCovered?.spans[0][0]).toBeGreaterThan(5)
       expect(last()!.spans).toHaveLength(1)
       expect(last()!.spans[0][0]).toBeGreaterThan(0)
       expect(last()!.start).toBe(last()!.spans[0][0])
-      expect(last()!.end).toBeGreaterThan(5.5)
+      expect(last()!.end).toBeGreaterThan(11.5)
+      // the final run that completed whole coverage sent `end` so the worker closed its AudioDecoder
+      const lastRun = Math.max(...msgs.map((m) => (typeof m.run === 'number' ? m.run : -1)))
+      expect(lastRun).toBeGreaterThanOrEqual(2)
+      expect(msgs.some(({ type, run }) => type === 'ended' && run === lastRun)).toBe(true)
       await sleep(500)
-      // initial aborted run 0, mid-file run to EOF, and start run to merge: no extra pass after completion
-      expect(analysis()!.messages.filter(({ type }) => type === 'ended').length).toBeLessThanOrEqual(3)
+      expect(analysis()!.messages.filter(({ type }) => type === 'ended').length).toBe(lastRun + 1)
     } finally {
       running.stop()
     }
   }, 60_000)
 
+  it('ignores stale fragments and duplicate end messages after a run ends', async () => {
+    const file = await bytesOf('/normalizer-aac.mkv')
+    const remuxer = await makeRemuxer({
+      publicPath: playerAssets.publicPath,
+      workerUrl: playerAssets.libavWorkerUrl,
+      workerOptions: { type: 'module' },
+      length: file.byteLength,
+      read: async (offset, length) => file.slice(offset, Math.min(offset + length, file.byteLength)),
+    })
+    const init = await remuxer.init()
+    const first = await remuxer.read()
+    await remuxer.destroy()
+
+    const worker = new Worker(playerAssets.normalizerWorkletUrl, { type: 'module' })
+    const errors: unknown[] = []
+    worker.addEventListener('error', (event) => errors.push(event))
+    const reply = (type: string, run: number) => new Promise<any>((resolve) => {
+      const listener = ({ data }: MessageEvent) => {
+        if (data.type !== type || data.run !== run) return
+        worker.removeEventListener('message', listener)
+        resolve(data)
+      }
+      worker.addEventListener('message', listener)
+    })
+    try {
+      const { port1 } = new MessageChannel()
+      worker.postMessage({ type: 'port', port: port1 }, [port1])
+      worker.postMessage({ type: 'init', data: init.data, codec: init.info.output.audioMimeType })
+      worker.postMessage({ type: 'run', run: 0, pts: init.timestampOffset, from: 0, start: true })
+      const ack0 = reply('ack', 0)
+      worker.postMessage({ type: 'fragment', run: 0, data: first.data.slice(0) })
+      await ack0
+      const end0 = reply('ended', 0)
+      worker.postMessage({ type: 'end', run: 0, finished: false })
+      await end0
+      // stale fragment and duplicate end for the already-ended run must not crash the worker
+      worker.postMessage({ type: 'fragment', run: 0, data: first.data.slice(0) })
+      const dupEnd0 = reply('ended', 0)
+      worker.postMessage({ type: 'end', run: 0, finished: false })
+      await dupEnd0
+      // a subsequent run still succeeds cleanly
+      worker.postMessage({ type: 'run', run: 1, pts: init.timestampOffset, from: 0, start: true })
+      const ack1 = reply('ack', 1)
+      worker.postMessage({ type: 'fragment', run: 1, data: first.data.slice(0) })
+      const res = await ack1
+      expect(res.spans.length).toBeGreaterThan(0)
+      expect(errors).toEqual([])
+    } finally {
+      worker.terminate()
+    }
+  }, 60_000)
+})
+
+describe('the analysis, stopped', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  // React's StrictMode runs an effect, cleans it up and runs it again at once, which stops the first analysis here
   it('ends a remuxer that was still starting when it was stopped', async () => {
     const { workers } = watchWorkers()
     const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode

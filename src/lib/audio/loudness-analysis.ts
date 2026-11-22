@@ -135,7 +135,13 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
     return at >= (coverage.end ?? duration) - 0.05 ? null : at
   }
   const attempt = (target: number) => tried.get(Math.round(target * 10)) === version ? 'idle' as const : target
+  const whole = () =>
+    coverage.start !== null && coverage.end !== null
+    && coverage.spans.length === 1
+    && coverage.spans[0]![0] <= coverage.start
+    && coverage.spans[0]![1] >= coverage.end
   const decide = (): 'read' | 'idle' | 'done' | number => {
+    if (whole()) return 'done'
     const time = element.currentTime
     const gap = gapFrom(time)
     const reading = active && mergedRun !== run
@@ -221,8 +227,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
         } else {
           await endRun(false)
           tried.set(Math.round(next * 10), version)
-          const target = Math.max(0, next - RUN_LEAD_IN_SECONDS)
-          const seeking = remuxer.seek(target)
+          const seeking = remuxer.seek(Math.max(0, next - RUN_LEAD_IN_SECONDS))
           // what the task it aborted was waiting on
           release(true)
           const result = await abandonable(seeking)
@@ -231,7 +236,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
           run++
           active = true
           runStart = result.pts
-          worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: result.pts, start: target === 0 || result.pts <= 0 })
+          worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: result.pts, start: result.pts <= 0 })
           await send(result)
           if (result.finished) await endRun(true)
         }
@@ -242,6 +247,8 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
         if (typeof decide() !== 'number') await changed()
       }
     }
+    if (!stopped) await endRun(false)
+    if (stopped) return
     // everything is analysed: the worker keeps serving the cut, and the remuxer is no longer needed
     terminateRemuxer(remuxer)
     remuxer = undefined

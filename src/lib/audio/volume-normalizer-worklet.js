@@ -504,13 +504,13 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
   const write = (run, bin, energy, finger) => {
     if (bin < run.from || bin >= endBin) return
     run.last = bin
+    if (run.start && firstBin < 0) firstBin = bin
     if (spanAt(bin)) {
       if (run.wrote && ++run.skipped === MERGED_BINS) toPage({ type: 'merged', run: run.id, ...coverage() })
       return
     }
     run.skipped = 0
     run.wrote = true
-    if (run.start && firstBin < 0) firstBin = bin
     const chunk = chunkOf(bin)
     chunk.energy[bin % BLOCK_BINS] = energy
     chunk.finger[bin % BLOCK_BINS] = finger
@@ -652,13 +652,13 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
  *                                         SourceBuffer's timestampOffset adds it for playback; `start` for the one
  *                                         from the start, and `join: true` for one whose first fragments went by
  *                                         unseen, which starts at its first sample
- *   { type: 'fragment', run, data }       answered { type: 'ack', run, spans, end, normal } once its audio is queued
- *                                         for decoding: the analysed seconds, the file's end once known, and the
- *                                         level learned so far in LUFS
- *   { type: 'end', run, finished }        the run is over, answered { type: 'ended', run, spans, end, normal }
+ *   { type: 'fragment', run, data }       answered { type: 'ack', run, spans, start, end, normal } once its audio is
+ *                                         queued for decoding: the analysed seconds, the first and last once known,
+ *                                         and the level learned so far in LUFS
+ *   { type: 'end', run, finished }        the run is over, answered { type: 'ended', run, spans, start, end, normal }
  *   { type: 'playhead', time }
  *
- * and posts { type: 'merged', run, spans, end, normal } when a run has met audio an earlier one analysed, and
+ * and posts { type: 'merged', run, spans, start, end, normal } when a run has met audio an earlier one analysed, and
  * { type: 'unsupported' } when this browser's WebCodecs cannot decode the track.
  */
 const serve = (scope) => {
