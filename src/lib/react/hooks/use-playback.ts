@@ -131,17 +131,17 @@ export const usePlayback = (
 
   const controllerRef = useRef<PlaybackController | null>(null)
   /**
-   * Where to pick playback back up, and WHICH media that position belongs to.
+   * Where to pick playback back up, whether it was running, and WHICH media that state belongs to.
    *
-   * The position exists so a rebuild of the pipeline is invisible: switching audio track tears the
-   * whole thing down and starts again, and dropping the viewer back at zero for that would be absurd.
-   * But the same rebuild happens when the media itself changes, and then the position is meaningless:
-   * dropping a second file in while the first was playing used to open it 40 minutes in.
+   * Both travel together so a rebuild of the pipeline is invisible: switching audio track or
+   * recovering from a MediaError tears the pipeline down and starts again. Without the position the
+   * viewer dropped back to zero; without `play`, an autoplay player started playing again after a
+   * rebuild while paused, and a non-autoplay player stayed paused after a rebuild while playing.
    *
    * `size` is the identity, because it is the one piece of the source in the effect's deps. `read` is
    * deliberately not, since a streaming consumer passes a fresh closure several times a second.
    */
-  const resumeRef = useRef<{ time: number, size: number } | null>(null)
+  const resumeRef = useRef<{ time: number, size: number, play: boolean } | null>(null)
   // The size of the media the viewer picked subtitles for: until then each pipeline starts on the preferred track.
   const subtitleChoiceFor = useRef<number>(undefined)
   const sizeRef = useRef(size)
@@ -328,6 +328,15 @@ export const usePlayback = (
   useEffect(() => {
     if (!video || !subtitles || !size || !read) return
     let cancelled = false
+    let reachedReady = false
+    // Chrome sets `video.paused = true` and queues a `pause` event after `error` on a real
+    // MediaError (Firefox and WebKit leave `paused` false), so play intent is tracked across events
+    // and any `pause` fired while `video.error` is set is ignored.
+    let wantPlaying = false
+    const onPlay = () => { wantPlaying = true }
+    const onPause = () => { if (!video.error) wantPlaying = false }
+    video.addEventListener('play', onPlay)
+    video.addEventListener('pause', onPause)
     player.setSourceState({ playbackError: null, ready: false })
 
     /**
@@ -409,14 +418,18 @@ export const usePlayback = (
           chooseAudioStream: (audio) => audio[startingTracks(audio, [], preferencesRef.current).audio]?.streamIndex,
           onReady: () => {
             if (cancelled) return
+            reachedReady = true
             player.setSourceState({ ready: true })
             const resume = resumeRef.current
             resumeRef.current = null
+            const sameMedia = !!resume && resume.size === size
             // only a position belonging to THIS media, or a new file opens where the last one stopped
-            if (resume && resume.size === size && resume.time > 0) video.currentTime = resume.time
+            if (sameMedia && resume.time > 0) video.currentTime = resume.time
             // a seek carried to 0 is where the new element already is, so no 'seeked' comes to take it off the clock
             else player.setSourceState({ seekingTo: undefined })
-            if (autoplay) video.play().catch(() => {})
+            const shouldPlay = sameMedia ? resume.play : autoplay
+            wantPlaying = shouldPlay
+            if (shouldPlay) video.play().catch(() => { if (video.paused && !video.error) wantPlaying = false })
           },
           onError: fail,
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
@@ -459,8 +472,18 @@ export const usePlayback = (
     })()
     return () => {
       cancelled = true
-      // a seek still waiting for its data has not moved the element yet, and it is where the viewer asked to be
-      resumeRef.current = { time: player.state.seekingTo ?? video.currentTime, size }
+      video.removeEventListener('play', onPlay)
+      video.removeEventListener('pause', onPause)
+      if (reachedReady) {
+        // a seek still waiting for its data has not moved the element yet, and it is where the viewer asked to be
+        resumeRef.current = {
+          time: player.state.seekingTo ?? video.currentTime,
+          size,
+          play: video.error ? wantPlaying : !video.paused,
+        }
+      } else if (resumeRef.current?.size === size && player.state.seekingTo !== undefined) {
+        resumeRef.current = { ...resumeRef.current, time: player.state.seekingTo }
+      }
       controllerRef.current?.destroy()
       controllerRef.current = null
       player.setSourceState({ ready: false })
