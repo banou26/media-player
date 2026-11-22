@@ -63,6 +63,8 @@ describe('startPlayback init ordering and eviction serialization', () => {
     })
 
     const errors: unknown[] = []
+    const outputs: string[] = []
+    const seeks: number[] = []
     let readyCalls = 0
     const controller = await startPlayback({
       videoElement: video,
@@ -71,6 +73,8 @@ describe('startPlayback init ordering and eviction serialization', () => {
       read: source.read,
       ...playerAssets,
       onError: (error) => errors.push(error),
+      onOutput: (output) => outputs.push(output.type),
+      onSeek: (fraction) => seeks.push(fraction),
       onReady: () => { readyCalls++ },
     })
     cleanups.push(() => controller.destroy())
@@ -78,6 +82,11 @@ describe('startPlayback init ordering and eviction serialization', () => {
     await expect.poll(() => errors.length, { timeout: 10_000 }).toBeGreaterThan(0)
     expect(errors.every((error) => isMediaElementError(error))).toBe(true)
     expect(readyCalls).toBe(0)
+    // Subsequent seeks or prepareSeek calls during backoff must be no-ops and never emit run/fragment without init
+    video.dispatchEvent(new Event('seeking'))
+    await controller.prepareSeek(2)
+    expect(seeks).toEqual([])
+    expect(outputs).toEqual([])
   }, 30_000)
 
   it('has its seeking listener attached before onReady runs', async () => {
@@ -199,9 +208,10 @@ describe('startPlayback init ordering and eviction serialization', () => {
     const target = Math.max(25, Math.min(55, Math.ceil(bufferedEnd + 15)))
     expect(target - 20).toBeGreaterThan(video.buffered.start(0))
 
+    const readsBeforeSeek = pendingReads.length
     removeSpy.mockClear()
     video.currentTime = target
-    await expect.poll(() => pendingReads.length, { timeout: 5_000 }).toBeGreaterThan(0)
+    await expect.poll(() => pendingReads.length, { timeout: 5_000 }).toBeGreaterThan(readsBeforeSeek)
     await wait(350)
     expect(removeSpy).not.toHaveBeenCalled()
   }, 60_000)

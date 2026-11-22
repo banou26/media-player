@@ -336,6 +336,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     let reading = false
     let seeking = false
+    let dragTimer: ReturnType<typeof setTimeout> | undefined
     // how many prepares are in flight, so eviction knows not to delete what they are fetching
     let preparing = 0
     /*
@@ -374,7 +375,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
        * `tight` still runs, because that one is the answer to a quota refusal and has to be able to
        * free space no matter what else is happening.
        */
-      if (!tight && (evicting > 0 || preparing > 0 || seeking)) return
+      if (!tight && (evicting > 0 || preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined)) return
       evicting++
       try {
         const ct = videoElement.currentTime
@@ -389,7 +390,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
         // (measured 2026-10-11).
         if (ranges.length && ranges[0].start < ct + pre) await remove(0, ct + pre)
-        if (destroyed || (!tight && (preparing > 0 || seeking))) return
+        if (destroyed || (!tight && (preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined))) return
         const afterCt = videoElement.currentTime
         const farEnd = getTimeRanges(sourceBuffer).at(-1)?.end ?? 0
         if (farEnd > afterCt + post) await remove(afterCt + post, farEnd)
@@ -610,7 +611,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * takes, and over a torrent that is unbounded.
      */
     const prepareSeek = async (time: number) => {
-      if (destroyed) return
+      if (destroyed || elementFailed || videoElement.error) return
       if (playableAt(time) && hasRunway(time)) return
       // A drag still settling holds every read, so the runway would never be read, and its settle would then position the
       // remuxer back where the drag stopped. A seek back under 250 ms after a seek forward is one (Firefox 153 and 157,
@@ -705,10 +706,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * moves is a drag, and a drag gets one seek when it settles, to wherever it actually stopped.
      */
     let lastSeekingAt = 0
-    let dragTimer: ReturnType<typeof setTimeout> | undefined
     teardown.push(() => { if (dragTimer) clearTimeout(dragTimer) })
 
     const onSeeking = () => {
+      if (destroyed || elementFailed || videoElement.error) return
       const time = videoElement.currentTime
       const duration = metadata.info.input.duration || videoElement.duration
       if (duration > 0) reportSeek(Math.min(Math.max(time / duration, 0), 1))
@@ -747,27 +748,28 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         void seekTo(settled)
       }, DRAG_SETTLE_MS)
     }
-    videoElement.addEventListener('seeking', onSeeking)
-    teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
-
     if (!elementFailed && !destroyed) {
+      videoElement.addEventListener('seeking', onSeeking)
+      teardown.push(() => videoElement.removeEventListener('seeking', onSeeking))
       onOutput?.({ type: 'init', data: metadata.data, audioMimeType: metadata.info.output.audioMimeType, audioStreamIndex: selectedAudio })
       onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: 0 })
       if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
       onReady?.()
     }
 
-    const interval = setInterval(() => {
-      // Nothing below can succeed against a failed element, and retrying only buries the real error.
-      if (elementFailed || videoElement.error) return
-      evict().catch(() => {})
-      pump().catch((error) => reportError(error, false))
-      // Every remove() puts the MediaSource back to 'open', so the end has to be re-armed, though not while a remuxer
-      // seek runs: queued behind a remove() and run after a move had started one, it came before that seek's append over
-      // the end, and Firefox 151 then sometimes waited at the end for good (4 of 1060 end moves, measured 2026-10-12)
-      if (endInBuffer() && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream(() => !seeking).catch(() => {})
-    }, 100)
-    teardown.push(() => clearInterval(interval))
+    if (!elementFailed && !destroyed) {
+      const interval = setInterval(() => {
+        // Nothing below can succeed against a failed element, and retrying only buries the real error.
+        if (elementFailed || videoElement.error) return
+        evict().catch(() => {})
+        pump().catch((error) => reportError(error, false))
+        // Every remove() puts the MediaSource back to 'open', so the end has to be re-armed, though not while a remuxer
+        // seek runs: queued behind a remove() and run after a move had started one, it came before that seek's append over
+        // the end, and Firefox 151 then sometimes waited at the end for good (4 of 1060 end moves, measured 2026-10-12)
+        if (endInBuffer() && !pending && atEnd() && mediaSource.readyState === 'open') endOfStream(() => !seeking).catch(() => {})
+      }, 100)
+      teardown.push(() => clearInterval(interval))
+    }
 
     return {
       destroy: runTeardown,
