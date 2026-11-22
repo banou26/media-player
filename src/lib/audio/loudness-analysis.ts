@@ -23,7 +23,7 @@ export type LoudnessAnalysis = {
   stop: () => void
 }
 
-type Coverage = { spans: [number, number][], end: number | null }
+type Coverage = { spans: [number, number][], start: number | null, end: number | null }
 
 // a gap this close ahead of the playhead is analysed before anything else
 const LEAD_SECONDS = 20
@@ -85,7 +85,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
   worker.postMessage({ type: 'port', port: channel.port1 }, [channel.port1])
   node.port.postMessage({ analysis: channel.port2 }, [channel.port2])
 
-  let coverage: Coverage = { spans: [], end: null }
+  let coverage: Coverage = { spans: [], start: null, end: null }
   let version = 0
   const replies = new Map<string, (data: Coverage) => void>()
   const reply = (type: string, run: number) => new Promise<Coverage>((resolve) => replies.set(`${type}:${run}`, resolve))
@@ -96,8 +96,9 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
       return
     }
     if (data.spans) {
-      if (JSON.stringify(data.spans) !== JSON.stringify(coverage.spans) || data.end !== coverage.end) version++
-      coverage = { spans: data.spans, end: data.end }
+      const start = data.start ?? null
+      if (JSON.stringify(data.spans) !== JSON.stringify(coverage.spans) || start !== coverage.start || data.end !== coverage.end) version++
+      coverage = { spans: data.spans, start, end: data.end }
     }
     if (data.type === 'merged') mergedRun = data.run
     replies.get(`${data.type}:${data.run}`)?.(coverage)
@@ -129,7 +130,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
 
   // the first time at or after `time` nothing analysed covers, or null when it is all analysed from there
   const gapFrom = (time: number) => {
-    let at = time
+    let at = Math.max(time, coverage.start ?? 0)
     for (const [from, to] of coverage.spans) if (from <= at && at < to) at = to
     return at >= (coverage.end ?? duration) - 0.05 ? null : at
   }
@@ -220,7 +221,8 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
         } else {
           await endRun(false)
           tried.set(Math.round(next * 10), version)
-          const seeking = remuxer.seek(Math.max(0, next - RUN_LEAD_IN_SECONDS))
+          const target = Math.max(0, next - RUN_LEAD_IN_SECONDS)
+          const seeking = remuxer.seek(target)
           // what the task it aborted was waiting on
           release(true)
           const result = await abandonable(seeking)
@@ -229,7 +231,7 @@ export const startLoudnessAnalysis = ({ node, element, scriptUrl, source }: {
           run++
           active = true
           runStart = result.pts
-          worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: result.pts, start: result.pts <= 0 })
+          worker.postMessage({ type: 'run', run, pts: init.timestampOffset, from: result.pts, start: target === 0 || result.pts <= 0 })
           await send(result)
           if (result.finished) await endRun(true)
         }

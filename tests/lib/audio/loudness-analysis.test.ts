@@ -214,6 +214,20 @@ describe('the bins, from decoded audio', () => {
   })
 
   // libav's first audio sample of a run lasts until the video's first frame is due, which MediaSource plays as a gap
+  it('reports the first bin of a start run as coverage.start', () => {
+    const analysis = createAnalysis({ toWorklet: () => {} })
+    const tone = new Float32Array(4800).fill(0.1)
+    expect(analysis.coverage().start).toBeNull()
+    analysis.startRun(0, 10, false)
+    analysis.push([tone, tone], tone.length, RATE, 10)
+    analysis.endRun(false)
+    expect(analysis.coverage().start).toBeNull()
+    analysis.startRun(1, 0, true)
+    analysis.push([tone, tone], tone.length, RATE, 0.005)
+    analysis.endRun(false)
+    expect(analysis.coverage().start).toBe(0.005)
+  })
+
   it('takes a gap of more than 10 ms in the timestamps as silence, and places what follows at its timestamp', () => {
     const energy = binned([{ from: 0, frames: 1024, time: 0 }, { from: 1024, frames: 48_000, time: 0.082 }])
     for (let bin = 22; bin < 82; bin++) expect(energy.get(bin), `bin ${bin}`).toBe(0)

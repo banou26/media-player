@@ -37,7 +37,7 @@ export type Analysis = {
   startRun: (id: number, time: number, start?: boolean) => void
   push: (planes: Float32Array[], frames: number, rate: number, time: number) => void
   endRun: (finished: boolean) => void
-  coverage: () => { spans: [number, number][], end: number | null, normal: number }
+  coverage: () => { spans: [number, number][], start: number | null, end: number | null, normal: number }
   setPlayhead: (time: number) => void
   flushBlocks: () => void
   normal: () => number
@@ -45,5 +45,5 @@ export type Analysis = {
 }
 export const createAnalysis: (handlers: {
   toWorklet: (message: BlockMessage, transfer?: Transferable[]) => void
-  toPage?: (message: { type: string, run?: number, spans?: [number, number][], end?: number | null, normal?: number }) => void
+  toPage?: (message: { type: string, run?: number, spans?: [number, number][], start?: number | null, end?: number | null, normal?: number }) => void
 }) => Analysis

@@ -589,6 +589,7 @@ export const createAnalysis = ({ toWorklet, toPage = () => {} }) => {
 
   const coverage = () => ({
     spans: spans.map(([a, b]) => [a / BINS_PER_SECOND, b / BINS_PER_SECOND]),
+    start: firstBin >= 0 ? firstBin / BINS_PER_SECOND : null,
     end: Number.isFinite(endBin) ? endBin / BINS_PER_SECOND : null,
     normal: normal(),
   })
@@ -727,7 +728,7 @@ const serve = (scope) => {
       joining = !!data.join
       if (!joining) analysis.startRun(runId, data.from, data.start)
     } else if (data.type === 'fragment') {
-      if (data.run !== runId || decoder.state !== 'configured') return
+      if (data.run !== runId || decoder?.state !== 'configured') return
       const samples = audioSamplesOf(data.data, track)
       if (joining && samples.length) {
         joining = false
@@ -748,9 +749,11 @@ const serve = (scope) => {
     } else if (data.type === 'end') {
       if (data.run !== runId) return
       const ending = decoder
-      if (ending.state === 'configured') await ending.flush().catch(() => {})
+      if (ending?.state === 'configured') await ending.flush().catch(() => {})
       if (data.run !== runId) return
-      if (ending.state === 'configured') ending.close()
+      if (ending?.state === 'configured') ending.close()
+      if (decoder === ending) decoder = undefined
+      stamps = []
       analysis.endRun(data.finished)
       scope.postMessage({ type: 'ended', run: data.run, ...analysis.coverage() })
     }

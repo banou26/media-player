@@ -383,6 +383,72 @@ describe('the analysis, stopped', () => {
   afterEach(() => { vi.unstubAllGlobals() })
 
   // React's StrictMode runs an effect, cleans it up and runs it again at once, which stops the first analysis here
+  it('terminates its remuxer after one pass when audio starts past 0 s', async () => {
+    const file = await bytesOf('/eac3-tone.mkv')
+    const size = file.byteLength
+    const { workers, analysis, last } = watchWorkers()
+    const video = document.createElement('video')
+    const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode
+    const running = startLoudnessAnalysis({
+      node,
+      element: video,
+      scriptUrl: playerAssets.normalizerWorkletUrl,
+      source: {
+        read: async (offset, length) => file.slice(offset, Math.min(offset + length, size)),
+        length: size,
+        publicPath: playerAssets.publicPath,
+        libavWorkerUrl: playerAssets.libavWorkerUrl,
+        audioStreamIndex: 1,
+      },
+    })
+    try {
+      const remuxers = () => workers.filter(({ url }) => url.includes('libav'))
+      await expect.poll(() => last()?.end ?? null, { timeout: 30_000 }).not.toBeNull()
+      // the control: transcoded E-AC-3 starts past 0 s, which used to look like a gap at 0 and re-run the whole file
+      expect(last()!.spans[0][0]).toBeGreaterThan(0)
+      expect(last()!.start).toBe(last()!.spans[0][0])
+      await expect.poll(() => remuxers().length > 0 && remuxers()[0]!.terminated, { timeout: 10_000 }).toBe(true)
+      await sleep(500)
+      expect(analysis()!.messages.filter(({ type }) => type === 'ended')).toHaveLength(1)
+    } finally {
+      running.stop()
+    }
+  }, 60_000)
+
+  it('terminates its remuxer when analysis starts mid-file on audio that starts past 0 s', async () => {
+    const file = await bytesOf('/eac3-tone.mkv')
+    const size = file.byteLength
+    const { workers, analysis, last } = watchWorkers()
+    const video = document.createElement('video')
+    Object.defineProperty(video, 'currentTime', { value: 4, configurable: true })
+    const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode
+    const running = startLoudnessAnalysis({
+      node,
+      element: video,
+      scriptUrl: playerAssets.normalizerWorkletUrl,
+      source: {
+        read: async (offset, length) => file.slice(offset, Math.min(offset + length, size)),
+        length: size,
+        publicPath: playerAssets.publicPath,
+        libavWorkerUrl: playerAssets.libavWorkerUrl,
+        audioStreamIndex: 1,
+      },
+    })
+    try {
+      const remuxers = () => workers.filter(({ url }) => url.includes('libav'))
+      await expect.poll(() => remuxers().length > 0 && remuxers()[0]!.terminated, { timeout: 30_000 }).toBe(true)
+      expect(last()!.spans).toHaveLength(1)
+      expect(last()!.spans[0][0]).toBeGreaterThan(0)
+      expect(last()!.start).toBe(last()!.spans[0][0])
+      expect(last()!.end).toBeGreaterThan(5.5)
+      await sleep(500)
+      // initial aborted run 0, mid-file run to EOF, and start run to merge: no extra pass after completion
+      expect(analysis()!.messages.filter(({ type }) => type === 'ended').length).toBeLessThanOrEqual(3)
+    } finally {
+      running.stop()
+    }
+  }, 60_000)
+
   it('ends a remuxer that was still starting when it was stopped', async () => {
     const { workers } = watchWorkers()
     const node = { port: { postMessage: () => {} }, context: { currentTime: 0 } } as unknown as AudioWorkletNode
