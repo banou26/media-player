@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { createPictureInPicture, pictureInPictureMode } from '../../../src/lib/engine/picture-in-picture'
 
@@ -243,6 +243,30 @@ describe('burn-in picture in picture', () => {
     await new Promise((resolve) => setTimeout(resolve, 300))
     expect(paints(video)).toBeGreaterThan(0)
     expect(paints(surface)).toBe(0)
+  })
+
+  it('keeps drawing subtitles after a paused seek when no frame callback fires', async () => {
+    const { video, subtitles, surface } = await playingVideo()
+    stub(video, 'requestVideoFrameCallback', () => 0)
+    stub(video, 'currentTime', 0)
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+
+    video.pause()
+    const drawn = vi.spyOn(CanvasRenderingContext2D.prototype, 'drawImage')
+    cleanups.push(() => drawn.mockRestore())
+    const paints = (source: CanvasImageSource) => drawn.mock.calls.filter(([drawnSource]) => drawnSource === source).length
+
+    video.currentTime = 10
+    await new Promise((resolve) => setTimeout(resolve, 350))
+    expect(paints(surface), 'stale time without a seek stays skipped').toBe(0)
+
+    drawn.mockClear()
+    video.dispatchEvent(new Event('seeked'))
+    const paintsAfterSeeked = paints(surface)
+    expect(paintsAfterSeeked, 'seeked repaints subtitles immediately').toBeGreaterThan(0)
+    await expect.poll(() => paints(surface), { timeout: 2000 }).toBeGreaterThan(paintsAfterSeeked)
   })
 
   it('does not copy a subtitle surface marked pending until it is ready', async () => {

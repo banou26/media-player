@@ -126,6 +126,8 @@ const PRE_EVICT_TIGHT = -5
 const POST_EVICT_TIGHT = 20
 const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
+// MSE fires SourceBuffer `error` ahead of the media thread's element `error` event.
+const INIT_ERROR_SETTLE_MS = 500
 /*
  * How far past the playhead a range may start and still count as the one holding it, which decides how
  * much to read and never whether to fetch.
@@ -327,9 +329,19 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     try {
       await appendBuffer(metadata.data)
     } catch (error) {
-      // MSE fires SourceBuffer `error` before the queued media element `error` task runs, so yield
-      // one turn before deciding whether this was a terminal MediaError rather than an append error.
-      if (!elementFailed && !videoElement.error) await new Promise((resolve) => setTimeout(resolve, 0))
+      // MSE fires SourceBuffer `error` before the media thread delivers the element `error` event,
+      // so wait briefly for it before deciding this was a plain append failure.
+      if (!elementFailed && !videoElement.error) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            clearTimeout(timer)
+            videoElement.removeEventListener('error', done)
+            resolve()
+          }
+          const timer = setTimeout(done, INIT_ERROR_SETTLE_MS)
+          videoElement.addEventListener('error', done, { once: true })
+        })
+      }
       if (!elementFailed && !videoElement.error) throw error
     }
     if (videoElement.error) onElementError()

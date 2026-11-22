@@ -89,6 +89,97 @@ describe('startPlayback init ordering and eviction serialization', () => {
     expect(outputs).toEqual([])
   }, 30_000)
 
+  it('waits for a delayed media element error after an init SourceBuffer error', async () => {
+    const source = await httpSource(SHORT_FILE)
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => { video.remove(); subtitles.remove() })
+
+    const OriginalMediaSource = window.MediaSource
+    const sources: MediaSource[] = []
+    class TrackedMediaSource extends OriginalMediaSource {
+      constructor() {
+        super()
+        sources.push(this)
+      }
+    }
+    window.MediaSource = TrackedMediaSource
+    let intercepted = false
+    const appendDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'appendBuffer')!
+    const nativeAppend = appendDesc.value as (this: SourceBuffer, data: BufferSource) => void
+    Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', {
+      ...appendDesc,
+      value(this: SourceBuffer, data: BufferSource) {
+        if (!intercepted) {
+          intercepted = true
+          const activeMs = sources.at(-1)
+          queueMicrotask(() => this.dispatchEvent(new Event('error')))
+          setTimeout(() => {
+            if (activeMs?.readyState === 'open') activeMs.endOfStream('decode')
+          }, 50)
+          return
+        }
+        return nativeAppend.call(this, data)
+      },
+    })
+    cleanups.push(() => {
+      window.MediaSource = OriginalMediaSource
+      Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', appendDesc)
+    })
+
+    const errors: unknown[] = []
+    let readyCalls = 0
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      read: source.read,
+      ...playerAssets,
+      onError: (error) => errors.push(error),
+      onReady: () => { readyCalls++ },
+    })
+    cleanups.push(() => controller.destroy())
+
+    await expect.poll(() => errors.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    expect(errors.every((error) => isMediaElementError(error))).toBe(true)
+    expect(readyCalls).toBe(0)
+  }, 30_000)
+
+  it('still rejects when an init SourceBuffer error is not followed by a media element error', async () => {
+    const source = await httpSource(SHORT_FILE)
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => { video.remove(); subtitles.remove() })
+
+    let intercepted = false
+    const appendDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'appendBuffer')!
+    const nativeAppend = appendDesc.value as (this: SourceBuffer, data: BufferSource) => void
+    Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', {
+      ...appendDesc,
+      value(this: SourceBuffer, data: BufferSource) {
+        if (!intercepted) {
+          intercepted = true
+          queueMicrotask(() => this.dispatchEvent(new Event('error')))
+          return
+        }
+        return nativeAppend.call(this, data)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', appendDesc))
+
+    await expect(startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      read: source.read,
+      ...playerAssets,
+    })).rejects.toThrow('The browser rejected a media segment')
+  }, 30_000)
+
   it('has its seeking listener attached before onReady runs', async () => {
     const source = await httpSource(SHORT_FILE)
     const video = document.createElement('video')

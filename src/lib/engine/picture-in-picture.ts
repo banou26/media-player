@@ -284,6 +284,9 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   /** A paused mirror renders nothing, so a scrub would leave the old frame on screen forever. */
   const onVideoSeeked = () => {
+    // Subtitles repaint on `seeked` without waiting for a frame callback, so a seek while paused
+    // stays fresh even when no requestVideoFrameCallback fires after it.
+    frameTime = video.currentTime
     if (mode !== 'burn-in' || !session || !video.paused || flushing) return
     flushing = true
     const { mirror } = session
