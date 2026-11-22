@@ -150,7 +150,7 @@ it('plays on through a hole under 1 s before the buffered end while a seek back 
   await new Promise((done) => setTimeout(done, 300))
   source.holdFrom = Infinity
   // past what was read, so the remuxer seeks to the next keyframe and leaves a hole up to it
-  video.currentTime = video.buffered.end(video.buffered.length - 1) + 0.9
+  video.currentTime = video.buffered.end(video.buffered.length - 1) + 1
   await expect.poll(() => mediaSource.readyState, { timeout: 15_000 }).toBe('ended')
   await new Promise((done) => setTimeout(done, 500))
   expect(video.buffered.length).toBe(2)
