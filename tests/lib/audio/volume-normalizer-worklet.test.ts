@@ -309,7 +309,7 @@ describe('the worklet against the media time', () => {
     playTo(22.215)
     const before = record.length
     const media = record[before - 1]!.time + DELAY / RATE
-    const ctx = ((globalThis as Record<string, number>).currentFrame! + 128) / RATE
+    const ctx = (((globalThis as Record<string, unknown>).currentFrame as number) + 128) / RATE
     node.port.onmessage({ data: { media, ctx, rate: 1.5, paused: false } })
     run(0.05)
     let steepest = 0
