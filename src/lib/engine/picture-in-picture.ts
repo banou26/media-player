@@ -246,22 +246,15 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     void video.play().catch(() => {})
   }
 
-  /**
-   * Reached on a browser whose window controls drive the popped out element directly instead of going
-   * through the Media Session. Firefox is that browser, and in burn-in its window is driving the
-   * element the viewer is watching, so its pause IS the intent and has to stick.
-   *
-   * Both arms are idempotent by comparing against the video rather than by holding a flag: if the
-   * video is already paused this event is the echo of our own `mirror.pause()` and means nothing.
-   */
   /** Keeps `syncing` set past a mirror's queued `play` event so our own `mirror.play()` cannot resume `video`. */
   const suppressNextMirrorPlay = (mirror: HTMLVideoElement) => {
     releaseSync?.()
     syncing = true
     const release = () => {
+      if (releaseSync !== release) return
       clearTimeout(timer)
       mirror.removeEventListener('play', release)
-      if (releaseSync === release) releaseSync = undefined
+      releaseSync = undefined
       syncing = false
     }
     releaseSync = release
@@ -270,20 +263,32 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     return release
   }
 
+  const playMirrorSilently = (mirror: HTMLVideoElement) => {
+    const release = suppressNextMirrorPlay(mirror)
+    void mirror.play().catch((error: unknown) => {
+      if ((error as DOMException)?.name !== 'AbortError') release()
+    })
+  }
+
+  /**
+   * Reached on a browser whose window controls drive the popped out element directly instead of going
+   * through the Media Session. Firefox is that browser, and in burn-in its window is driving the
+   * element the viewer is watching, so its pause IS the intent and has to stick.
+   *
+   * Both arms are idempotent by comparing against the video rather than by holding a flag: if the
+   * video is already paused this event is the echo of our own `mirror.pause()` and means nothing.
+   */
   const onMirrorPause = () => {
     if (syncing || flushing) return
     if (!video.paused) video.pause()
     // In window mode the mirror must never be left paused; see `onVideoPause`.
     if (mode === 'burn-in') return
-    const mirror = session?.mirror
-    if (!mirror) return
-    const release = suppressNextMirrorPlay(mirror)
-    void mirror.play().catch(release)
+    if (session) playMirrorSilently(session.mirror)
   }
 
   const onVideoPlay = () => {
     publishState()
-    void session?.mirror.play().catch(() => {})
+    if (session) playMirrorSilently(session.mirror)
   }
 
   /**
@@ -475,6 +480,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
       return
     }
 
+    mirror.removeEventListener('play', onBootPlay)
     listen(mirror)
     if (bootPlaying) suppressNextMirrorPlay(mirror)
 

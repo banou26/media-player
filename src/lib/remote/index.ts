@@ -618,6 +618,12 @@ export const mediaPlayer = (
   // whether the far side has said anything about THIS player yet, which is what `ready` means
   let answered = false
   let fullscreen = false
+  let pauseCount = 0
+  const pauseListeners = new Set<() => void>()
+  const notePause = () => {
+    pauseCount++
+    for (const listener of Array.from(pauseListeners)) listener()
+  }
 
   const detach = linkTo(target, options).attach({
     id: playerId,
@@ -637,6 +643,7 @@ export const mediaPlayer = (
       // told for any update that changes them: a catch-up or a switch's `emptied` brings chapters with no word of them
       if (!events.includes('chapterschange') && JSON.stringify(state.chapters) !== chapters) events.push('chapterschange')
       if (!events.includes('autoplaynextchange') && state.autoplayNext !== autoplayNext) events.push('autoplaynextchange')
+      if (!first && event === 'pause') notePause()
       for (const each of events) dispatch(each)
       if (first) settleReady()
     },
@@ -708,14 +715,6 @@ export const mediaPlayer = (
       )
     })
   })
-  let pauseCount = 0
-  const pauseListeners = new Set<() => void>()
-  const notePause = () => {
-    pauseCount++
-    for (const listener of Array.from(pauseListeners)) listener()
-  }
-  player.addEventListener('pause', notePause)
-
   // like an element's, `play` settles with the far side's own answer, so an autoplay refusal over
   // there rejects over here, and the mirror goes back to paused when it does
   player.play = () => { state.paused = false; return call('play').catch(error => { state.paused = true; throw error }) }

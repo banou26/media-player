@@ -798,6 +798,28 @@ describe('autoplay, for a document nobody has clicked', () => {
     expect(media.muted).toBe(false)
     expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
   })
+
+  it('works when autoplay is called before ready on ungated media', async () => {
+    const { media, player, stop } = pair()
+    open.push(stop, player.destroy)
+
+    expect(await player.autoplay()).toEqual({ muted: false })
+    await settled()
+    expect(media.paused).toBe(false)
+    expect(media.muted).toBe(false)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+
+  it('falls back to muted when autoplay is called before ready on gated media', async () => {
+    const { media, player, stop } = gatedPair()
+    open.push(stop, player.destroy)
+
+    expect(await player.autoplay()).toEqual({ muted: true })
+    await settled()
+    expect(media.paused).toBe(false)
+    expect(media.muted).toBe(true)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(2)
+  })
 })
 
 describe('a player whose play() resolves without playing', () => {

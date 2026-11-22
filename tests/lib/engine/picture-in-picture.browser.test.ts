@@ -342,8 +342,10 @@ describe('burn-in picture in picture', () => {
     expect(video.paused, 'enter mirror play unpaused the paused video').toBe(true)
   })
 
-  it('keeps video paused in window mode when restarting the mirror fires play asynchronously', async () => {
-    const { video, subtitles } = await playingVideo()
+})
+
+describe('window picture in picture', () => {
+  const stubWindowPip = () => {
     let pipElement: Element | null = null
     const setPipElement = (el: HTMLVideoElement) => { pipElement = el }
     stub(HTMLVideoElement.prototype, 'requestPictureInPicture', async function (this: HTMLVideoElement) {
@@ -354,16 +356,25 @@ describe('burn-in picture in picture', () => {
     const pipElDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'pictureInPictureElement')
     Object.defineProperty(document, 'pictureInPictureElement', { configurable: true, get: () => pipElement })
     cleanups.push(() => {
+      pipElement = null
       if (pipElDesc) Object.defineProperty(document, 'pictureInPictureElement', pipElDesc)
       else delete (document as unknown as Record<string, unknown>).pictureInPictureElement
     })
     stub(Document.prototype, 'exitPictureInPicture', async () => { pipElement = null })
+    return { current: () => pipElement as HTMLVideoElement | null, clear: () => { pipElement = null } }
+  }
+
+  it('keeps video paused in window mode when restarting the mirror fires play asynchronously', async () => {
+    const { video, subtitles } = await playingVideo()
+    const pipSlot = stubWindowPip()
 
     const pip = createPictureInPicture({ video, subtitles, mode: 'window' })
-    cleanups.push(() => pip.destroy())
+    cleanups.push(() => { pipSlot.clear(); pip.destroy() })
     await pip.toggle()
-    const mirror = pipElement as HTMLVideoElement | null
+    const mirror = pipSlot.current()
     expect(mirror).not.toBeNull()
+    // Let enter()'s own mirror boot play settle so only onMirrorPause's guard is under test.
+    await new Promise((resolve) => setTimeout(resolve, 150))
 
     // Delay the mirror's `play` event past the `play()` promise microtask, as browsers queue media events.
     mirror!.play = () => {
@@ -375,5 +386,35 @@ describe('burn-in picture in picture', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(video.paused, 'mirror restart unpaused the video that was just paused').toBe(true)
+  })
+
+  it('does not let a stale mirror.play rejection clear syncing for a newer pause restart', async () => {
+    const { video, subtitles } = await playingVideo()
+    const pipSlot = stubWindowPip()
+
+    const pip = createPictureInPicture({ video, subtitles, mode: 'window' })
+    cleanups.push(() => { pipSlot.clear(); pip.destroy() })
+    await pip.toggle()
+    const mirror = pipSlot.current()!
+    await new Promise((resolve) => setTimeout(resolve, 150))
+
+    let rejectFirst!: (reason: unknown) => void
+    let call = 0
+    mirror.play = () => {
+      call++
+      if (call === 1) return new Promise<void>((_, reject) => { rejectFirst = reject })
+      setTimeout(() => mirror.dispatchEvent(new Event('play')), 40)
+      return Promise.resolve()
+    }
+
+    // First pause restart times out after FLUSH_FRAME_MS while its play() promise is still pending.
+    mirror.dispatchEvent(new Event('pause'))
+    await new Promise((resolve) => setTimeout(resolve, 140))
+    // Second pause restart starts a fresh guard; the first play() then rejects late.
+    mirror.dispatchEvent(new Event('pause'))
+    rejectFirst(new Error('stale rejection'))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(video.paused, 'stale rejection cleared syncing for the active restart').toBe(true)
   })
 })
