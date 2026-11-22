@@ -177,11 +177,18 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   const draw = (composite: HTMLCanvasElement, context: CanvasRenderingContext2D) => {
     context.drawImage(video, 0, 0, composite.width, composite.height)
-    // Resolved per frame: the renderer replaces this element on every pipeline rebuild. A canvas
-    // jassub has transferred reports the size of the last frame its worker committed, so the zero
-    // check still keeps drawImage off a source with no dimensions to read.
+    // Resolved per frame: the renderer replaces this element on every pipeline rebuild. A new
+    // canvas keeps HTML's 300 by 150 default while jassub's worker boots, and copying it in Firefox
+    // then blocks the page for 10 s on OffscreenCanvasDisplayHelper::GetSurfaceSnapshot, so the
+    // renderer marks it `data-pending` until `ready` settles.
     const surface = subtitles.querySelector('canvas')
-    if (surface && surface.width > 0 && surface.height > 0 && Math.abs(video.currentTime - frameTime) <= STALE_SUBTITLES_S) {
+    if (
+      surface &&
+      !('pending' in surface.dataset) &&
+      surface.width > 0 &&
+      surface.height > 0 &&
+      Math.abs(video.currentTime - frameTime) <= STALE_SUBTITLES_S
+    ) {
       context.drawImage(surface, 0, 0, composite.width, composite.height)
     }
   }

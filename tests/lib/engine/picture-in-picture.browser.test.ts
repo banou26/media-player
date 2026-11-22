@@ -245,6 +245,25 @@ describe('burn-in picture in picture', () => {
     expect(paints(surface)).toBe(0)
   })
 
+  it('does not copy a subtitle surface marked pending until it is ready', async () => {
+    const { video, subtitles, surface } = await playingVideo()
+    surface.dataset.pending = ''
+    const drawn = vi.spyOn(CanvasRenderingContext2D.prototype, 'drawImage')
+    cleanups.push(() => drawn.mockRestore())
+    const paints = (source: CanvasImageSource) => drawn.mock.calls.filter(([drawnSource]) => drawnSource === source).length
+
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+
+    await new Promise((resolve) => setTimeout(resolve, 250))
+    expect(paints(video)).toBeGreaterThan(0)
+    expect(paints(surface), 'a booting surface must not be copied before ready').toBe(0)
+
+    delete surface.dataset.pending
+    await expect.poll(() => paints(surface), { timeout: 2000 }).toBeGreaterThan(0)
+  })
+
   it('does not report itself on after a destroy landing inside the metadata wait', async () => {
     const { video, subtitles, host } = await playingVideo()
     const states: boolean[] = []

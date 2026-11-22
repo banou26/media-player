@@ -194,6 +194,18 @@ describe('the subtitle canvas across a pipeline rebuild', () => {
     }
   }, 30_000)
 
+  it('marks its surface pending until jassub is ready', async () => {
+    const { video, container } = mounted()
+    const instance = renderer(video, container)
+    instance.pushFragments([headerFragment()])
+
+    const surface = container.querySelector('canvas')!
+    expect(surface).not.toBeNull()
+    expect('pending' in surface.dataset, 'surface was not marked pending on boot').toBe(true)
+
+    await expect.poll(() => 'pending' in surface.dataset, { timeout: 10_000 }).toBe(false)
+  }, 30_000)
+
   it('takes its own canvas away on destroy and leaves the container alone', async () => {
     const { video, container } = mounted()
 

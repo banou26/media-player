@@ -301,6 +301,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
 
   const bootJassub = (header: SubtitleHeaderPart) => {
     const canvas = document.createElement('canvas')
+    canvas.dataset.pending = ''
     container.append(canvas)
     try {
       jassub = new JASSUB({
@@ -328,8 +329,13 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     }
     // Not handed to the constructor, which attaches it with a `setVideo` nothing catches: that rejects with `ready`, so a
     // renderer that cannot start would leave an unhandled rejection in the host page.
-    void jassub.setVideo(video).catch(startFailed)
-    void jassub.ready.catch(rendererFailed)
+    const instance = jassub
+    void instance.setVideo(video).catch(startFailed)
+    // Cleared once the worker has booted: in Firefox, copying a transferred canvas while its worker
+    // starts blocks the page for 10 s on OffscreenCanvasDisplayHelper::GetSurfaceSnapshot.
+    void instance.ready.then(() => {
+      if (jassub === instance) delete canvas.dataset.pending
+    }, rendererFailed)
     for (const type of REPAINT_ON) video.addEventListener(type, onRepaintEvent)
     /*
      * The default face is the one font jassub loads LAZILY. Attachments are handed to the constructor
