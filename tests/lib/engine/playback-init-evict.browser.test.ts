@@ -6,6 +6,7 @@ import { playerAssets } from '../../../src/asset-urls'
 const SHORT_FILE = '/test-video.mkv'
 const LONG_FILE = '/loud-tone.mkv'
 const MINUTE_FILE = '/picture-time.mkv'
+const LONG_GOP_FILE = '/long-gop.mkv'
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 const cleanups: (() => void)[] = []
@@ -305,5 +306,253 @@ describe('startPlayback init ordering and eviction serialization', () => {
     await expect.poll(() => pendingReads.length, { timeout: 5_000 }).toBeGreaterThan(readsBeforeSeek)
     await wait(350)
     expect(removeSpy).not.toHaveBeenCalled()
+  }, 60_000)
+
+  it('preserves an active 10 s GOP during tight quota eviction and appends in place', async () => {
+    const source = await httpSource(LONG_GOP_FILE)
+    let holdAfter20 = false
+    const heldReads: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdAfter20) await new Promise<void>((resolve) => { heldReads.push(resolve) })
+      return source.read(offset, length)
+    }
+
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => {
+      holdAfter20 = false
+      for (const release of heldReads.splice(0)) release()
+      video.remove()
+      subtitles.remove()
+    })
+
+    const removedRanges: [number, number][] = []
+    const removeDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'remove')!
+    const nativeRemove = removeDesc.value as (this: SourceBuffer, start: number, end: number) => void
+    Object.defineProperty(SourceBuffer.prototype, 'remove', {
+      ...removeDesc,
+      value(this: SourceBuffer, start: number, end: number) {
+        removedRanges.push([start, end])
+        return nativeRemove.call(this, start, end)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(SourceBuffer.prototype, 'remove', removeDesc))
+
+    let injectQuota = false
+    const appendDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'appendBuffer')!
+    const nativeAppend = appendDesc.value as (this: SourceBuffer, data: BufferSource) => void
+    Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', {
+      ...appendDesc,
+      value(this: SourceBuffer, data: BufferSource) {
+        if (injectQuota) {
+          injectQuota = false
+          throw new DOMException('Quota exceeded', 'QuotaExceededError')
+        }
+        return nativeAppend.call(this, data)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', appendDesc))
+
+    const errors: unknown[] = []
+    const runs: number[] = []
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      bufferSize: 16_384,
+      read,
+      ...playerAssets,
+      onError: (error) => errors.push(error),
+      onOutput: (output) => { if (output.type === 'run') runs.push(output.from) },
+    })
+    cleanups.push(() => controller.destroy())
+
+    // Wait until GOP 0 [0, 10) and GOP 1 [10, 20) are buffered, then hold reads before GOP 2 arrives
+    await expect.poll(
+      () => video.buffered.length > 0 && video.buffered.end(0) >= 19.5,
+      { timeout: 30_000 },
+    ).toBe(true)
+    holdAfter20 = true
+    video.currentTime = 16.5
+    await expect.poll(() => Math.abs(video.currentTime - 16.5) < 0.25, { timeout: 5_000 }).toBe(true)
+
+    const runsBeforeQuota = runs.length
+    removedRanges.length = 0
+    injectQuota = true
+    holdAfter20 = false
+    for (const release of heldReads.splice(0)) release()
+
+    await expect.poll(() => removedRanges.length, { timeout: 10_000 }).toBeGreaterThan(0)
+    // Active GOP starts at ~10.01 s, so tight back-eviction (-5 s -> 11.5 s) must clamp below 10.01 s
+    expect(removedRanges[0][1]).toBeLessThan(10)
+    // Playhead at 16.5 s must stay buffered and GOP 2 must append in place without seeking back
+    const coversPlayhead = () => [...Array(video.buffered.length)].some(
+      (_, i) => video.buffered.start(i) <= 16.5 && video.buffered.end(i) > 16.5,
+    )
+    expect(coversPlayhead(), 'active GOP at 16.5 s was evicted underneath the playhead').toBe(true)
+    await expect.poll(
+      () => [...Array(video.buffered.length)].some((_, i) => video.buffered.end(i) >= 28),
+      { timeout: 15_000 },
+    ).toBe(true)
+    expect(coversPlayhead()).toBe(true)
+    expect(runs.length, 'back-only eviction should retry in place without seeking back').toBe(runsBeforeQuota)
+    expect(errors).toEqual([])
+  }, 60_000)
+
+  it('backs off without throwing or spinning when quota stays full with nothing evictable', async () => {
+    const source = await httpSource(LONG_GOP_FILE)
+    let holdReads = false
+    const heldReads: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdReads) await new Promise<void>((resolve) => { heldReads.push(resolve) })
+      return source.read(offset, length)
+    }
+
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => {
+      holdReads = false
+      for (const release of heldReads.splice(0)) release()
+      video.remove()
+      subtitles.remove()
+    })
+
+    let refuseQuota = false
+    let quotaCalls = 0
+    const appendDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'appendBuffer')!
+    const nativeAppend = appendDesc.value as (this: SourceBuffer, data: BufferSource) => void
+    Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', {
+      ...appendDesc,
+      value(this: SourceBuffer, data: BufferSource) {
+        if (refuseQuota) {
+          quotaCalls++
+          throw new DOMException('Quota exceeded', 'QuotaExceededError')
+        }
+        return nativeAppend.call(this, data)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', appendDesc))
+
+    const errors: unknown[] = []
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      bufferSize: 16_384,
+      read,
+      ...playerAssets,
+      onError: (error) => errors.push(error),
+    })
+    cleanups.push(() => controller.destroy())
+
+    await expect.poll(
+      () => video.buffered.length > 0 && video.buffered.end(0) >= 19.5,
+      { timeout: 30_000 },
+    ).toBe(true)
+    holdReads = true
+    video.currentTime = 16.5
+    await expect.poll(() => Math.abs(video.currentTime - 16.5) < 0.25, { timeout: 5_000 }).toBe(true)
+
+    refuseQuota = true
+    holdReads = false
+    for (const release of heldReads.splice(0)) release()
+
+    // First refusal evicts GOP 0 and retries once, second refusal finds nothing left to evict and parks
+    await expect.poll(() => quotaCalls, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
+    await wait(150)
+    const parkedCalls = quotaCalls
+    await wait(500)
+    expect(quotaCalls, 'appendBuffer kept spinning every 100 ms while paused under full quota').toBe(parkedCalls)
+    expect(errors, 'quota backoff with buffered playhead should not surface a playback error').toEqual([])
+
+    // Advancing the playhead by >= 1 s wakes the pump once quota frees up
+    refuseQuota = false
+    video.currentTime = 18
+    await expect.poll(
+      () => [...Array(video.buffered.length)].some((_, i) => video.buffered.end(i) >= 28),
+      { timeout: 15_000 },
+    ).toBe(true)
+    expect(errors).toEqual([])
+  }, 60_000)
+
+  it('wakes from quota backoff as soon as the playhead crosses a keyframe under 1 s away', async () => {
+    const source = await httpSource(LONG_GOP_FILE)
+    let holdReads = false
+    const heldReads: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdReads) await new Promise<void>((resolve) => { heldReads.push(resolve) })
+      return source.read(offset, length)
+    }
+
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => {
+      holdReads = false
+      for (const release of heldReads.splice(0)) release()
+      video.remove()
+      subtitles.remove()
+    })
+
+    let refuseQuota = false
+    let quotaCalls = 0
+    const appendDesc = Object.getOwnPropertyDescriptor(SourceBuffer.prototype, 'appendBuffer')!
+    const nativeAppend = appendDesc.value as (this: SourceBuffer, data: BufferSource) => void
+    Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', {
+      ...appendDesc,
+      value(this: SourceBuffer, data: BufferSource) {
+        if (refuseQuota) {
+          quotaCalls++
+          throw new DOMException('Quota exceeded', 'QuotaExceededError')
+        }
+        return nativeAppend.call(this, data)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(SourceBuffer.prototype, 'appendBuffer', appendDesc))
+
+    const errors: unknown[] = []
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      bufferSize: 16_384,
+      read,
+      ...playerAssets,
+      onError: (error) => errors.push(error),
+    })
+    cleanups.push(() => controller.destroy())
+
+    // Park 0.3 s before keyframe 1 (10.01 s) while GOP 0 [0, 10.01) and GOP 1 [10.01, 20.02) are buffered
+    await expect.poll(
+      () => video.buffered.length > 0 && video.buffered.end(0) >= 19.5,
+      { timeout: 30_000 },
+    ).toBe(true)
+    holdReads = true
+    video.currentTime = 9.7
+    await expect.poll(() => Math.abs(video.currentTime - 9.7) < 0.25, { timeout: 5_000 }).toBe(true)
+
+    refuseQuota = true
+    holdReads = false
+    for (const release of heldReads.splice(0)) release()
+
+    await expect.poll(() => quotaCalls, { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
+    await wait(150)
+    const parkedCalls = quotaCalls
+    await wait(300)
+    expect(quotaCalls).toBe(parkedCalls)
+
+    // Advance by only 0.5 s (< 1 s threshold), crossing keyframe 10.01 s -> must wake immediately
+    refuseQuota = false
+    video.currentTime = 10.2
+    await expect.poll(
+      () => [...Array(video.buffered.length)].some((_, i) => video.buffered.end(i) >= 28),
+      { timeout: 15_000 },
+    ).toBe(true)
+    expect(errors).toEqual([])
   }, 60_000)
 })

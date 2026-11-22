@@ -325,4 +325,171 @@ describe('pipeline rebuilds preserve play/pause state', () => {
     await expect.poll(() => video().src.startsWith('blob:') && video().src !== firstSrc && !video().paused && video().currentTime > 0.2, { timeout: 30_000 }).toBe(true)
     expect(video().currentTime).toBeLessThan(2)
   }, 60_000)
+
+  it('stays paused when pause() is called before initial ready with autoplay true', async () => {
+    const base = await httpSource(SHORT_FILE)
+    let holdReads = true
+    let heldCount = 0
+    const pending: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdReads) {
+        heldCount++
+        await new Promise<void>((resolve) => { pending.push(resolve) })
+      }
+      return base.read(offset, length)
+    }
+    try {
+      const screen = await render(
+        <MediaPlayer size={base.size} read={read} {...playerAssets} autoplay normalizeVolume={false} title="Pause before ready" />,
+        sized(),
+      )
+      const video = () => screen.container.querySelector('video')!
+      await expect.poll(() => !!video() && heldCount > 0, { timeout: 10_000 }).toBe(true)
+      expect(video().paused).toBe(true)
+
+      // Calling pause() on an already-paused element emits no 'pause' event
+      video().pause()
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+
+      await expect.poll(() => video().readyState >= 2, { timeout: 30_000 }).toBe(true)
+      await wait(400)
+      expect(video().paused, 'autoplay overrode pause() called before initial ready').toBe(true)
+    } finally {
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+    }
+  }, 60_000)
+
+  it('stays paused when pause() is called before size arrives with autoplay true', async () => {
+    const source = await httpSource(SHORT_FILE)
+    const screen = await render(
+      <MediaPlayer {...playerAssets} autoplay normalizeVolume={false} title="Pause before metadata" />,
+      sized(),
+    )
+    const video = () => screen.container.querySelector('video')!
+    await expect.poll(() => !!video(), { timeout: 10_000 }).toBe(true)
+    expect(video().paused).toBe(true)
+
+    video().pause()
+    await screen.rerender(
+      <MediaPlayer {...source} {...playerAssets} autoplay normalizeVolume={false} title="Pause before metadata" />,
+    )
+
+    await expect.poll(() => video().readyState >= 2, { timeout: 30_000 }).toBe(true)
+    await wait(400)
+    expect(video().paused, 'autoplay overrode pause() called before size arrived').toBe(true)
+  }, 60_000)
+
+  it('stays paused when pause() is called during an in-place rebuild while src is cleared', async () => {
+    const source = await httpSource(LANG_FILE)
+    let holdReads = false
+    let heldCount = 0
+    const pending: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdReads) {
+        heldCount++
+        await new Promise<void>((resolve) => { pending.push(resolve) })
+      }
+      return source.read(offset, length)
+    }
+    try {
+      const screen = await render(
+        <MediaPlayer size={source.size} read={read} {...playerAssets} autoplay normalizeVolume={false} title="Pause during rebuild" />,
+        sized(),
+      )
+      const video = () => screen.container.querySelector('video')!
+      await expect.poll(() => !!video() && !video().paused && video().currentTime > 0.3, { timeout: 30_000 }).toBe(true)
+
+      const firstSrc = video().src
+      holdReads = true
+      await switchAudioTrack(screen.container, 'Japanese')
+      await expect.poll(() => video().src === '' && heldCount > 0, { timeout: 10_000 }).toBe(true)
+      expect(video().paused).toBe(true)
+
+      // Pause while the rebuild has cleared src and paused the element
+      video().pause()
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+
+      await expect.poll(() => video().src.startsWith('blob:') && video().src !== firstSrc && video().readyState >= 2, { timeout: 30_000 }).toBe(true)
+      await wait(400)
+      expect(video().paused, 'rebuild resumed playback after pause() called while src was cleared').toBe(true)
+    } finally {
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+    }
+  }, 60_000)
+
+  it('stays paused when pause() is called during error recovery backoff even if the element is already paused', async () => {
+    const source = await openEndedSource()
+    try {
+      await capturingMediaSources(async (sources) => {
+        const screen = await render(
+          <MediaPlayer size={source.size} read={source.read} bufferSize={65_536} {...playerAssets} autoplay normalizeVolume={false} title="Pause during backoff" />,
+          sized(),
+        )
+        const video = () => screen.container.querySelector('video')!
+        await expect.poll(() => !!video() && !video().paused && video().currentTime > 0.3, { timeout: 30_000 }).toBe(true)
+
+        // Spend the 0 ms first-error backoff so the next error enters the 250 ms backoff window
+        const firstSrc = video().src
+        await triggerDecodeError(sources.at(-1)!)
+        await expect.poll(() => video().src.startsWith('blob:') && video().src !== firstSrc && video().readyState >= 2 && !video().paused, { timeout: 30_000 }).toBe(true)
+
+        const secondSrc = video().src
+        const secondError = new Promise<void>((resolve) => {
+          video().addEventListener('error', () => resolve(), { once: true })
+        })
+        await triggerDecodeError(sources.at(-1)!)
+        await secondError
+        // Unconditional pause(): on Chrome video.paused is already true on MediaError, so no 'pause' event fires
+        video().pause()
+
+        await expect.poll(() => video().src.startsWith('blob:') && video().src !== secondSrc && video().readyState >= 2, { timeout: 30_000 }).toBe(true)
+        await wait(400)
+        expect(video().paused, 'error recovery resumed playback after pause() during backoff').toBe(true)
+      })
+    } finally {
+      source.release()
+    }
+  }, 60_000)
+
+  it('stays paused when pause() is called before initial ready and the pipeline rebuilds before ready', async () => {
+    const base = await httpSource(SHORT_FILE)
+    let holdReads = true
+    let heldCount = 0
+    const pending: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (holdReads) {
+        heldCount++
+        await new Promise<void>((resolve) => { pending.push(resolve) })
+      }
+      return base.read(offset, length)
+    }
+    try {
+      const screen = await render(
+        <MediaPlayer size={base.size} read={read} bufferSize={65_536} {...playerAssets} autoplay normalizeVolume={false} title="Rebuild before ready" />,
+        sized(),
+      )
+      const video = () => screen.container.querySelector('video')!
+      await expect.poll(() => !!video() && heldCount > 0, { timeout: 10_000 }).toBe(true)
+      expect(video().paused).toBe(true)
+
+      // Viewer pauses on first load before onReady, then a prop change forces a pipeline rebuild before ready
+      video().pause()
+      await screen.rerender(
+        <MediaPlayer size={base.size} read={read} bufferSize={131_072} {...playerAssets} autoplay normalizeVolume={false} title="Rebuild before ready" />,
+      )
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+
+      await expect.poll(() => video().readyState >= 2, { timeout: 30_000 }).toBe(true)
+      await wait(400)
+      expect(video().paused, 'pre-ready pause was lost across a rebuild before initial ready').toBe(true)
+    } finally {
+      holdReads = false
+      for (const release of pending.splice(0)) release()
+    }
+  }, 60_000)
 })

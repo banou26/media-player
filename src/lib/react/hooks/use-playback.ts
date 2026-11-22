@@ -146,6 +146,27 @@ export const usePlayback = (
   const subtitleChoiceFor = useRef<number>(undefined)
   const sizeRef = useRef(size)
   sizeRef.current = size
+  // Calling pause() on an already-paused element (before ready, during a rebuild, or while waiting for
+  // metadata) fires no 'pause' event, so observe the call directly to keep autoplay from overriding it.
+  const onPauseCallRef = useRef<(() => void) | null>(null)
+  const pausedBeforeLoadRef = useRef(false)
+  useEffect(() => {
+    if (!video) return
+    const onPlay = () => { pausedBeforeLoadRef.current = false }
+    const ownPause = Object.getOwnPropertyDescriptor(video, 'pause')
+    const nativePause = video.pause
+    video.pause = function pause(this: HTMLVideoElement) {
+      if (onPauseCallRef.current) onPauseCallRef.current()
+      else pausedBeforeLoadRef.current = true
+      return nativePause.call(this)
+    }
+    video.addEventListener('play', onPlay)
+    return () => {
+      video.removeEventListener('play', onPlay)
+      if (ownPause) Object.defineProperty(video, 'pause', ownPause)
+      else delete (video as Partial<HTMLVideoElement>).pause
+    }
+  }, [video])
   const streams = useRef<{ audio: AudioStream[], subtitles: SubtitleStream[] }>({ audio: [], subtitles: [] })
   const playingAudio = useCallback(() => streams.current.audio.find((track) => track.streamIndex === player.selectedAudioTrack), [player])
 
@@ -333,6 +354,8 @@ export const usePlayback = (
     if (resumeRef.current && resumeRef.current.size !== size) resumeRef.current = null
     let cancelled = false
     let reachedReady = false
+    let pausedBeforeReady = pausedBeforeLoadRef.current
+    pausedBeforeLoadRef.current = false
     // Chrome sets `video.paused = true` before dispatching `error` and then queues one `pause` event,
     // while Firefox and WebKit leave `paused` false. Latch only that single error-induced pause so a
     // real pause right before a MediaError or during recovery backoff is never dropped.
@@ -340,9 +363,13 @@ export const usePlayback = (
     let pausedByError = false
     let ignoreErrorPause = false
     const onPlay = () => {
+      pausedBeforeReady = false
       wantPlaying = true
       pausedByError = false
       ignoreErrorPause = false
+      if (!reachedReady && resumeRef.current?.size === size) {
+        resumeRef.current = { ...resumeRef.current, play: true }
+      }
     }
     const onPause = () => {
       if (ignoreErrorPause) {
@@ -358,6 +385,20 @@ export const usePlayback = (
         ignoreErrorPause = true
       }
     }
+    const onPauseCall = () => {
+      wantPlaying = false
+      pausedByError = false
+      ignoreErrorPause = false
+      if (!reachedReady) {
+        pausedBeforeReady = true
+        resumeRef.current = {
+          time: resumeRef.current?.size === size ? resumeRef.current.time : 0,
+          size,
+          play: false,
+        }
+      }
+    }
+    onPauseCallRef.current = onPauseCall
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
     video.addEventListener('error', onError)
@@ -451,7 +492,7 @@ export const usePlayback = (
             if (sameMedia && resume.time > 0) video.currentTime = resume.time
             // a seek carried to 0 is where the new element already is, so no 'seeked' comes to take it off the clock
             else player.setSourceState({ seekingTo: undefined })
-            const shouldPlay = sameMedia ? resume.play : autoplayRef.current
+            const shouldPlay = !pausedBeforeReady && (sameMedia ? resume.play : autoplayRef.current)
             wantPlaying = shouldPlay
             if (shouldPlay) video.play().catch(() => { if (video.paused && !pausedByError) wantPlaying = false })
           },
@@ -496,6 +537,7 @@ export const usePlayback = (
     })()
     return () => {
       cancelled = true
+      if (onPauseCallRef.current === onPauseCall) onPauseCallRef.current = null
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
       video.removeEventListener('error', onError)

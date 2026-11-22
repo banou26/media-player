@@ -287,7 +287,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * Pushed AFTER the revoke so the reversed teardown runs it FIRST.
      */
     teardown.push(() => {
-      try { videoElement.pause() } catch {}
+      // Prototype call so internal teardown does not look like an explicit viewer pause to wrapper hooks.
+      try { HTMLMediaElement.prototype.pause.call(videoElement) } catch {}
       videoElement.removeAttribute('src')
       // no src and no <source> children means the load algorithm goes straight to NETWORK_EMPTY
       // without firing `error`, so this cannot manufacture the failure it exists to prevent
@@ -375,8 +376,29 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     // whether nothing was removed since, so everything read forward from there is still buffered
     let positioned = true
     let evicting = 0
+    // Where the playhead sat when a quota refusal could not free anything inside the kept window, so
+    // pump() waits for playback to move, cross a keyframe, or stall for 1 s instead of spinning while paused.
+    let quotaAnchor: { time: number, keyframe: number | undefined, at: number } | undefined
 
-    const evict = async (tight = false) => {
+    const MAX_ACTIVE_GOP_S = 30
+
+    const activeKeyframe = (time: number): number | undefined => {
+      const indexes = metadata.indexes
+      // A single cue at 0 (unindexed container) is not a keyframe map; a gap past MAX_ACTIVE_GOP_S
+      // means cues ended early and must not disable back-eviction for the rest of the file.
+      if (!indexes || indexes.length < 2) return undefined
+      let start: number | undefined
+      for (const { timestamp } of indexes) {
+        if (timestamp <= time && (start === undefined || timestamp > start)) start = timestamp
+      }
+      if (start === undefined || time - start > MAX_ACTIVE_GOP_S) return undefined
+      return start
+    }
+
+    const bufferedSpan = (ranges: { start: number, end: number }[]) =>
+      ranges.reduce((sum, { start, end }) => sum + Math.max(0, end - start), 0)
+
+    const evict = async (tight = false): Promise<'none' | 'back' | 'far'> => {
       /*
        * Hold off while a prior eviction, a remuxer seek, or a seek prepare is in flight.
        *
@@ -387,8 +409,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
        * `tight` still runs, because that one is the answer to a quota refusal and has to be able to
        * free space no matter what else is happening.
        */
-      if (!tight && (evicting > 0 || preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined)) return
+      if (!tight && (evicting > 0 || preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined)) return 'none'
       evicting++
+      let removedBack = false
+      let removedFar = false
       try {
         const ct = videoElement.currentTime
         const pre = tight ? PRE_EVICT_TIGHT : PRE_EVICT
@@ -398,14 +422,30 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           positioned = false
           return unbufferRange(start, end)
         }
+        const keyframe = activeKeyframe(ct)
+        // Never remove past the active GOP's keyframe: on a 10 s GOP, tight back-eviction (-5 s) lands
+        // inside the playing GOP and MSE deletes the whole group underneath the playhead.
+        const backEnd = keyframe === undefined ? ct + pre : Math.min(ct + pre, keyframe - 0.1)
         // From 0, never from the reported start: once a group is removed, Firefox 151 reports the start
         // 1 ms after the keyframe it still holds, so a remove from there keeps that frame for good
         // (measured 2026-10-11).
-        if (ranges.length && ranges[0].start < ct + pre) await remove(0, ct + pre)
-        if (destroyed || (!tight && (preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined))) return
+        if (ranges.length && ranges[0].start < backEnd) {
+          const beforeBack = bufferedSpan(ranges)
+          await remove(0, backEnd)
+          if (!destroyed) removedBack = bufferedSpan(getTimeRanges(sourceBuffer)) < beforeBack - 0.05
+        }
+        if (destroyed || (!tight && (preparing > 0 || seeking || videoElement.seeking || dragTimer !== undefined))) {
+          return removedBack ? 'back' : 'none'
+        }
         const afterCt = videoElement.currentTime
-        const farEnd = getTimeRanges(sourceBuffer).at(-1)?.end ?? 0
-        if (farEnd > afterCt + post) await remove(afterCt + post, farEnd)
+        const afterBackRanges = getTimeRanges(sourceBuffer)
+        const farEnd = afterBackRanges.at(-1)?.end ?? 0
+        if (farEnd > afterCt + post) {
+          const beforeFar = bufferedSpan(afterBackRanges)
+          await remove(afterCt + post, farEnd)
+          if (!destroyed) removedFar = bufferedSpan(getTimeRanges(sourceBuffer)) < beforeFar - 0.05
+        }
+        return removedFar ? 'far' : removedBack ? 'back' : 'none'
       } finally {
         evicting--
       }
@@ -467,6 +507,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       seeking = true
       pending = null
       pendingAttempts = 0
+      quotaAnchor = undefined
       lastSeekPosition = time
       positioned = true
       const generation = ++seekGeneration
@@ -497,24 +538,51 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const flushPending = async () => {
       const segment = pending
       if (!segment) return
-      try {
-        await appendBuffer(segment)
+      const accept = () => {
         trackAppendedEnd()
+        quotaAnchor = undefined
         if (pending === segment) {
           pending = null
           pendingAttempts = 0
         }
+      }
+      try {
+        await appendBuffer(segment)
+        accept()
       } catch (error) {
         if (pending !== segment) return
         // Chrome refuses appends past a per-element video budget of roughly 150MB
         if ((error as DOMException)?.name === 'QuotaExceededError') {
-          const evicted = await evict(true).then(() => true, () => false)
+          const evicted = await evict(true).catch(() => 'none' as const)
           if (pending !== segment) return
-          if (evicted) {
+          if (evicted === 'far') {
+            quotaAnchor = undefined
             // Reads only move forward, so restart at the far edge of what was kept rather than at
             // the playhead, which would walk straight back into the same refusal.
             finished = false
             await seekTo(playheadRange()?.end ?? videoElement.currentTime)
+            return
+          }
+          if (evicted === 'back') {
+            // Only data behind the playhead was freed, so `segment` is still the next contiguous
+            // fragment; retry it in place without seeking back over the active GOP.
+            try {
+              await appendBuffer(segment)
+              accept()
+              return
+            } catch (retryError) {
+              if (pending !== segment) return
+              if ((retryError as DOMException)?.name !== 'QuotaExceededError') {
+                pendingAttempts += 1
+                if (pendingAttempts < MAX_APPEND_ATTEMPTS) return
+                pending = null
+                throw retryError
+              }
+            }
+          }
+          if (playheadRange()) {
+            const ct = videoElement.currentTime
+            quotaAnchor = { time: ct, keyframe: activeKeyframe(ct), at: Date.now() }
             return
           }
         }
@@ -529,6 +597,13 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       // a settling drag is about to reposition the remuxer, so reading forward from where it
       // happens to sit is throwing a read away
       if (reading || seeking || dragTimer !== undefined || destroyed) return
+      if (quotaAnchor !== undefined) {
+        const ct = videoElement.currentTime
+        const moved = Math.abs(ct - quotaAnchor.time) >= 1 || activeKeyframe(ct) !== quotaAnchor.keyframe
+        const waiting = !videoElement.paused && videoElement.readyState <= HTMLMediaElement.HAVE_CURRENT_DATA && Date.now() - quotaAnchor.at >= 1_000
+        if (!moved && !waiting) return
+        quotaAnchor = undefined
+      }
       if (!pending && (finished || !needsData())) return
       const generation = ++readGeneration
       const seekAtStart = seekGeneration
