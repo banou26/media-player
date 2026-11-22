@@ -111,6 +111,8 @@ const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) 
   let position = 0
   let shift = 0
   let paused = false
+  // a seek that moves mid-quantum: before sample `at` of the next quantum the old position still plays
+  let splice: { at: number, next: number } | null = null
   let frame = lag
   let sinceClock = Infinity
   let sinceBlocks = Infinity
@@ -139,8 +141,12 @@ const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) 
       sinceBlocks = 0
     }
     const inputs = [new Float32Array(128), new Float32Array(128)]
+    const jump = splice
+    splice = null
     for (let i = 0; i < 128; i++) {
-      const index = position + shift + (paused ? 0 : i)
+      const index = jump && i >= jump.at
+        ? jump.next + shift + (paused ? 0 : i - jump.at)
+        : position + shift + (paused ? 0 : i)
       const live = !paused && index >= 0 && index < signal.left.length
       inputs[0]![i] = live ? signal.left[index]! * volume : 0
       inputs[1]![i] = live ? signal.right[index]! * volume : 0
@@ -166,7 +172,7 @@ const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) 
     frame += 128
     sinceClock += 128
     sinceBlocks += 128
-    if (!paused) position += 128
+    if (!paused) position = jump ? jump.next + (128 - jump.at) : position + 128
   }
   const run = (seconds: number) => {
     for (let n = 0; n < seconds * RATE; n += 128) quantum()
@@ -198,9 +204,11 @@ const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) 
       sinceBlocks = Infinity
     },
     // a seek whose audio plays from there at once, told by a main thread `late` s behind
-    seekAhead: (seconds: number, late: number) => {
-      position = Math.round(seconds * RATE)
-      behind = { due: frame + Math.round(late * RATE), media: position / RATE, seek: true }
+    seekAhead: (seconds: number, late: number, sampleOffset = 0) => {
+      const next = Math.round(seconds * RATE)
+      if (sampleOffset > 0) splice = { at: sampleOffset, next }
+      else position = next
+      behind = { due: frame + sampleOffset + Math.round(late * RATE), media: next / RATE, seek: true }
     },
   }
 }
@@ -275,6 +283,23 @@ describe('the worklet against the media time', () => {
     expect(short(record, 10, 10.5)).toEqual([])
     // the control: what it had to cut there
     expect(record.filter(({ time, asked }) => time > 10.12 && time < 10.14 && asked < -3).length).toBeGreaterThan(400)
+  })
+
+  it('cuts from the first sample when a seek notice lands just as the new audio leaves the delay line', () => {
+    const { record, start, playTo, seekAhead } = rig()
+    start(5)
+    playTo(15.8)
+    // starts 32 samples into the quantum so sample 0 leaves the 480-sample delay line at sample 0 of quantum +4,
+    // right as the seek notice arrives 10 ms later (0.2 dB/sample slewing from 0 dB used to leave 1 to 2 ms short)
+    seekAhead(22.2458, 0.01, 32)
+    playTo(22.6)
+    expect(short(record, 22, 22.6)).toEqual([])
+    expect(record.filter(({ time, asked }) => time > 22.2458 && time < 22.26 && asked < -10).length).toBeGreaterThan(400)
+    // 2 ms before the 50 ms burst at 50.7654 s, same alignment
+    seekAhead(50.7634, 0.01, 32)
+    playTo(51.1)
+    expect(short(record, 50.5, 51.1)).toEqual([])
+    expect(record.filter(({ time, asked }) => time > 50.7634 && time < 50.81 && asked < -5).length).toBeGreaterThan(1000)
   })
 
   it('cuts a seek 34 s back from its first sample, with the worker slow to send a block again', () => {

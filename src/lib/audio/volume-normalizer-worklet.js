@@ -887,6 +887,7 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
     this.fingerEnergy = new Float64Array(QUANTUM)
     this.aheadDb = 0
     this.handover = 0
+    this.jumped = false
     this.forgetTimeline()
 
     this.port.onmessage = ({ data }) => {
@@ -896,7 +897,10 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
         this.ring.fill(0)
         this.ringSum = 0
         this.ringFill = 0
-        if (this.offset !== null) this.doubt = true
+        if (this.offset !== null) {
+          this.doubt = true
+          if (data.reset === 'seek') this.jumped = true
+        }
       }
       if (data?.reset === 'source') {
         this.hist.fill(0)
@@ -930,6 +934,7 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
     this.candidate = null
     this.search = null
     this.doubt = false
+    this.jumped = false
     this.model = null
     this.settling = []
     this.liveCount = 0
@@ -950,12 +955,16 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
       // already playing (10 to 27 ms after the move in Chrome 155, where the main thread once took 52 ms to say so,
       // 2026-10-30), or a pause was told late. The seek's reset, posted on the same event, is what puts it in doubt.
       const held = model && !model.paused ? this.mediaAt(frame) : media
+      const previous = model ? (model.paused ? model.media : held) : media
+      if (!(Math.abs(media - previous) <= 0.025)) this.jumped = true
       this.model = { paused: true, media: Math.abs(media - held) <= 0.025 ? held : media }
       this.liveCount = 0
       return
     }
     const predicted = model && !model.paused && model.rate === rate ? model.media + (frame - model.frame) * rate / sampleRate : NaN
     if (!(Math.abs(media - predicted) <= 0.025)) {
+      const previous = model ? (model.paused ? model.media : predicted) : media
+      if (!(Math.abs(media - previous) <= 0.025)) this.jumped = true
       this.model = { frame, media, rate }
       this.settling = []
       this.liveCount = 0
@@ -1281,12 +1290,14 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
       this.gainLine[at] = gain
 
       if (ahead) {
-        // at most 0.2 dB a sample, so a change of mode cannot click; the cut itself moves slower
+        // at most 0.2 dB a sample, so a change of mode cannot click; the cut itself moves slower.
+        // After a seek jump, a deeper cut takes effect at once so the first 1 to 2 ms of a loud sound are not left uncut.
         let wantedDb = exact ? this.cutAt(this.mediaAt(start + i - delay) + this.offset) : held
         if (!(wantedDb <= 0)) wantedDb = this.aheadDb
         if (wantedDb > this.aheadDb + 0.2) wantedDb = this.aheadDb + 0.2
-        else if (wantedDb < this.aheadDb - 0.2) wantedDb = this.aheadDb - 0.2
+        else if (!this.jumped && wantedDb < this.aheadDb - 0.2) wantedDb = this.aheadDb - 0.2
         this.aheadDb = wantedDb
+        this.jumped = false
         this.handover = Math.min(1, this.handover + handoverStep)
       } else {
         this.handover = Math.max(0, this.handover - handoverStep)
