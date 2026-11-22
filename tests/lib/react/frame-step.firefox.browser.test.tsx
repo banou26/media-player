@@ -527,6 +527,37 @@ describe('frame step on < and >', () => {
     await expect.poll(() => painted(video), { timeout: 5000 }).toBe(239)
   })
 
+  // A seek whose target has under 3 s of buffered runway makes the remuxer re-read the GOP in ~1 s fragments. Cutting
+  // those fragments mid-reorder-group let adjacent fragments overlap in presentation time, so Firefox MSE evicted the
+  // boundary frame and stepping through showed its neighbour twice and skipped it.
+  it('steps through every frame after a seek re-reads a B-frame GOP in short fragments', async () => {
+    const source = await httpSource(FILE)
+    let held = true
+    const waiters: (() => void)[] = []
+    const read = async (offset: number, length: number) => {
+      if (held && offset > source.size * 0.75 && offset < source.size * 0.99) {
+        await new Promise<void>((done) => waiters.push(done))
+      }
+      return source.read(offset, length)
+    }
+    const { video } = await mount({ ...source, read, bufferSize: 32_768 })
+    await expect.poll(() => bufferedTo(video), { timeout: 30_000 }).toBeGreaterThan(8.5)
+    expect(bufferedTo(video)).toBeLessThan(10.5)
+
+    // < 3 s of runway triggers a remuxer re-read of GOP 0 in ~1 s length-cut fragments
+    video.currentTime = 200.5 / FPS
+    await seeked(video)
+    held = false
+    while (waiters.length) waiters.pop()?.()
+    await expect.poll(() => bufferedTo(video), { timeout: 30_000 }).toBeGreaterThan(19)
+
+    await land(video, 197)
+    for (let n = 198; n <= 210; n++) {
+      await userEvent.keyboard('>')
+      await expect.poll(() => painted(video), { timeout: 3000 }).toBe(n)
+    }
+  }, 45_000)
+
   it('redraws the subtitles for the frame it lands on', async () => {
     const { screen, video } = await mount()
     const surface = () => screen.container.querySelector('canvas')

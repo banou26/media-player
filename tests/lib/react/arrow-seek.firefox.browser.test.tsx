@@ -77,6 +77,8 @@ describe('the arrow keys while a seek is on its way', () => {
     const props = { ...source, read, bufferSize: 16_384, seekPrepareBudgetMs: 60_000 }
     const { video, screen } = await mount(props)
     await seekElement(video, 8.4)
+    // let the re-read past 8.4 s finish up to the held boundary so a click at 6 s already has its 3 s runway
+    await expect.poll(() => video.buffered.length > 0 && video.buffered.end(0) >= 9.5, { timeout: 10_000 }).toBe(true)
     return {
       video,
       release,
