@@ -151,6 +151,8 @@ export const usePlayback = (
 
   const readRef = useRef(read)
   readRef.current = read
+  const autoplayRef = useRef(autoplay)
+  autoplayRef.current = autoplay
   const preferences = {
     audio: options?.preferredAudioLanguage,
     original: options?.originalLanguage,
@@ -327,16 +329,38 @@ export const usePlayback = (
 
   useEffect(() => {
     if (!video || !subtitles || !size || !read) return
+    // Discard stale resume state once another media starts loading, even if it aborts before onReady.
+    if (resumeRef.current && resumeRef.current.size !== size) resumeRef.current = null
     let cancelled = false
     let reachedReady = false
-    // Chrome sets `video.paused = true` and queues a `pause` event after `error` on a real
-    // MediaError (Firefox and WebKit leave `paused` false), so play intent is tracked across events
-    // and any `pause` fired while `video.error` is set is ignored.
+    // Chrome sets `video.paused = true` before dispatching `error` and then queues one `pause` event,
+    // while Firefox and WebKit leave `paused` false. Latch only that single error-induced pause so a
+    // real pause right before a MediaError or during recovery backoff is never dropped.
     let wantPlaying = false
-    const onPlay = () => { wantPlaying = true }
-    const onPause = () => { if (!video.error) wantPlaying = false }
+    let pausedByError = false
+    let ignoreErrorPause = false
+    const onPlay = () => {
+      wantPlaying = true
+      pausedByError = false
+      ignoreErrorPause = false
+    }
+    const onPause = () => {
+      if (ignoreErrorPause) {
+        ignoreErrorPause = false
+        return
+      }
+      wantPlaying = false
+      pausedByError = false
+    }
+    const onError = () => {
+      if (wantPlaying && video.paused) {
+        pausedByError = true
+        ignoreErrorPause = true
+      }
+    }
     video.addEventListener('play', onPlay)
     video.addEventListener('pause', onPause)
+    video.addEventListener('error', onError)
     player.setSourceState({ playbackError: null, ready: false })
 
     /**
@@ -427,9 +451,9 @@ export const usePlayback = (
             if (sameMedia && resume.time > 0) video.currentTime = resume.time
             // a seek carried to 0 is where the new element already is, so no 'seeked' comes to take it off the clock
             else player.setSourceState({ seekingTo: undefined })
-            const shouldPlay = sameMedia ? resume.play : autoplay
+            const shouldPlay = sameMedia ? resume.play : autoplayRef.current
             wantPlaying = shouldPlay
-            if (shouldPlay) video.play().catch(() => { if (video.paused && !video.error) wantPlaying = false })
+            if (shouldPlay) video.play().catch(() => { if (video.paused && !pausedByError) wantPlaying = false })
           },
           onError: fail,
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
@@ -474,12 +498,13 @@ export const usePlayback = (
       cancelled = true
       video.removeEventListener('play', onPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('error', onError)
       if (reachedReady) {
         // a seek still waiting for its data has not moved the element yet, and it is where the viewer asked to be
         resumeRef.current = {
           time: player.state.seekingTo ?? video.currentTime,
           size,
-          play: video.error ? wantPlaying : !video.paused,
+          play: !video.ended && (pausedByError ? wantPlaying : !video.paused),
         }
       } else if (resumeRef.current?.size === size && player.state.seekingTo !== undefined) {
         resumeRef.current = { ...resumeRef.current, time: player.state.seekingTo }
@@ -488,13 +513,11 @@ export const usePlayback = (
       controllerRef.current = null
       player.setSourceState({ ready: false })
     }
-    // `read` is deliberately absent: the effect only ever calls `readRef.current`, so listing it here
-    // would tear the whole pipeline down and rebuild it whenever the caller's reader changed
-    // identity. A streaming consumer passes a fresh closure on every state update, which is several
-    // times a second, and the restart loop reads as "Loading metadata" forever at a flat 0 B/s.
+    // `read` and `autoplay` are read through refs: `read` changes identity on streaming updates, and
+    // toggling `autoplay` does not need a full pipeline rebuild.
   }, [
     player, playingAudio, video, subtitles, size, publicPath, libavWorkerUrl, jassubWorkerUrl, jassubWasmUrl,
     jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl, defaultFontUrl, cjkFontUrl, bufferSize,
-    audioStreamIndex, autoplay, restartToken,
+    audioStreamIndex, restartToken,
   ])
 }
