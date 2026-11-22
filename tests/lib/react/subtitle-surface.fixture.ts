@@ -18,6 +18,7 @@ export type Ink = { x1: number, y1: number, x2: number, y2: number, width: numbe
 
 /** null before the worker has committed a frame, when there is no bitmap to copy. */
 export const readSurface = (surface: HTMLCanvasElement): SubtitleSurface | null => {
+  if ('pending' in surface.dataset) return null
   const { width, height } = surface
   if (!width || !height) return null
   const copy = document.createElement('canvas')

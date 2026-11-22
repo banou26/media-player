@@ -180,7 +180,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     // Resolved per frame: the renderer replaces this element on every pipeline rebuild. A new
     // canvas keeps HTML's 300 by 150 default while jassub's worker boots, and copying it in Firefox
     // then blocks the page for 10 s on OffscreenCanvasDisplayHelper::GetSurfaceSnapshot, so the
-    // renderer marks it `data-pending` until `ready` settles.
+    // renderer marks it `data-pending` until `ready` resolves.
     const surface = subtitles.querySelector('canvas')
     if (
       surface &&

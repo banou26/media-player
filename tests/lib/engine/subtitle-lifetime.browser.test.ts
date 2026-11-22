@@ -206,6 +206,34 @@ describe('the subtitle canvas across a pipeline rebuild', () => {
     await expect.poll(() => 'pending' in surface.dataset, { timeout: 10_000 }).toBe(false)
   }, 30_000)
 
+  it('keeps its surface pending when jassub fails to boot', async () => {
+    const { video, container } = mounted()
+    const warnings: string[] = []
+    const realWarn = console.warn
+    console.warn = (...args: unknown[]) => { warnings.push(String(args[0])) }
+    cleanups.push(() => { console.warn = realWarn })
+
+    const instance = createSubtitleRenderer({
+      video,
+      container,
+      workerUrl: playerAssets.jassubWorkerUrl,
+      wasmUrl: playerAssets.jassubWasmUrl,
+      wasmWorkerUrl: '/missing-jassub-worker.js',
+      legacyWasmUrl: playerAssets.jassubLegacyWasmUrl,
+      legacyWasmWorkerUrl: '/missing-jassub-worker.js',
+    })
+    cleanups.push(() => instance.destroy())
+    instance.pushFragments([headerFragment()])
+
+    const surface = container.querySelector('canvas')!
+    expect(surface).not.toBeNull()
+    await expect.poll(
+      () => warnings.some((w) => w.includes('subtitle renderer failed')),
+      { timeout: 10_000 },
+    ).toBe(true)
+    expect('pending' in surface.dataset, 'failed surface cleared its pending mark').toBe(true)
+  }, 30_000)
+
   it('takes its own canvas away on destroy and leaves the container alone', async () => {
     const { video, container } = mounted()
 
