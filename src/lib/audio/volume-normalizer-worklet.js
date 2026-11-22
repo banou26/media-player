@@ -887,7 +887,6 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
     this.fingerEnergy = new Float64Array(QUANTUM)
     this.aheadDb = 0
     this.handover = 0
-    this.jumped = false
     this.forgetTimeline()
 
     this.port.onmessage = ({ data }) => {
@@ -950,21 +949,19 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
   pair({ media, ctx, rate, paused }) {
     const frame = ctx * sampleRate
     const model = this.model
+    const previous = model ? this.mediaAt(frame) : media
+    if (this.offset !== null && !(Math.abs(media - previous) <= 0.025)) this.jumped = true
     if (paused) {
       // More than 25 ms from where the clock had it, the media is where the pair says: a seek moved it, its audio
       // already playing (10 to 27 ms after the move in Chrome 155, where the main thread once took 52 ms to say so,
       // 2026-10-30), or a pause was told late. The seek's reset, posted on the same event, is what puts it in doubt.
-      const held = model && !model.paused ? this.mediaAt(frame) : media
-      const previous = model ? (model.paused ? model.media : held) : media
-      if (!(Math.abs(media - previous) <= 0.025)) this.jumped = true
+      const held = model && !model.paused ? previous : media
       this.model = { paused: true, media: Math.abs(media - held) <= 0.025 ? held : media }
       this.liveCount = 0
       return
     }
-    const predicted = model && !model.paused && model.rate === rate ? model.media + (frame - model.frame) * rate / sampleRate : NaN
+    const predicted = model && !model.paused && model.rate === rate ? previous : NaN
     if (!(Math.abs(media - predicted) <= 0.025)) {
-      const previous = model ? (model.paused ? model.media : predicted) : media
-      if (!(Math.abs(media - previous) <= 0.025)) this.jumped = true
       this.model = { frame, media, rate }
       this.settling = []
       this.liveCount = 0
@@ -1301,7 +1298,10 @@ const defineProcessor = () => class VolumeNormalizer extends AudioWorkletProcess
         this.handover = Math.min(1, this.handover + handoverStep)
       } else {
         this.handover = Math.max(0, this.handover - handoverStep)
-        if (this.handover === 0) this.aheadDb = liveDb
+        if (this.handover === 0) {
+          this.aheadDb = liveDb
+          this.jumped = false
+        }
       }
       this.mix += Math.max(-crossfadeStep, Math.min(crossfadeStep, target - this.mix))
       const db = (liveDb + (this.aheadDb - liveDb) * this.handover) * this.mix

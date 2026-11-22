@@ -182,7 +182,7 @@ const rig = ({ lag = 0, analysis = true, worker, volume = 1 }: RigOptions = {}) 
     record,
     start: (seconds: number) => { position = Math.round(seconds * RATE) },
     run,
-    playTo: (seconds: number) => { while (position < seconds * RATE) quantum() },
+    playTo: (seconds: number) => { while (splice || position < seconds * RATE) quantum() },
     // a pause the main thread tells `late` s after the audio stopped
     pause: (seconds: number, late = 0) => {
       paused = true
@@ -300,6 +300,27 @@ describe('the worklet against the media time', () => {
     playTo(51.1)
     expect(short(record, 50.5, 51.1)).toEqual([])
     expect(record.filter(({ time, asked }) => time > 50.7634 && time < 50.81 && asked < -5).length).toBeGreaterThan(1000)
+  })
+
+  it('keeps the per-sample slew cap on a continuous playback rate change', () => {
+    const { node, record, start, playTo, run } = rig()
+    start(5)
+    // right before the gunshot ramp at 22.2468 s, where switching from exact cutAt to +-30 ms deepest drops > 3 dB
+    playTo(22.215)
+    const before = record.length
+    const media = record[before - 1]!.time + DELAY / RATE
+    const ctx = ((globalThis as Record<string, number>).currentFrame! + 128) / RATE
+    node.port.onmessage({ data: { media, ctx, rate: 1.5, paused: false } })
+    run(0.05)
+    let steepest = 0
+    for (let k = Math.max(1, before - 4); k < record.length; k++) {
+      const gap = Math.max(1, Math.round((record[k]!.time - record[k - 1]!.time) * RATE))
+      steepest = Math.max(steepest, Math.abs(record[k]!.applied - record[k - 1]!.applied) / gap)
+    }
+    // the control: the cut moved by more than 1 dB across the window, just not in a single sample
+    const span = Math.abs(record[record.length - 1]!.applied - record[before - 1]!.applied)
+    expect(span).toBeGreaterThan(1)
+    expect(steepest).toBeLessThanOrEqual(0.21)
   })
 
   it('cuts a seek 34 s back from its first sample, with the worker slow to send a block again', () => {
