@@ -3,7 +3,7 @@
 // another document; remote-document.browser.test.ts is that.
 import type { PlayerMedia } from '../../../src/lib/react/media'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { expose } from 'osra'
 
@@ -740,6 +740,63 @@ describe('autoplay, for a document nobody has clicked', () => {
     await expect(attempt).rejects.toThrow()
     await settled()
     expect(media.muted).toBe(false)
+  })
+
+  it('confirms playback immediately when play fires before the RPC settles', async () => {
+    const { media, player, stop } = pair()
+    open.push(stop, player.destroy)
+    await player.ready
+
+    const t0 = performance.now()
+    expect(await player.autoplay()).toEqual({ muted: false })
+    expect(performance.now() - t0).toBeLessThan(500)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+
+  it('does not retry muted or unpause when paused during autoplay confirmation', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = fakeMedia()
+    media.play = async () => {
+      media.calls.push('play')
+      media.paused = false
+      media.dispatchEvent(new Event('play'))
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    open.push(stop, player.destroy)
+    await player.ready
+
+    const attempt = player.autoplay()
+    await new Promise(resolve => setTimeout(resolve, 10))
+    player.pause()
+
+    await expect(attempt).rejects.toThrow()
+    await settled()
+    expect(media.paused).toBe(true)
+    expect(media.muted).toBe(false)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
+  })
+
+  it('does not retry muted when the far player pauses while autoplay waits for confirmation', async () => {
+    const { port1, port2 } = new MessageChannel()
+    const media = fakeMedia()
+    media.play = async () => { media.calls.push('play') }
+    const stop = exposePlayer(media, { transport: port1 })
+    const player = mediaPlayer(port2)
+    open.push(stop, player.destroy)
+    await player.ready
+
+    const attempt = player.autoplay()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    media.paused = true
+    media.dispatchEvent(new Event('pause'))
+
+    await expect(attempt).rejects.toThrow()
+    await settled()
+    expect(media.paused).toBe(true)
+    expect(media.muted).toBe(false)
+    expect(media.calls.filter(call => call === 'play')).toHaveLength(1)
   })
 })
 

@@ -310,4 +310,70 @@ describe('burn-in picture in picture', () => {
     expect(host.querySelectorAll('video')).toHaveLength(1)
     expect(video.style.opacity).not.toBe('0')
   })
+
+  it('keeps a paused video paused when enter mirror.play fires after listeners attach', async () => {
+    const { video, subtitles, host } = await playingVideo()
+    video.pause()
+    expect(video.paused).toBe(true)
+
+    const playDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'play')!
+    const nativePlay = playDesc.value as (this: HTMLMediaElement) => Promise<void>
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      ...playDesc,
+      value(this: HTMLMediaElement) {
+        if (this !== video) {
+          // Fire the mirror `play` event after `loadedmetadata` so it always lands past `listen(mirror)`
+          const fire = () => setTimeout(() => this.dispatchEvent(new Event('play')), 20)
+          if (this.readyState > 0) fire()
+          else this.addEventListener('loadedmetadata', fire, { once: true })
+          return Promise.resolve()
+        }
+        return nativePlay.call(this)
+      },
+    })
+    cleanups.push(() => Object.defineProperty(HTMLMediaElement.prototype, 'play', playDesc))
+
+    const pip = createPictureInPicture({ video, subtitles, mode: 'burn-in' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    expect(host.querySelectorAll('video')).toHaveLength(2)
+    expect(video.paused, 'enter mirror play unpaused the paused video').toBe(true)
+  })
+
+  it('keeps video paused in window mode when restarting the mirror fires play asynchronously', async () => {
+    const { video, subtitles } = await playingVideo()
+    let pipElement: Element | null = null
+    const setPipElement = (el: HTMLVideoElement) => { pipElement = el }
+    stub(HTMLVideoElement.prototype, 'requestPictureInPicture', async function (this: HTMLVideoElement) {
+      setPipElement(this)
+      return {} as PictureInPictureWindow
+    })
+    stub(Document.prototype, 'pictureInPictureEnabled', true)
+    const pipElDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'pictureInPictureElement')
+    Object.defineProperty(document, 'pictureInPictureElement', { configurable: true, get: () => pipElement })
+    cleanups.push(() => {
+      if (pipElDesc) Object.defineProperty(document, 'pictureInPictureElement', pipElDesc)
+      else delete (document as unknown as Record<string, unknown>).pictureInPictureElement
+    })
+    stub(Document.prototype, 'exitPictureInPicture', async () => { pipElement = null })
+
+    const pip = createPictureInPicture({ video, subtitles, mode: 'window' })
+    cleanups.push(() => pip.destroy())
+    await pip.toggle()
+    const mirror = pipElement as HTMLVideoElement | null
+    expect(mirror).not.toBeNull()
+
+    // Delay the mirror's `play` event past the `play()` promise microtask, as browsers queue media events.
+    mirror!.play = () => {
+      setTimeout(() => mirror!.dispatchEvent(new Event('play')), 20)
+      return Promise.resolve()
+    }
+    mirror!.dispatchEvent(new Event('pause'))
+    expect(video.paused).toBe(true)
+
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(video.paused, 'mirror restart unpaused the video that was just paused').toBe(true)
+  })
 })

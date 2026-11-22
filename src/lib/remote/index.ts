@@ -708,51 +708,86 @@ export const mediaPlayer = (
       )
     })
   })
+  let pauseCount = 0
+  const pauseListeners = new Set<() => void>()
+  const notePause = () => {
+    pauseCount++
+    for (const listener of Array.from(pauseListeners)) listener()
+  }
+  player.addEventListener('pause', notePause)
+
   // like an element's, `play` settles with the far side's own answer, so an autoplay refusal over
   // there rejects over here, and the mirror goes back to paused when it does
   player.play = () => { state.paused = false; return call('play').catch(error => { state.paused = true; throw error }) }
-  // Whether the far player is actually running, shortly after being asked to. Its own `playing`
-  // settles this the moment it arrives; the timeout is for the refusal that announces nothing, and
-  // reads the state the call itself reported on its way out.
-  const startedPlaying = () => new Promise<boolean>(resolve => {
-    // Deliberately NOT short-circuiting on `state.paused` here: `play()` has just written it
-    // optimistically, so it reads as playing whatever the far side does. Only an event from over
-    // there, or the state left behind once the call has answered, can settle this.
-    const finish = (started: boolean) => {
-      clearTimeout(timer)
-      player.removeEventListener('playing', ok)
-      player.removeEventListener('play', ok)
-      resolve(started)
-    }
-    const ok = () => finish(true)
-    player.addEventListener('playing', ok)
-    player.addEventListener('play', ok)
-    const timer = setTimeout(() => finish(!state.paused), PLAY_CONFIRM_MS)
-  })
 
+  // Ask the far side to play and confirm from its own events, listening BEFORE `play()` goes out:
+  // the far side's `play`/`playing` routinely arrives before the RPC settles, and missing it made
+  // `autoplay()` wait out PLAY_CONFIRM_MS and retry muted over a viewer pause in that window.
   const askToPlay = async () => {
     // read before `play()` writes its optimism over it
     const alreadyPlaying = !state.paused
+    const pauseAtStart = pauseCount
+    let heardPlay = false
+    let settle: ((started: boolean) => void) | undefined
+    let settled: Promise<boolean> | undefined
+    let onPlay: (() => void) | undefined
+    let onPause: (() => void) | undefined
+    let onAbort: (() => void) | undefined
+    const cleanup = () => {
+      if (onPlay) {
+        player.removeEventListener('playing', onPlay)
+        player.removeEventListener('play', onPlay)
+      }
+      if (onPause) pauseListeners.delete(onPause)
+      if (onAbort) signal.removeEventListener('abort', onAbort)
+    }
+    if (!alreadyPlaying) {
+      settled = new Promise<boolean>(resolve => {
+        settle = started => { cleanup(); resolve(started) }
+      })
+      onPlay = () => { heardPlay = true; settle?.(true) }
+      onPause = () => settle?.(false)
+      onAbort = () => settle?.(false)
+      player.addEventListener('playing', onPlay)
+      player.addEventListener('play', onPlay)
+      pauseListeners.add(onPause)
+      signal.addEventListener('abort', onAbort, { once: true })
+    }
     let refusal: unknown
     try { await player.play() } catch (error) { refusal = error }
-    if (alreadyPlaying) return { started: true, refusal }
+    if (alreadyPlaying) return { started: true, paused: false, refusal }
+    const pausedSince = () => pauseCount !== pauseAtStart
+    if (heardPlay || pausedSince() || signal.aborted) {
+      cleanup()
+      return { started: heardPlay && !pausedSince(), paused: pausedSince(), refusal }
+    }
     // the far side's own word, not the promise's: a wrapper that resolves a refused play is common
     // enough that trusting the promise is what left followers paused for ever
-    return { started: await startedPlaying(), refusal }
+    const timer = setTimeout(() => settle?.(!state.paused && !pausedSince()), PLAY_CONFIRM_MS)
+    try {
+      const started = await settled!
+      return { started: started && !pausedSince(), paused: pausedSince(), refusal }
+    } finally {
+      clearTimeout(timer)
+      cleanup()
+    }
   }
 
   player.autoplay = async () => {
+    const pauseAtStart = pauseCount
     const first = await askToPlay()
     if (first.started) return { muted: player.muted }
-    // already muted and still refused, or torn down mid-try: nothing left to trade away
-    if (player.muted || signal.aborted) throw first.refusal ?? notStartedError()
+    // paused mid-attempt, already muted and still refused, or torn down: nothing left to trade away
+    if (first.paused || pauseCount !== pauseAtStart || player.muted || signal.aborted) {
+      throw first.refusal ?? notStartedError()
+    }
     player.muted = true
     const second = await askToPlay()
     if (second.started) return { muted: true }
     player.muted = false
     throw first.refusal ?? second.refusal ?? notStartedError()
   }
-  player.pause = () => { state.paused = true; call('pause').catch(() => {}) }
+  player.pause = () => { state.paused = true; notePause(); call('pause').catch(() => {}) }
   player.load = () => { call('load').catch(() => {}) }
   Object.defineProperty(player, 'ready', { value: ready, enumerable: false })
   player.destroy = () => controller.abort()

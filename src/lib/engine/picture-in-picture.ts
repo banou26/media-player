@@ -160,6 +160,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
   /** The video's time at the last frame callback, which the subtitle surface was rendered for. */
   let frameTime = 0
   let syncing = false
+  let releaseSync: (() => void) | undefined
   /** Burn-in only: a deliberate play/pause pair to push one frame, which must not reach the video. */
   let flushing = false
   // Nothing can tell a session is being built until `enter` resolves, so without this a second click
@@ -253,13 +254,31 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
    * Both arms are idempotent by comparing against the video rather than by holding a flag: if the
    * video is already paused this event is the echo of our own `mirror.pause()` and means nothing.
    */
+  /** Keeps `syncing` set past a mirror's queued `play` event so our own `mirror.play()` cannot resume `video`. */
+  const suppressNextMirrorPlay = (mirror: HTMLVideoElement) => {
+    releaseSync?.()
+    syncing = true
+    const release = () => {
+      clearTimeout(timer)
+      mirror.removeEventListener('play', release)
+      if (releaseSync === release) releaseSync = undefined
+      syncing = false
+    }
+    releaseSync = release
+    const timer = setTimeout(release, FLUSH_FRAME_MS)
+    mirror.addEventListener('play', release, { once: true })
+    return release
+  }
+
   const onMirrorPause = () => {
     if (syncing || flushing) return
     if (!video.paused) video.pause()
     // In window mode the mirror must never be left paused; see `onVideoPause`.
     if (mode === 'burn-in') return
-    syncing = true
-    void session?.mirror.play().catch(() => {}).finally(() => { syncing = false })
+    const mirror = session?.mirror
+    if (!mirror) return
+    const release = suppressNextMirrorPlay(mirror)
+    void mirror.play().catch(release)
   }
 
   const onVideoPlay = () => {
@@ -340,6 +359,7 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
 
   /** Lets go of the session, mirror and window left as they are. */
   const detach = () => {
+    releaseSync?.()
     stopLoop()
     bindMediaSession(false)
     video.removeEventListener('play', onVideoPlay)
@@ -432,7 +452,10 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     ;(options.container ?? (mode === 'burn-in' ? video.parentElement : null) ?? document.body).appendChild(mirror)
 
     start()
-    void mirror.play().catch(() => {})
+    let bootPlaying = true
+    const onBootPlay = () => { bootPlaying = false }
+    mirror.addEventListener('play', onBootPlay, { once: true })
+    void mirror.play().catch(onBootPlay)
 
     // requestPictureInPicture rejects while readyState is 0, and the wait is short enough that the
     // click's transient user activation survives it.
@@ -447,11 +470,13 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     // A destroy or a re-entered toggle can land inside that wait. Binding anyway would leave listeners
     // and a Media Session handler pointing at a dead session for the rest of the page's life.
     if (destroyed || session !== mine) {
+      mirror.removeEventListener('play', onBootPlay)
       mirror.remove()
       return
     }
 
     listen(mirror)
+    if (bootPlaying) suppressNextMirrorPlay(mirror)
 
     if (mode === 'burn-in') {
       // No window to open: the browser's own control does that, on the element now on screen.
