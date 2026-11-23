@@ -679,6 +679,18 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      */
     const hasRunway = (time: number) => runwayFrom(time) >= SEEK_RUNWAY || (endInBuffer() && atEnd(time))
 
+    const endBufferedInSource = () =>
+      lastAppendedEnd > 0 && (getTimeRanges(sourceBuffer).at(-1)?.end ?? 0) >= lastAppendedEnd - 0.1
+    const samePreparedEnd = (time: number) =>
+      finished &&
+      endBufferedInSource() &&
+      atEnd(time) &&
+      (Math.abs(time - lastSeekPosition) < 0.001 || lastSeekPosition >= lastAppendedEnd - 0.1)
+    const alreadyPrepared = (time: number) =>
+      positioned &&
+      (((seeking || runwayFrom(time) > 0) && Math.abs(time - lastSeekPosition) < 0.001) ||
+        samePreparedEnd(time))
+
     /**
      * Put the data in place for a position the playhead has NOT moved to yet.
      *
@@ -700,6 +712,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     const prepareSeek = async (time: number) => {
       if (destroyed || elementFailed || videoElement.error) return
       if (playableAt(time) && hasRunway(time)) return
+      if (alreadyPrepared(time)) return
       // A drag still settling holds every read, so the runway would never be read, and its settle would then position the
       // remuxer back where the drag stopped. A seek back under 250 ms after a seek forward is one (Firefox 153 and 157,
       // 2026-10-23).
@@ -817,7 +830,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
        * away everything the first one had done. The benchmark caught it as a seek that took twice as
        * long as seeking the old way.
        */
-      if (positioned && (seeking || runwayFrom(time) > 0) && Math.abs(time - lastSeekPosition) < 0.001) return
+      if (alreadyPrepared(time)) return
       finished = false
       if (dragTimer) clearTimeout(dragTimer)
       if (!dragging) {

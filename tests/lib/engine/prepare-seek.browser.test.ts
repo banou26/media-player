@@ -141,4 +141,51 @@ describe('preparing a seek', () => {
       container.remove()
     }
   }, 120_000)
+  it('does not re-seek when repeating prepareSeek or setting currentTime near the buffered end', async () => {
+    const source = await httpSource()
+    if (!source) return
+
+    const runs: number[] = []
+    let countRuns = false
+    const { video, subtitles, container } = sized()
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      read: source.read,
+      length: source.size,
+      ...playerAssets,
+      onOutput: (output) => {
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+
+    try {
+      await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
+      const target = Math.max(0, controller.duration - 0.01)
+      countRuns = true
+      await controller.prepareSeek(target)
+      expect(runs.length, 'prepareSeek must trigger the remuxer once').toBe(1)
+      expect(runwayFrom(video, target), 'target beyond last buffered time exercises prepared-EOF guard').toBe(0)
+
+      await controller.prepareSeek(target)
+      expect(runs.length, 'repeating prepareSeek at the same end target must not re-seek').toBe(1)
+
+      const seeked = new Promise<void>((resolve) => {
+        video.addEventListener('seeked', () => resolve(), { once: true })
+      })
+      video.currentTime = target
+      await seeked
+      await expect.poll(() => video.ended, { timeout: 5_000 }).toBe(true)
+      // Allow more than one 100 ms interval tick after ended/clamping to verify no delayed re-seek runs
+      await new Promise((resolve) => setTimeout(resolve, 250))
+
+      expect(runs.length, 'moving currentTime to a prepared end target must not re-seek').toBe(1)
+
+      await controller.prepareSeek(0.5)
+      expect(runs.length, 'a real seek away after prepared EOF must invoke the remuxer').toBe(2)
+    } finally {
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
 })
