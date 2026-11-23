@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode, Ref } from 'react'
 import type { ViewportBox } from '../source-feature'
-import type { HostFullscreen } from '../video-player'
+import type { EpisodeNavigation, HostFullscreen } from '../video-player'
 
 import { Children, Fragment, isValidElement, useEffect, useRef } from 'react'
 import { css } from '@emotion/react'
@@ -139,10 +139,11 @@ export type ChromeProps = {
   fullscreen?: HostFullscreen
   /** False leaves the last ending out of the skip offer. */
   endingOffered: boolean
+  episodeNavigation?: EpisodeNavigation
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, endingOffered, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -324,7 +325,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
       ))}
       {controls === false ? null : (
         <HostKeepsFullscreen value={!!fullscreen}>
-          <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} />
+          <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} episodeNavigation={episodeNavigation} />
         </HostKeepsFullscreen>
       )}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}

@@ -4,6 +4,9 @@ export type { PlaybackOptions, PlaybackController, PlaybackOutput, MediaIndex, M
 export { createSubtitleRenderer, SUBTITLES_OFF } from './subtitles'
 export type { SubtitleRenderer, SubtitleRendererOptions, SubtitleStream } from './subtitles'
 
+export { toAssSubtitles } from './subtitle-convert'
+export type { ExternalSubtitleFormat } from './subtitle-convert'
+
 export { createThumbnailGenerator } from './thumbnails'
 export type { ThumbnailGenerator, ThumbnailGeneratorOptions, ThumbnailImage } from './thumbnails'
 

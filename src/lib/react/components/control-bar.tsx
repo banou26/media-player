@@ -1,11 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { RefObject } from 'react'
 import type { PlayerMedia } from '../media'
-import type { HostFullscreen } from '../video-player'
+import type { EpisodeNavigation, HostFullscreen } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, RotateCcw } from 'lucide-react'
+import { Maximize, Minimize, Pause, Play, RotateCcw, SkipBack, SkipForward } from 'lucide-react'
 
 import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 import { formatMediaTime } from '../../utils/time'
@@ -89,7 +89,7 @@ const style = css`
         }
       }
 
-      .play, .sound, .time, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
+      .play, .previous, .next, .sound, .time, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
         display: flex;
         align-items: center;
 
@@ -107,7 +107,7 @@ const style = css`
         }
       }
 
-      .play, .sound, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
+      .play, .previous, .next, .sound, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
         border-radius: 4px;
 
         padding: 8px;
@@ -122,7 +122,7 @@ const style = css`
 
         /* .armed is the hover of a control letting its click through, which takes no pointer events
            of its own and so is never :hover */
-        :hover, &.armed {
+        :hover, &:focus-visible, &.armed {
           background-color: ${colors.hover};
         }
 
@@ -164,10 +164,11 @@ const style = css`
 `
 
 export const ControlBar = (
-  { shortcuts = 'window', root, fullscreen: host }: {
+  { shortcuts = 'window', root, fullscreen: host, episodeNavigation }: {
     shortcuts?: 'window' | 'player'
     root: RefObject<HTMLDivElement | null>
     fullscreen?: HostFullscreen
+    episodeNavigation?: EpisodeNavigation
   },
 ) => {
   const player = usePlayer()
@@ -369,6 +370,50 @@ export const ControlBar = (
               <span>{format(ended ? LABELS.replayKey : paused ? LABELS.playKey : LABELS.pauseKey)}</span>
             }
           />
+          {episodeNavigation?.previous
+            ? (() => {
+              const previousLabel = episodeNavigation.previous.title?.trim() || format(LABELS.previousEpisode)
+              return (
+                <TooltipDisplay
+                  id='previous-episode'
+                  tooltipPlace='top-start'
+                  text={
+                    <button
+                      className='previous'
+                      type='button'
+                      onClick={() => episodeNavigation.previous?.request()}
+                      aria-label={previousLabel}
+                    >
+                      <SkipBack />
+                    </button>
+                  }
+                  toolTipText={<span>{previousLabel}</span>}
+                />
+              )
+            })()
+            : null}
+          {episodeNavigation?.next
+            ? (() => {
+              const nextLabel = episodeNavigation.next.title?.trim() || format(LABELS.nextEpisode)
+              return (
+                <TooltipDisplay
+                  id='next-episode'
+                  tooltipPlace='top-start'
+                  text={
+                    <button
+                      className='next'
+                      type='button'
+                      onClick={() => episodeNavigation.next?.request()}
+                      aria-label={nextLabel}
+                    >
+                      <SkipForward />
+                    </button>
+                  }
+                  toolTipText={<span>{nextLabel}</span>}
+                />
+              )
+            })()
+            : null}
           <Sound ref={setVolumeElement}/>
           <div className='time'>
             {formatMediaTime(seekingTo ?? currentTime, duration)}

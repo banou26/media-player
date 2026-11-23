@@ -13,13 +13,13 @@
 import type { Message, ReceiveHandler, Remote, Transport } from 'osra'
 import type { MediaChapter } from '../engine'
 import type { PlayerMedia } from '../react/media'
-import type { Callable, PlayerEvent, PlayerService, PlayerSnapshot, PlayerUpdate, Writable } from './protocol'
+import type { Callable, PlayerEvent, PlayerService, PlayerSnapshot, PlayerUpdate, RemoteExternalSubtitleTrack, Writable } from './protocol'
 
 import { expose } from 'osra'
 
 import { CALLABLE, DEFAULT_PLAYER_ID, EMPTY_SNAPSHOT, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS, snapshotOf, syncEventsFor, toTimeRanges, WRITABLE } from './protocol'
 
-export type { PlayerEvent, PlayerSnapshot, PlayerUpdate } from './protocol'
+export type { PlayerEvent, PlayerSnapshot, PlayerUpdate, RemoteExternalSubtitleTrack } from './protocol'
 export { DEFAULT_PLAYER_ID, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS } from './protocol'
 
 /** How long a peer has to answer its handshake before the mirror stops waiting on it and moves on. */
@@ -100,6 +100,10 @@ export type ServedPlayer = EventTarget & {
   onHostFullscreen: (active: boolean | null) => void
   onEndingOffered: (offered: boolean) => void
   onAutoplayNext: (on: boolean | null) => void
+  onPreviousEpisode?: (step: boolean | string | null | undefined) => void
+  onNextEpisode?: (step: boolean | string | null | undefined) => void
+  onExternalSubtitles?: (tracks: RemoteExternalSubtitleTrack[] | null) => void
+  onProvideExternalSubtitle?: (trackId: string, content: string | null, error?: string) => void
 }
 
 /**
@@ -172,10 +176,21 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   // id, and the next one has to show the switch without the embedder writing it again.
   const autoplayNext = new Map<string, boolean>()
   const tellAutoplayNext = (id: string) => players.get(id)?.onAutoplayNext(autoplayNext.get(id) ?? null)
+  const previousEpisode = new Map<string, boolean | string | null>()
+  const tellPreviousEpisode = (id: string) => players.get(id)?.onPreviousEpisode?.(previousEpisode.has(id) ? previousEpisode.get(id) : undefined)
+  const nextEpisode = new Map<string, boolean | string | null>()
+  const tellNextEpisode = (id: string) => players.get(id)?.onNextEpisode?.(nextEpisode.has(id) ? nextEpisode.get(id) : undefined)
+  const externalSubtitles = new Map<string, RemoteExternalSubtitleTrack[]>()
+  const tellExternalSubtitles = (id: string) => players.get(id)?.onExternalSubtitles?.(externalSubtitles.get(id) ?? null)
   const drop = (id: string, port: MessagePort) => {
     ports.get(id)?.delete(port)
     if (hosts.get(id)?.delete(port)) tellHost(id)
-    if (!ports.get(id)?.size && autoplayNext.delete(id)) tellAutoplayNext(id)
+    if (!ports.get(id)?.size) {
+      if (autoplayNext.delete(id)) tellAutoplayNext(id)
+      if (previousEpisode.delete(id)) tellPreviousEpisode(id)
+      if (nextEpisode.delete(id)) tellNextEpisode(id)
+      if (externalSubtitles.delete(id)) tellExternalSubtitles(id)
+    }
     try { port.onmessage = null; port.close() } catch {}
   }
   const post = (id: string, update: PlayerUpdate, to: Iterable<MessagePort> = listeners(id)) => {
@@ -190,14 +205,14 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     const around = players.get(id)
     return media ? snapshotOf(media, around?.chapters, around?.endingOffered, around?.autoplayNext) : undefined
   }
-  const announce = (id: string, event: PlayerEvent) => {
+  const announce = (id: string, event: PlayerEvent, detail?: { trackId: string }) => {
     // a press of the fullscreen is for the mirrors that took it over: another one toggling too would undo it
     const to = event === 'fullscreenrequest' ? hosts.get(id) : ports.get(id)
     // nobody listening is the ordinary case for a player nobody mirrors, and `timeupdate` alone is
     // four snapshots a second for the life of the document
     if (!to?.size) return
     const snapshot = snapshotAt(id)
-    if (snapshot) post(id, { event, snapshot }, to)
+    if (snapshot) post(id, detail ? { event, snapshot, detail } : { event, snapshot }, to)
   }
 
   const service: PlayerService = {
@@ -249,9 +264,45 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         tellAutoplayNext(id)
         return
       }
+      if (name === 'previousEpisode' || name === 'nextEpisode') {
+        if ((typeof value !== 'boolean' && typeof value !== 'string' && value !== null) || !ports.get(id)?.size) return
+        if (name === 'previousEpisode') {
+          previousEpisode.set(id, value)
+          tellPreviousEpisode(id)
+        } else {
+          nextEpisode.set(id, value)
+          tellNextEpisode(id)
+        }
+        return
+      }
       const media = medias.get(id)
       if (!media || !WRITABLE.includes(name)) return
       try { (media as unknown as Record<Writable, unknown>)[name] = value } catch {}
+    },
+    setExternalSubtitles: (id, tracks) => {
+      if (typeof id !== 'string' || !ports.get(id)?.size || !Array.isArray(tracks)) return
+      const normalized: RemoteExternalSubtitleTrack[] = []
+      for (const item of tracks) {
+        if (!item || typeof item !== 'object') continue
+        const { id: trackId, language, label, format, content } = item as Partial<RemoteExternalSubtitleTrack>
+        if (typeof trackId !== 'string' || typeof language !== 'string' || typeof label !== 'string') continue
+        if (format !== 'srt' && format !== 'vtt' && format !== 'ass') continue
+        normalized.push({
+          id: trackId,
+          language,
+          label,
+          format,
+          ...(typeof content === 'string' ? { content } : {}),
+        })
+      }
+      externalSubtitles.set(id, normalized)
+      tellExternalSubtitles(id)
+    },
+    provideExternalSubtitle: (id, trackId, content, error) => {
+      if (typeof id !== 'string' || typeof trackId !== 'string' || !ports.get(id)?.size) return
+      if (content !== null && typeof content !== 'string') return
+      if (error !== undefined && typeof error !== 'string') return
+      players.get(id)?.onProvideExternalSubtitle?.(trackId, content, error)
     },
     call: async (id, name) => {
       const media = medias.get(id)
@@ -300,23 +351,35 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       const handlers = [
         ...PLAYER_EVENTS.map(event => [media, event] as const),
         ...around ? SERVED_EVENTS.map(event => [around, event] as const) : [],
-      ].map(([target, event]) => [target, event, () => {
+      ].map(([target, event]) => [target, event, (ev: Event) => {
         if (medias.get(player) !== media) return
         // the viewer's flip is what the next player under this id starts in
         if (event === 'autoplaynextchange' && autoplayNext.has(player) && typeof around?.autoplayNext === 'boolean') {
           autoplayNext.set(player, around.autoplayNext)
         }
-        announce(player, event)
+        const rawDetail = event === 'subtitleloadrequest' ? (ev as { detail?: unknown }).detail : undefined
+        const detail = rawDetail && typeof rawDetail === 'object' && typeof (rawDetail as { trackId?: unknown }).trackId === 'string'
+          ? { trackId: (rawDetail as { trackId: string }).trackId }
+          : undefined
+        announce(player, event, detail)
       }] as const)
       for (const [target, event, handler] of handlers) target.addEventListener(event, handler)
       const replaced = medias.has(player)
       const previous = players.get(player)
-      if (previous && previous !== around) previous.onHostFullscreen(null)
+      if (previous && previous !== around) {
+        previous.onHostFullscreen(null)
+        previous.onPreviousEpisode?.(undefined)
+        previous.onNextEpisode?.(undefined)
+        previous.onExternalSubtitles?.(null)
+      }
       medias.set(player, media)
       if (around) players.set(player, around)
       else players.delete(player)
       tellHost(player)
       if (autoplayNext.has(player)) tellAutoplayNext(player)
+      if (previousEpisode.has(player)) tellPreviousEpisode(player)
+      if (nextEpisode.has(player)) tellNextEpisode(player)
+      if (externalSubtitles.has(player)) tellExternalSubtitles(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
       if (replaced) post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
@@ -328,6 +391,9 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         if (around && players.get(player) === around) {
           players.delete(player)
           around.onHostFullscreen(null)
+          around.onPreviousEpisode?.(undefined)
+          around.onNextEpisode?.(undefined)
+          around.onExternalSubtitles?.(null)
         }
         post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
       }
@@ -389,6 +455,25 @@ export type MediaPlayerHandle =
      * this. Nothing but a boolean is sent.
      */
     autoplayNext: boolean | null
+    /**
+     * Previous episode control shown by the far `<MediaPlayer expose>`. `true` shows with default label,
+     * a string shows with that tooltip title, and `false` or `null` hides it. Clicking emits `previousrequest`.
+     */
+    previousEpisode: boolean | string | null
+    /**
+     * Next episode control shown by the far `<MediaPlayer expose>`. `true` shows with default label,
+     * a string shows with that tooltip title, and `false` or `null` hides it. Clicking emits `nextrequest`.
+     */
+    nextEpisode: boolean | string | null
+    /**
+     * External subtitle tracks offered to the far `<MediaPlayer expose>`, persisted per player id while
+     * any mirror listens.
+     */
+    externalSubtitles: RemoteExternalSubtitleTrack[]
+    /** Updates the remote external subtitle tracks on the far player. */
+    setExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[]) => void
+    /** Resolves or rejects a pending `subtitleloadrequest` emitted for `trackId`. */
+    provideExternalSubtitle: (trackId: string, content: string | null, error?: string) => void
     /**
      * Settles once the far side has first answered with its state; reads before that answer the
      * empty defaults. Stays pending for as long as nobody answers, and rejects with an AbortError on
@@ -473,7 +558,13 @@ type Subscriber = {
 
 type Link = {
   attach: (subscriber: Subscriber) => () => void
-  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext', value: number | boolean) => Promise<unknown> | undefined
+  set: (
+    id: string,
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode',
+    value: number | boolean | string | null,
+  ) => Promise<unknown> | undefined
+  setExternalSubtitles: (id: string, tracks: RemoteExternalSubtitleTrack[]) => Promise<unknown> | undefined
+  provideExternalSubtitle: (id: string, trackId: string, content: string | null, error?: string) => Promise<unknown> | undefined
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -555,6 +646,8 @@ const linkTo = (target: HTMLIFrameElement | Window | Transport, options: MediaPl
       }
     },
     set: (id, name, value) => service?.set(id, name, value),
+    setExternalSubtitles: (id, tracks) => service?.setExternalSubtitles?.(id, tracks),
+    provideExternalSubtitle: (id, trackId, content, error) => service?.provideExternalSubtitle?.(id, trackId, content, error),
     call: async (id, name) => {
       if (!service) throw new DOMException('the remote player was closed', 'AbortError')
       await service.call(id, name)
@@ -597,7 +690,15 @@ export const mediaPlayer = (
   const playerId = options.id ?? DEFAULT_PLAYER_ID
   const state: PlayerSnapshot = { ...EMPTY_SNAPSHOT }
   const player = new EventTarget() as PlayerMedia & Record<string, unknown> & { ready: Promise<void>, destroy: () => void }
-  const dispatch = (event: PlayerEvent) => player.dispatchEvent(new Event(event))
+  const dispatch = (event: PlayerEvent, detail?: { trackId: string }) => {
+    if (detail !== undefined) {
+      player.dispatchEvent(typeof CustomEvent === 'function'
+        ? new CustomEvent(event, { detail })
+        : Object.assign(new Event(event), { detail }))
+      return
+    }
+    player.dispatchEvent(new Event(event))
+  }
 
   let settleReady!: () => void
   let failReady!: (reason: unknown) => void
@@ -618,6 +719,9 @@ export const mediaPlayer = (
   // whether the far side has said anything about THIS player yet, which is what `ready` means
   let answered = false
   let fullscreen = false
+  let previousEpisode: boolean | string | null = null
+  let nextEpisode: boolean | string | null = null
+  let externalSubtitles: RemoteExternalSubtitleTrack[] = []
   let pauseCount = 0
   const pauseListeners = new Set<() => void>()
   const notePause = () => {
@@ -629,7 +733,7 @@ export const mediaPlayer = (
     id: playerId,
     fullscreen: options.fullscreen ? () => fullscreen : undefined,
     reset: () => { answered = false; settleAll() },
-    update: ({ event, snapshot }) => {
+    update: ({ event, snapshot, detail }) => {
       const first = !answered
       answered = true
       const chapters = JSON.stringify(state.chapters)
@@ -644,7 +748,7 @@ export const mediaPlayer = (
       if (!events.includes('chapterschange') && JSON.stringify(state.chapters) !== chapters) events.push('chapterschange')
       if (!events.includes('autoplaynextchange') && state.autoplayNext !== autoplayNext) events.push('autoplaynextchange')
       if (!first && event === 'pause') notePause()
-      for (const each of events) dispatch(each)
+      for (const each of events) dispatch(each, each === event ? detail : undefined)
       if (first) settleReady()
     },
   })
@@ -703,6 +807,39 @@ export const mediaPlayer = (
     set: (value: boolean | null) => { if (typeof value === 'boolean') void after(() => link.set(playerId, 'autoplayNext', value)) },
     enumerable: true,
   })
+  Object.defineProperty(player, 'previousEpisode', {
+    get: () => previousEpisode,
+    set: (value: boolean | string | null) => {
+      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
+      previousEpisode = value
+      void after(() => link.set(playerId, 'previousEpisode', value))
+    },
+    enumerable: true,
+  })
+  Object.defineProperty(player, 'nextEpisode', {
+    get: () => nextEpisode,
+    set: (value: boolean | string | null) => {
+      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
+      nextEpisode = value
+      void after(() => link.set(playerId, 'nextEpisode', value))
+    },
+    enumerable: true,
+  })
+  const updateExternalSubtitles = (tracks: RemoteExternalSubtitleTrack[]) => {
+    if (!Array.isArray(tracks)) return
+    const copy = tracks.map((track) => ({ ...track }))
+    externalSubtitles = copy
+    void after(() => link.setExternalSubtitles(playerId, copy))
+  }
+  Object.defineProperty(player, 'externalSubtitles', {
+    get: () => externalSubtitles,
+    set: updateExternalSubtitles,
+    enumerable: true,
+  })
+  player.setExternalSubtitles = updateExternalSubtitles
+  player.provideExternalSubtitle = (trackId: string, content: string | null, error?: string) => {
+    void after(() => link.provideExternalSubtitle(playerId, trackId, content, error))
+  }
 
   const call = (name: Callable) => ready.then(() => {
     if (signal.aborted) throw abortError()

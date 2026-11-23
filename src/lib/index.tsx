@@ -2,6 +2,9 @@
 
 export { MediaPlayer, default } from './react/video-player'
 export type {
+  EpisodeNavigation,
+  EpisodeStep,
+  ExternalSubtitleTrack,
   HostFullscreen,
   MediaPlayerOptions,
   MediaPlayerLocalOptions,
@@ -40,6 +43,7 @@ export type { RemuxerInput } from './utils/source'
 // The engine is also published on its own subpath for consumers that want the pipeline with no React.
 export type {
   AudioStream,
+  ExternalSubtitleFormat,
   MediaChapter,
   MediaIndex,
   PictureInPictureController,
@@ -55,4 +59,7 @@ export {
   createSubtitleRenderer,
   createPictureInPicture,
   SUBTITLES_OFF,
+  toAssSubtitles,
 } from './engine'
+
+export type { RemoteExternalSubtitleTrack } from './remote'

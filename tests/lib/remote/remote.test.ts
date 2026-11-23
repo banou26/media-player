@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { expose } from 'osra'
 
 import { exposePlayer, mediaPlayer, PLAYER_CHANNEL } from '../../../src/lib/remote/index'
-import type { ServedPlayer } from '../../../src/lib/remote/index'
+import type { RemoteExternalSubtitleTrack, ServedPlayer } from '../../../src/lib/remote/index'
 import type { PlayerService, PlayerUpdate } from '../../../src/lib/remote/protocol'
 import { EMPTY_SNAPSHOT, snapshotOf } from '../../../src/lib/remote/protocol'
 import type { MediaChapter } from '../../../src/lib/engine'
@@ -888,6 +888,10 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
   const told: (boolean | null)[] = []
   const asked: boolean[] = []
   const autoplay: (boolean | null)[] = []
+  const previous: (boolean | string | null | undefined)[] = []
+  const next: (boolean | string | null | undefined)[] = []
+  const externalSubtitles: (RemoteExternalSubtitleTrack[] | null)[] = []
+  const provided: [string, string | null, string | undefined][] = []
   const served = Object.assign(new EventTarget(), {
     chapters,
     endingOffered: true,
@@ -895,12 +899,20 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
     onHostFullscreen: (active: boolean | null) => { told.push(active) },
     onEndingOffered: (offered: boolean) => { asked.push(offered) },
     onAutoplayNext: (on: boolean | null) => { autoplay.push(on) },
+    onPreviousEpisode: (step: boolean | string | null | undefined) => { previous.push(step) },
+    onNextEpisode: (step: boolean | string | null | undefined) => { next.push(step) },
+    onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => { externalSubtitles.push(tracks) },
+    onProvideExternalSubtitle: (trackId: string, content: string | null, error?: string) => { provided.push([trackId, content, error]) },
   })
   return {
     served: served as ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null },
     told,
     asked,
     autoplay,
+    previous,
+    next,
+    externalSubtitles,
+    provided,
   }
 }
 
@@ -1384,5 +1396,145 @@ describe('the autoplay switch a mirror sets', () => {
     expect(autoplay).toEqual([])
     await service.set('default', 'autoplayNext', false)
     expect(autoplay).toEqual([false])
+  })
+})
+
+
+describe('episode navigation a mirror sets', () => {
+  it('reaches the player, persists across replacements, emits request events, and clears when the last mirror closes', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+
+    expect(player.previousEpisode).toBe(null)
+    expect(player.nextEpisode).toBe(null)
+
+    const requests: string[] = []
+    player.addEventListener('previousrequest', () => requests.push('previous'))
+    player.addEventListener('nextrequest', () => requests.push('next'))
+
+    player.previousEpisode = 'Episode 1'
+    player.nextEpisode = true
+    await settled()
+    expect(first.previous).toEqual(['Episode 1'])
+    expect(first.next).toEqual([true])
+    expect(player.previousEpisode).toBe('Episode 1')
+    expect(player.nextEpisode).toBe(true)
+
+    first.served.dispatchEvent(new Event('previousrequest'))
+    first.served.dispatchEvent(new Event('nextrequest'))
+    await settled()
+    expect(requests).toEqual(['previous', 'next'])
+
+    stopFirst()
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.previous).toEqual(['Episode 1'])
+    expect(second.next).toEqual([true])
+
+    player.previousEpisode = false
+    player.nextEpisode = null
+    await settled()
+    expect(second.previous.at(-1)).toBe(false)
+    expect(second.next.at(-1)).toBe(null)
+
+    player.destroy()
+    await settled()
+    expect(second.previous.at(-1)).toBe(undefined)
+    expect(second.next.at(-1)).toBe(undefined)
+  })
+
+  it('queues writes made before ready and validates service inputs', async () => {
+    const { served, previous, next } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    player.previousEpisode = true
+    player.nextEpisode = 'Ep 2'
+    await settled()
+    expect(previous).toEqual([])
+
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    await player.ready
+    await settled()
+    expect(previous).toEqual([true])
+    expect(next).toEqual(['Ep 2'])
+
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    await service.set('default', 'previousEpisode', 123)
+    await service.set('elsewhere', 'nextEpisode', 'No mirror')
+    expect(previous).toEqual([true])
+    expect(next).toEqual(['Ep 2'])
+  })
+})
+
+describe('external subtitles a mirror sets', () => {
+  it('persists tracks per id, carries subtitleloadrequest details, forwards content or errors, and clears on close', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+
+    const tracks: RemoteExternalSubtitleTrack[] = [
+      { id: 'ext-en', language: 'en', label: 'English (SRT)', format: 'srt' },
+      { id: 'ext-ja', language: 'ja', label: 'Japanese (ASS)', format: 'ass', content: '[Events]\n' },
+    ]
+    player.setExternalSubtitles(tracks)
+    await settled()
+    expect(first.externalSubtitles).toEqual([tracks])
+    expect(player.externalSubtitles).toEqual(tracks)
+
+    const requestedIds: string[] = []
+    player.addEventListener('subtitleloadrequest', (ev) => {
+      requestedIds.push((ev as CustomEvent<{ trackId: string }>).detail.trackId)
+    })
+
+    first.served.dispatchEvent(new CustomEvent('subtitleloadrequest', { detail: { trackId: 'ext-en' } }))
+    await settled()
+    expect(requestedIds).toEqual(['ext-en'])
+
+    player.provideExternalSubtitle('ext-en', '1\n00:00:00,000 --> 00:00:02,000\nHello\n')
+    player.provideExternalSubtitle('ext-missing', null, 'Not found')
+    await settled()
+    expect(first.provided).toEqual([
+      ['ext-en', '1\n00:00:00,000 --> 00:00:02,000\nHello\n', undefined],
+      ['ext-missing', null, 'Not found'],
+    ])
+
+    stopFirst()
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.externalSubtitles).toEqual([tracks])
+
+    player.destroy()
+    await settled()
+    expect(second.externalSubtitles.at(-1)).toBe(null)
+  })
+
+  it('validates track objects and ignores writes for unsubscribed players', async () => {
+    const { served, externalSubtitles, provided } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+
+    await service.setExternalSubtitles('default', [{ id: 'a', language: 'en', label: 'A', format: 'srt' }])
+    await service.provideExternalSubtitle('default', 'a', 'text')
+    expect(externalSubtitles).toEqual([])
+    expect(provided).toEqual([])
+
+    const { port1: mine, port2: theirs } = new MessageChannel()
+    await service.subscribe('default', theirs)
+    open.push(() => mine.close())
+
+    await service.setExternalSubtitles('default', [
+      { id: 'bad', language: 'en', label: 'Bad', format: 'txt' as never },
+      { id: 'good', language: 'en', label: 'Good', format: 'vtt' },
+    ])
+    expect(externalSubtitles).toEqual([[{ id: 'good', language: 'en', label: 'Good', format: 'vtt' }]])
   })
 })

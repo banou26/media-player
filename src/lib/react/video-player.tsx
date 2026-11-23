@@ -1,9 +1,9 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
-import type { MediaChapter } from '../engine'
+import type { ExternalSubtitleFormat, MediaChapter } from '../engine'
 import type { DownloadedRange, VolumeNormalizerControl } from './source-feature'
 import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
-import type { ExposePlayerOptions, ServedPlayer } from '../remote'
+import type { ExposePlayerOptions, RemoteExternalSubtitleTrack, ServedPlayer } from '../remote'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
@@ -47,6 +47,30 @@ export type HostFullscreen = {
   request: () => void
 }
 
+/** One step in episode navigation (previous or next episode) shown next to the play control. */
+export type EpisodeStep = {
+  /** Custom tooltip and accessible label for this button; falls back to the localized default label. */
+  title?: string
+  /** Invoked when the viewer clicks this button. */
+  request: () => void
+}
+
+/** Previous and next episode actions shown next to the play button when present. */
+export type EpisodeNavigation = {
+  previous?: EpisodeStep | null
+  next?: EpisodeStep | null
+}
+
+/** An external subtitle track loaded outside the media container and rendered via `SubtitleRenderer`. */
+export type ExternalSubtitleTrack = {
+  id: string
+  language: string
+  label: string
+  format: ExternalSubtitleFormat
+  content?: string
+  load?: () => Promise<string>
+}
+
 /** Shared by both arms: nothing here depends on who owns the media. */
 type CommonOptions = {
   /**
@@ -79,6 +103,9 @@ type CommonOptions = {
   autoplayNext?: boolean
   /** The viewer flipped the switch, to `autoplayNext`: what a host saves to pass back as `autoplayNext`. */
   onAutoplayNextChange?: (autoplayNext: boolean) => void
+
+  /** Previous and next episode navigation controls shown next to play. An embedder setting them via `expose` wins. */
+  episodeNavigation?: EpisodeNavigation
 
   /**
    * Named spans of the timeline, drawn as segments on the seekbar.
@@ -294,6 +321,11 @@ export type MediaPlayerLocalOptions =
      * viewer's own language is both. True, the default, starts them as `preferredSubtitleLanguage` says.
      */
     alwaysShowSubtitles?: boolean
+    /**
+     * Sidecar subtitle tracks rendered through `SubtitleRenderer` alongside any muxed streams.
+     * An embedder setting tracks via `expose` wins while connected.
+     */
+    externalSubtitles?: ExternalSubtitleTrack[]
   }
 
 /**
@@ -400,6 +432,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const [endingOffered, setEndingOffered] = useState(true)
   const [embedderAutoplayNext, setEmbedderAutoplayNext] = useState<boolean | null>(null)
   const [autoplayNext, setAutoplayNext] = useState(options.autoplayNext)
+  const [embedderPrevious, setEmbedderPrevious] = useState<boolean | string | null | undefined>(undefined)
+  const [embedderNext, setEmbedderNext] = useState<boolean | string | null | undefined>(undefined)
+  const [embedderSubtitles, setEmbedderSubtitles] = useState<RemoteExternalSubtitleTrack[] | null>(null)
+  const [embedderSubtitlesRevision, setEmbedderSubtitlesRevision] = useState(0)
+  const pendingSubtitleLoads = useRef(new Map<string, { resolve: (content: string) => void, reject: (error: Error) => void }>())
   const [served] = useState<ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null }>(
     () => Object.assign(new EventTarget(), {
       chapters: [],
@@ -412,8 +449,39 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
         setEmbedderAutoplayNext(on)
         if (on !== null) setAutoplayNext(on)
       },
+      onPreviousEpisode: (step: boolean | string | null | undefined) => setEmbedderPrevious(step),
+      onNextEpisode: (step: boolean | string | null | undefined) => setEmbedderNext(step),
+      onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => {
+        if (tracks === null) {
+          for (const { reject } of pendingSubtitleLoads.current.values()) {
+            reject(new Error('External subtitle host disconnected'))
+          }
+          pendingSubtitleLoads.current.clear()
+        } else {
+          const ids = new Set(tracks.map((track) => track.id))
+          for (const [trackId, entry] of [...pendingSubtitleLoads.current.entries()]) {
+            if (!ids.has(trackId)) {
+              pendingSubtitleLoads.current.delete(trackId)
+              entry.reject(new Error('External subtitle track was removed'))
+            }
+          }
+        }
+        setEmbedderSubtitles(tracks)
+        setEmbedderSubtitlesRevision((rev) => rev + 1)
+      },
+      onProvideExternalSubtitle: (trackId: string, content: string | null, error?: string) => {
+        const pending = pendingSubtitleLoads.current.get(trackId)
+        if (!pending) return
+        pendingSubtitleLoads.current.delete(trackId)
+        if (content !== null && !error) pending.resolve(content)
+        else pending.reject(new Error(error ?? 'External subtitle track failed to load'))
+      },
     }),
   )
+  useEffect(() => () => {
+    for (const { reject } of pendingSubtitleLoads.current.values()) reject(new Error('Player unmounted'))
+    pendingSubtitleLoads.current.clear()
+  }, [])
   const exposeOptions = expose === true ? {} : expose || undefined
   const latestExpose = useRef(exposeOptions)
   latestExpose.current = exposeOptions
@@ -457,12 +525,56 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     request: () => served.dispatchEvent(new Event('fullscreenrequest')),
   })
 
+  const episodeNavigation = useMemo<EpisodeNavigation | undefined>(() => {
+    const resolveStep = (
+      override: boolean | string | null | undefined,
+      prop: EpisodeStep | null | undefined,
+      event: 'previousrequest' | 'nextrequest',
+    ): EpisodeStep | null | undefined => {
+      if (override === undefined) return prop
+      if (override === false || override === null) return null
+      return {
+        ...typeof override === 'string' && override ? { title: override } : {},
+        request: () => served.dispatchEvent(new Event(event)),
+      }
+    }
+    const previous = resolveStep(embedderPrevious, options.episodeNavigation?.previous, 'previousrequest')
+    const next = resolveStep(embedderNext, options.episodeNavigation?.next, 'nextrequest')
+    return previous !== undefined || next !== undefined ? { previous, next } : undefined
+  }, [embedderPrevious, embedderNext, options.episodeNavigation, served])
+
+  const remoteExternalSubtitles = useMemo<ExternalSubtitleTrack[] | undefined>(() => {
+    if (!embedderSubtitles) return undefined
+    return embedderSubtitles.map((track) => ({
+      id: track.id,
+      language: track.language,
+      label: track.label,
+      format: track.format,
+      ...track.content !== undefined ? { content: track.content } : {},
+      load: track.content !== undefined
+        ? undefined
+        : () => new Promise<string>((resolve, reject) => {
+          const previous = pendingSubtitleLoads.current.get(track.id)
+          if (previous) previous.reject(new Error('Replaced by a newer subtitle load request'))
+          pendingSubtitleLoads.current.set(track.id, { resolve, reject })
+          served.dispatchEvent(new CustomEvent('subtitleloadrequest', { detail: { trackId: track.id } }))
+        }),
+    }))
+  }, [embedderSubtitles, served])
+
+  const playbackOptions = useMemo(() => {
+    if (!local) return null
+    return remoteExternalSubtitles !== undefined
+      ? { ...local, externalSubtitles: remoteExternalSubtitles }
+      : local
+  }, [local, remoteExternalSubtitles])
+
   // one per file, as `size` is the source's identity everywhere here
   const tap = useMemo(() => createPlaybackTap(), [size])
 
   // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
   // so there is nothing for them to attach to and nothing to guard at the call site.
-  usePlayback(video, subtitleLayer, local, readsDownload ? tap.push : undefined)
+  usePlayback(video, subtitleLayer, playbackOptions, readsDownload ? tap.push : undefined, embedderSubtitlesRevision)
 
   const normalizeVolumeProp = local?.normalizeVolume ?? true
   const [normalizeVolume, setNormalizeVolume] = useState(normalizeVolumeProp)
@@ -652,6 +764,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       shortcuts={options.shortcuts}
       fullscreen={fullscreen}
       endingOffered={endingOffered}
+      episodeNavigation={episodeNavigation}
     >
       {children}
     </Chrome>

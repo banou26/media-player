@@ -192,6 +192,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const streams: SubtitleStream[] = []
   const dialogues = new Map<number, Map<string, SubtitleDialoguePart>>()
   let selected: number | undefined
+  let externalAss: string | null = null
   let onStreams = options.onStreams
   /**
    * Terminal, unlike a null `jassub`.
@@ -299,14 +300,14 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const REPAINT_ON = ['loadedmetadata', 'seeked', 'pause'] as const
   const onRepaintEvent = () => repaint()
 
-  const bootJassub = (header: SubtitleHeaderPart) => {
+  const bootJassub = (subContent: string) => {
     const canvas = document.createElement('canvas')
     canvas.dataset.pending = ''
     container.append(canvas)
     try {
       jassub = new JASSUB({
         canvas,
-        subContent: header.content,
+        subContent,
         workerUrl,
         modernWasmUrl: wasmUrl,
         modernWasmWorkerUrl: wasmWorkerUrl,
@@ -357,14 +358,24 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     repaint()
   }
 
-  const loadCjkFontFor = (events: ASSEvent[]) => {
-    if (!cjkFontUrl || cjkFontRequested || !events.some((event) => CJK_TEXT.test(event.Text))) return
+  const requestCjkFont = () => {
+    if (!cjkFontUrl || cjkFontRequested) return
     cjkFontRequested = true
     onRenderer(async (renderer) => {
       await defaultFontLoaded
       await renderer.addFonts([cjkFontUrl])
       repaint()
     })
+  }
+
+  const loadCjkFontFor = (events: ASSEvent[]) => {
+    if (!cjkFontUrl || cjkFontRequested || !events.some((event) => CJK_TEXT.test(event.Text))) return
+    requestCjkFont()
+  }
+
+  const loadCjkFontForText = (text: string) => {
+    if (!cjkFontUrl || cjkFontRequested || !CJK_TEXT.test(text)) return
+    requestCjkFont()
   }
 
   const pushAttachments = (incoming: Attachment[]) => {
@@ -381,8 +392,8 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         headers.set(fragment.streamIndex, header)
         streams.push({ streamIndex: fragment.streamIndex, title: fragment.title, language: fragment.language })
         onStreams?.([...streams])
-        if (selected === undefined) selected = fragment.streamIndex
-        if (!jassub && !destroyed) bootJassub(header)
+        if (selected === undefined && externalAss === null) selected = fragment.streamIndex
+        if (!jassub && !destroyed) bootJassub(header.content)
       } else {
         const header = headers.get(fragment.streamIndex)
         if (!header) continue
@@ -408,8 +419,11 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
 
   const selectStream = (streamIndex: number | undefined) => {
     const next = streamIndex ?? SUBTITLES_OFF
-    if (next === selected || !jassub) return
+    const wasExternal = externalAss !== null
+    if (!wasExternal && next === selected) return
+    externalAss = null
     selected = next
+    if (!jassub) return
     const header = headers.get(next)
     const events = [...dialogues.get(next)?.values() ?? []].map((part) => part.assEvent)
     onRenderer((renderer) => {
@@ -423,10 +437,35 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     repaint()
   }
 
+  const setExternalTrack = (assContent: string) => {
+    if (destroyed || externalAss === assContent) return
+    externalAss = assContent
+    selected = SUBTITLES_OFF
+    if (!jassub) {
+      bootJassub(assContent)
+      loadCjkFontForText(assContent)
+      return
+    }
+    onRenderer((renderer) => Promise.all([renderer.freeTrack(), renderer.setTrack(assContent)]))
+    loadCjkFontForText(assContent)
+    repaint()
+  }
+
+  const clearExternalTrack = () => {
+    if (externalAss === null) return
+    externalAss = null
+    selected = SUBTITLES_OFF
+    if (!jassub) return
+    onRenderer((renderer) => renderer.removeAllEvents())
+    repaint()
+  }
+
   return {
     pushAttachments,
     pushFragments,
     selectStream,
+    setExternalTrack,
+    clearExternalTrack,
     getStreams: () => [...streams],
     getSelectedStream: () => selected,
     setOnStreams: (cb: (streams: SubtitleStream[]) => void) => { onStreams = cb },

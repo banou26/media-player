@@ -34,6 +34,8 @@ export const LABELS = {
   speed: '{rate}x',
   normalizeVolume: 'Normalize volume',
   autoplayNext: 'Autoplay next episode',
+  previousEpisode: 'Previous episode',
+  nextEpisode: 'Next episode',
   unavailable: 'Unavailable',
   switchFailed: 'Could not switch. Try again.',
   track: 'Track {number}',

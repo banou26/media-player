@@ -1,8 +1,17 @@
 // What crosses between a player and whoever embeds it. Pure and osra-free so the snapshot and the
 // mirror's arithmetic can be tested on values; ./index.ts is the half that talks.
 
-import type { MediaChapter } from '../engine'
+import type { ExternalSubtitleFormat, MediaChapter } from '../engine'
 import type { PlayerMedia, TimeRangesLike } from '../react/media'
+
+/** External subtitle track description passed from an embedder to a framed player. */
+export type RemoteExternalSubtitleTrack = {
+  id: string
+  language: string
+  label: string
+  format: ExternalSubtitleFormat
+  content?: string
+}
 
 /**
  * Everything readable about a player, as one plain object.
@@ -50,9 +59,17 @@ export const PLAYER_EVENTS = [
 ] as const
 /**
  * The events a `<MediaPlayer expose>` raises beside its media's: its chapters changed, its viewer pressed
- * fullscreen while a mirror made with `fullscreen: true` has it, and its autoplay switch changed.
+ * fullscreen while a mirror made with `fullscreen: true` has it, its autoplay switch changed, the viewer
+ * clicked previous or next episode, or the player needs external subtitle content for a track id.
  */
-export const SERVED_EVENTS = ['chapterschange', 'fullscreenrequest', 'autoplaynextchange'] as const
+export const SERVED_EVENTS = [
+  'chapterschange',
+  'fullscreenrequest',
+  'autoplaynextchange',
+  'previousrequest',
+  'nextrequest',
+  'subtitleloadrequest',
+] as const
 export type PlayerEvent = typeof PLAYER_EVENTS[number] | typeof SERVED_EVENTS[number]
 
 /** The properties an embedder may set. Everything else is read-only on a media, here as there. */
@@ -76,8 +93,8 @@ export const PLAYER_CHANNEL = 'banou-media-player'
  */
 export const DEFAULT_PLAYER_ID = 'default'
 
-/** What rides the event port: the event's name and the state right after it. */
-export type PlayerUpdate = { event: PlayerEvent, snapshot: PlayerSnapshot }
+/** What rides the event port: the event's name, the state right after it, and any event payload. */
+export type PlayerUpdate = { event: PlayerEvent, snapshot: PlayerSnapshot, detail?: { trackId: string } }
 
 /**
  * What the player's document serves, one document at a time, addressed by player id. Internal: an
@@ -98,10 +115,18 @@ export type PlayerService = {
   subscribe: (id: string, port: MessagePort, options?: { fullscreen?: boolean }) => void
   /**
    * `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise.
-   * `autoplayNext` is kept for the id while a mirror listens to it, and told to each player served under it.
+   * `autoplayNext`, `previousEpisode` and `nextEpisode` are kept for the id while a mirror listens to it, and told to each player served under it.
    */
-  set: (id: string, name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext', value: number | boolean) => void
+  set: (
+    id: string,
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode',
+    value: number | boolean | string | null,
+  ) => void
   call: (id: string, name: Callable) => Promise<void>
+  /** Sets the remote external subtitle tracks shown by the player served under `id`. */
+  setExternalSubtitles: (id: string, tracks: RemoteExternalSubtitleTrack[]) => void
+  /** Delivers loaded subtitle content (or an error when `content` is null) for a pending `subtitleloadrequest`. */
+  provideExternalSubtitle: (id: string, trackId: string, content: string | null, error?: string) => void
 }
 
 /**

@@ -1,10 +1,11 @@
 import type { AudioStream, PlaybackController, PlaybackOutput, SubtitleStream } from '../../engine'
+import type { Labels } from '../labels'
 import type { PlaybackErrorEntry } from '../source-feature'
-import type { MediaPlayerLocalOptions } from '../video-player'
+import type { ExternalSubtitleTrack, MediaPlayerLocalOptions } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { isMediaElementError, startPlayback } from '../../engine'
+import { isMediaElementError, startPlayback, toAssSubtitles } from '../../engine'
 import { usePlayer } from '../player'
 import { useLabels } from '../labels'
 import { toNamedTracks } from '../../utils/track-label'
@@ -71,12 +72,21 @@ const causeChain = (error: unknown) => {
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
  * discovers. Nothing is mirrored in React state, so the store is the only place any of it lives.
  */
+// Prefixed in the store so string external track ids never collide with numeric muxed stream indices.
+const EXT_SUBTITLE_PREFIX = 'ext:'
+
+const isExternalTrackId = (id: string | number | undefined): id is string =>
+  typeof id === 'string' && id.startsWith(EXT_SUBTITLE_PREFIX)
+
+const rawExternalTrackId = (storeId: string) => storeId.slice(EXT_SUBTITLE_PREFIX.length)
+
 export const usePlayback = (
   video: HTMLVideoElement | null,
   subtitles: HTMLElement | null,
   /** null when the media is remote: there are no bytes, so there is no pipeline to run. */
   options: MediaPlayerLocalOptions | null,
   onOutput?: (output: PlaybackOutput) => void,
+  externalSubtitlesRevision?: number,
 ) => {
   const player = usePlayer()
   // The five asset urls are required on the local arm, so a default only ever applies when options is
@@ -84,8 +94,13 @@ export const usePlayback = (
   const {
     read, size, publicPath = '', libavWorkerUrl = '', jassubWorkerUrl = '', jassubWasmUrl = '', jassubWasmWorkerUrl = '',
     jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl, defaultFontUrl, cjkFontUrl, bufferSize, autoplay = false, chapters,
-    seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS,
+    seekPrepareBudgetMs = SEEK_PREPARE_BUDGET_MS, externalSubtitles,
   } = options ?? ({} as Partial<MediaPlayerLocalOptions>)
+  const externalSubtitlesRef = useRef<readonly ExternalSubtitleTrack[]>(externalSubtitles ?? [])
+  externalSubtitlesRef.current = externalSubtitles ?? []
+  const externalKey = JSON.stringify(
+    externalSubtitles?.map((track) => [track.id, track.language, track.label, track.format, track.content ?? null]) ?? [],
+  )
 
   /*
    * Through a ref because a caller's array is a new identity every render.
@@ -121,9 +136,27 @@ export const usePlayback = (
   // The streak belongs to one media, not to the player, and a pending rebuild of the old one must
   // not land on the new one. Nor may a seek still on its way to the old one stay on the clock: cleared
   // here and not on `emptied`, which a rebuild of the same media fires too.
+  const loadedExternalRef = useRef(new Map<string, { raw: string, ass: string }>())
+  const activeExternalRef = useRef<{ id: string, ass: string } | null>(null)
+  const subtitleSelectionGen = useRef(0)
+
   useEffect(() => {
     restarts.current = { count: 0, at: 0 }
-    player.setSourceState({ playbackErrors: [], seekingTo: undefined })
+    streams.current = { audio: [], subtitles: [] }
+    activeExternalRef.current = null
+    loadedExternalRef.current.clear()
+    subtitleSelectionGen.current++
+    if (size !== undefined) {
+      player.setSourceState({
+        playbackErrors: [],
+        seekingTo: undefined,
+        selectedSubtitleTrack: undefined,
+        subtitleTracks: externalSubtitlesRef.current.map((track) => ({
+          id: `${EXT_SUBTITLE_PREFIX}${track.id}`,
+          label: track.label.trim() || track.language || track.id,
+        })),
+      })
+    }
     return () => { if (restartTimer.current) clearTimeout(restartTimer.current) }
     // `player` is stable; listing it would not re-run this, and the reset belongs to the media
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -197,19 +230,92 @@ export const usePlayback = (
   const labels = useLabels()
   const labelsRef = useRef(labels)
   labelsRef.current = labels
+  const buildSubtitleTracks = useCallback((currentLabels: Labels) => [
+    ...toNamedTracks(streams.current.subtitles, currentLabels),
+    ...externalSubtitlesRef.current.map((track) => ({
+      id: `${EXT_SUBTITLE_PREFIX}${track.id}`,
+      label: track.label.trim() || track.language || track.id,
+    })),
+  ], [])
+
+  const loadExternalAss = useCallback(async (track: ExternalSubtitleTrack, mediaSize: number): Promise<string> => {
+    const cacheKey = `${mediaSize}:${track.id}`
+    const cached = loadedExternalRef.current.get(cacheKey)
+    if (track.content !== undefined) {
+      if (cached && cached.raw === track.content) return cached.ass
+      const ass = toAssSubtitles(track.content, track.format, track.label)
+      loadedExternalRef.current.set(cacheKey, { raw: track.content, ass })
+      return ass
+    }
+    if (cached) return cached.ass
+    if (!track.load) throw new Error('External subtitle track has no content or loader')
+    const raw = await track.load()
+    const ass = toAssSubtitles(raw, track.format, track.label)
+    if (sizeRef.current === mediaSize) loadedExternalRef.current.set(cacheKey, { raw, ass })
+    return ass
+  }, [])
+
   // named again when the labels change, as they do when a catalogue arrives after the streams
   useEffect(() => {
     const { audio, subtitles } = streams.current
-    if (subtitles.length) player.setSourceState({ subtitleTracks: toNamedTracks(subtitles, labels) })
+    if (subtitles.length || (sizeRef.current !== undefined && externalSubtitlesRef.current.length)) {
+      player.setSourceState({ subtitleTracks: buildSubtitleTracks(labels) })
+    }
     if (audio.length) player.setSourceState({ audioTracks: toNamedTracks(audio, labels) })
-  }, [player, labels])
+  }, [player, labels, buildSubtitleTracks])
 
-  // The store's ids are opaque, but everything this hook writes into it came from libav, so every id
-  // that comes back is one of its own stream indices.
-  const selectSubtitleTrack = useCallback((id: string | number | undefined) => {
-    const streamIndex = typeof id === 'number' ? id : undefined
+  const selectSubtitleTrack = useCallback((id: string | number | undefined): void | Promise<void> => {
+    const mediaSize = sizeRef.current
+    const gen = ++subtitleSelectionGen.current
     const wasOff = player.selectedSubtitleTrack === undefined
-    subtitleChoiceFor.current = sizeRef.current
+    subtitleChoiceFor.current = mediaSize
+
+    if (id === undefined) {
+      activeExternalRef.current = null
+      player.setSourceState({ selectedSubtitleTrack: undefined })
+      controllerRef.current?.clearExternalSubtitleTrack()
+      controllerRef.current?.selectSubtitleStream(undefined)
+      onSubtitleLanguageRef.current?.(null)
+      return
+    }
+
+    if (isExternalTrackId(id)) {
+      const rawId = rawExternalTrackId(id)
+      const track = externalSubtitlesRef.current.find((entry) => entry.id === rawId)
+      if (!track || mediaSize === undefined) return Promise.reject(new Error('External subtitle track not found'))
+
+      const activate = (ass: string) => {
+        activeExternalRef.current = { id, ass }
+        player.setSourceState({ selectedSubtitleTrack: id })
+        controllerRef.current?.setExternalSubtitleTrack(ass)
+        const language = languageOf({ language: track.language, title: track.label })
+          ?? (wasOff ? track.label.trim() || 'und' : undefined)
+        if (language !== undefined) onSubtitleLanguageRef.current?.(language)
+        if (language && playsIn(playingAudio(), language)) onAlwaysSubtitlesRef.current?.(true)
+      }
+
+      const cacheKey = `${mediaSize}:${track.id}`
+      const cached = loadedExternalRef.current.get(cacheKey)
+      if (track.content !== undefined) {
+        const ass = cached && cached.raw === track.content
+          ? cached.ass
+          : toAssSubtitles(track.content, track.format, track.label)
+        loadedExternalRef.current.set(cacheKey, { raw: track.content, ass })
+        activate(ass)
+        return
+      }
+      if (cached) {
+        activate(cached.ass)
+        return
+      }
+      return loadExternalAss(track, mediaSize).then((ass) => {
+        if (subtitleSelectionGen.current !== gen || sizeRef.current !== mediaSize) return
+        activate(ass)
+      })
+    }
+
+    const streamIndex = typeof id === 'number' ? id : undefined
+    activeExternalRef.current = null
     player.setSourceState({ selectedSubtitleTrack: streamIndex })
     controllerRef.current?.selectSubtitleStream(streamIndex)
     const stream = streams.current.subtitles.find((subtitle) => subtitle.streamIndex === streamIndex)
@@ -218,7 +324,60 @@ export const usePlayback = (
       : languageOf(stream) ?? (wasOff ? stream?.title?.trim() || 'und' : undefined)
     if (language !== undefined) onSubtitleLanguageRef.current?.(language)
     if (language && playsIn(playingAudio(), language)) onAlwaysSubtitlesRef.current?.(true)
-  }, [player, playingAudio])
+  }, [player, playingAudio, loadExternalAss])
+
+  const autoSelectExternalIfNeeded = useCallback(() => {
+    const mediaSize = sizeRef.current
+    if (!controllerRef.current || mediaSize === undefined) return
+    if (subtitleChoiceFor.current === mediaSize) return
+    const pref = preferencesRef.current.subtitles
+    if (pref == null) return
+    const playing = playingAudio()
+    const audioList = playing ? [playing] : []
+    const muxedStart = startingTracks(audioList, streams.current.subtitles, preferencesRef.current).subtitles
+    // Muxed tracks matched the viewer's preference, or subtitles should stay off because audio is in it.
+    if (muxedStart === null || muxedStart >= 0) return
+
+    const ext = externalSubtitlesRef.current
+    if (!ext.length) return
+    const extStart = startingTracks(
+      audioList,
+      ext.map((track) => ({ language: track.language, title: track.label })),
+      preferencesRef.current,
+    ).subtitles
+    if (extStart === null || extStart < 0) return
+    const match = ext[extStart]
+    if (!match) return
+    const storeId = `${EXT_SUBTITLE_PREFIX}${match.id}`
+    if (player.selectedSubtitleTrack === storeId) return
+
+    const gen = ++subtitleSelectionGen.current
+    const apply = (ass: string) => {
+      activeExternalRef.current = { id: storeId, ass }
+      player.setSourceState({ selectedSubtitleTrack: storeId })
+      controllerRef.current?.setExternalSubtitleTrack(ass)
+    }
+
+    const cacheKey = `${mediaSize}:${match.id}`
+    const cached = loadedExternalRef.current.get(cacheKey)
+    if (match.content !== undefined) {
+      const ass = cached && cached.raw === match.content
+        ? cached.ass
+        : toAssSubtitles(match.content, match.format, match.label)
+      loadedExternalRef.current.set(cacheKey, { raw: match.content, ass })
+      apply(ass)
+      return
+    }
+    if (cached) {
+      apply(cached.ass)
+      return
+    }
+    void loadExternalAss(match, mediaSize).then((ass) => {
+      if (subtitleSelectionGen.current !== gen || sizeRef.current !== mediaSize) return
+      if (subtitleChoiceFor.current === mediaSize) return
+      apply(ass)
+    }, () => {})
+  }, [player, playingAudio, loadExternalAss])
 
   /*
    * Counts the seeks asked for, so a seek that a newer one replaced never moves the playhead, nor clears `seekingTo`.
@@ -347,6 +506,33 @@ export const usePlayback = (
   useEffect(() => {
     setSourceState({ selectSubtitleTrack, selectAudioTrack, requestSeek })
   }, [setSourceState, selectSubtitleTrack, selectAudioTrack, requestSeek])
+
+  const prevRevisionRef = useRef(externalSubtitlesRevision)
+  useEffect(() => {
+    if (prevRevisionRef.current !== externalSubtitlesRevision) {
+      prevRevisionRef.current = externalSubtitlesRevision
+      loadedExternalRef.current.clear()
+    }
+    if (size === undefined) return
+    const active = activeExternalRef.current
+    if (active) {
+      const currentTrack = externalSubtitlesRef.current.find((track) => `${EXT_SUBTITLE_PREFIX}${track.id}` === active.id)
+      if (!currentTrack) {
+        activeExternalRef.current = null
+        controllerRef.current?.clearExternalSubtitleTrack()
+        player.setSourceState({ selectedSubtitleTrack: undefined })
+      } else if (currentTrack.content !== undefined) {
+        const ass = toAssSubtitles(currentTrack.content, currentTrack.format, currentTrack.label)
+        loadedExternalRef.current.set(`${size}:${currentTrack.id}`, { raw: currentTrack.content, ass })
+        if (ass !== active.ass) {
+          activeExternalRef.current = { id: active.id, ass }
+          controllerRef.current?.setExternalSubtitleTrack(ass)
+        }
+      }
+    }
+    player.setSourceState({ subtitleTracks: buildSubtitleTracks(labelsRef.current) })
+    autoSelectExternalIfNeeded()
+  }, [player, setSourceState, size, externalKey, externalSubtitlesRevision, buildSubtitleTracks, autoSelectExternalIfNeeded])
 
   useEffect(() => {
     if (!video || !subtitles || !size || !read) return
@@ -506,9 +692,10 @@ export const usePlayback = (
             // for the audio playing, which may be one the viewer picked
             const playing = playingAudio()
             const start = startingTracks(playing ? [playing] : [], subtitles, preferencesRef.current).subtitles
+            const keepChoice = subtitleChoiceFor.current === size || activeExternalRef.current !== null
             player.setSourceState({
-              subtitleTracks: toNamedTracks(subtitles, labelsRef.current),
-              ...subtitleChoiceFor.current === size ? {} : { selectedSubtitleTrack: start === null ? undefined : subtitles[Math.max(start, 0)]?.streamIndex },
+              subtitleTracks: buildSubtitleTracks(labelsRef.current),
+              ...keepChoice ? {} : { selectedSubtitleTrack: start === null ? undefined : subtitles[Math.max(start, 0)]?.streamIndex },
             })
           },
           onAudioStreams: (audio, selected) => {
@@ -530,7 +717,12 @@ export const usePlayback = (
         })
         // the renderer starts on the first track, so the one the store holds (off included) is applied to it
         const chosen = player.selectedSubtitleTrack
-        controller.selectSubtitleStream(typeof chosen === 'number' ? chosen : undefined)
+        if (activeExternalRef.current && typeof chosen === 'string' && chosen === activeExternalRef.current.id) {
+          controller.setExternalSubtitleTrack(activeExternalRef.current.ass)
+        } else {
+          controller.selectSubtitleStream(typeof chosen === 'number' ? chosen : undefined)
+        }
+        autoSelectExternalIfNeeded()
       } catch (error) {
         fail(error)
       }

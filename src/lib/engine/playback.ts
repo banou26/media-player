@@ -89,6 +89,8 @@ export type PlaybackController = {
   /** The element this pipeline drives, so a caller can read what actually got buffered. */
   videoElement: HTMLVideoElement
   selectSubtitleStream: (streamIndex: number | undefined) => void
+  setExternalSubtitleTrack: (assContent: string) => void
+  clearExternalSubtitleTrack: () => void
   /** Keyframe index of the input, which is what maps a downloaded byte range onto the timeline. */
   indexes: MediaIndex[]
   /** Named spans the container declared, empty when it declared none. */
@@ -876,6 +878,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       prepareSeek,
       videoElement,
       selectSubtitleStream: (streamIndex: number | undefined) => subtitles.selectStream(streamIndex),
+      setExternalSubtitleTrack: (assContent: string) => subtitles.setExternalTrack(assContent),
+      clearExternalSubtitleTrack: () => subtitles.clearExternalTrack(),
       indexes: metadata.indexes ?? [],
       chapters: metadata.chapters ?? [],
       duration: metadata.info.input.duration,
