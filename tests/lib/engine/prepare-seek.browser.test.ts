@@ -175,6 +175,7 @@ describe('preparing a seek', () => {
       })
       video.currentTime = target
       await seeked
+      if (!video.ended) await video.play()
       await expect.poll(() => video.ended, { timeout: 5_000 }).toBe(true)
       // Allow more than one 100 ms interval tick after ended/clamping to verify no delayed re-seek runs
       await new Promise((resolve) => setTimeout(resolve, 250))
