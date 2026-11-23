@@ -14,6 +14,8 @@ import { definePlayerFeature } from '@videojs/core/dom'
 export type TrackChoice = {
   id: string | number
   label: string
+  /** Distinguishes muxed/site-provided subtitle tracks (`native`) from sidecar tracks (`external`). */
+  kind?: 'native' | 'external'
   /**
    * Offered but not selectable, so the menu shows it and refuses the click.
    *

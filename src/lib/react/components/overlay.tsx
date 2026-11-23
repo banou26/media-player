@@ -119,7 +119,10 @@ const errorMessage = (error: unknown, { format }: Labels) =>
       ? error.message
       : typeof error === 'string' ? error : format(LABELS.failed)
 
-export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivElement | null) => void }) => {
+export const Overlay = ({ onSubtitleRef, subtitleOverlay }: {
+  onSubtitleRef: (element: HTMLDivElement | null) => void
+  subtitleOverlay?: ReactNode
+}) => {
   const labels = useLabels()
   const title = usePlayer((state) => state.title)
   const hideUI = usePlayer((state) => state.hideUI)
@@ -156,7 +159,7 @@ export const Overlay = ({ onSubtitleRef }: { onSubtitleRef: (element: HTMLDivEle
       {playbackError
         ? <div css={errorStyle} dir="auto">{errorMessage(playbackError, labels)}</div>
         : undefined}
-      <div className="subtitles" ref={onSubtitleRef} css={style} />
+      <div className="subtitles" ref={onSubtitleRef} css={style}>{subtitleOverlay}</div>
     </>
   )
 }

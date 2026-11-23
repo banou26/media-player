@@ -13,6 +13,8 @@ export type {
 } from './react/video-player'
 
 // A media the player drives but does not own, for a source whose video lives somewhere unreachable.
+export { SubtitleCueOverlay } from './react/components/cue-overlay'
+export type { SubtitleCueMedia } from './react/components/cue-overlay'
 export { isDelegatedTracks, isExternalThumbnails } from './react/media'
 export type {
   DelegatedSelection,
@@ -50,6 +52,7 @@ export type {
   PlaybackController,
   PlaybackOptions,
   PlaybackOutput,
+  SubtitleCue,
   SubtitleStream,
   ThumbnailImage,
 } from './engine'
@@ -60,6 +63,8 @@ export {
   createPictureInPicture,
   SUBTITLES_OFF,
   toAssSubtitles,
+  parseSubtitleCues,
+  activeSubtitleCues,
 } from './engine'
 
 export type { RemoteExternalSubtitleTrack } from './remote'

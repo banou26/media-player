@@ -100,8 +100,8 @@ describe('the remote arm', () => {
     // Still open, and the row says it is working rather than claiming to be selected. The source has
     // not switched yet, so a tick here would be a lie the viewer acts on.
     expect(screen.container.querySelector('.track-list')).not.toBeNull()
-    expect(find(screen.container, '.track-list .description', 'Japanese')?.textContent).toBe('Japanese…')
-    expect(find(screen.container, '.track-list .description', 'English')?.textContent).toBe('English✓')
+    expect(find(screen.container, '.track-list .description', 'Japanese')?.textContent).toBe('JapaneseNative…')
+    expect(find(screen.container, '.track-list .description', 'English')?.textContent).toBe('EnglishNative✓')
 
     // a second click while the first is in flight must not reach the source
     ;(find(screen.container, '.track-list .description', 'English') as HTMLElement).click()
@@ -126,8 +126,8 @@ describe('the remote arm', () => {
     await expect.poll(() => !!find(screen.container, '.failed', 'Could not switch'), { timeout: 2000 })
       .toBe(true)
     // open, and still showing the track that is actually playing
-    expect(find(screen.container, '.track-list .description', 'English')?.textContent).toBe('English✓')
-    expect(find(screen.container, '.track-list .description', 'Japanese')?.textContent).toBe('Japanese')
+    expect(find(screen.container, '.track-list .description', 'English')?.textContent).toBe('EnglishNative✓')
+    expect(find(screen.container, '.track-list .description', 'Japanese')?.textContent).toBe('JapaneseNative')
     // the whole point of the menu awaiting the promise rather than dropping it
     expect(unhandled).toEqual([])
   })
@@ -181,7 +181,7 @@ describe('the remote arm', () => {
     await expect.poll(
       () => [...screen.container.querySelectorAll('.track-list > div')].map((row) => row.textContent),
       { timeout: 2000 },
-    ).toEqual(['Subtitles', 'No subtitles✓', 'English', 'Japanese'])
+    ).toEqual(['Subtitles', 'No subtitles✓', 'EnglishNative', 'JapaneseNative'])
   })
 
   it('can be asked for no control bar, and still draws the picture and the overlay', async () => {

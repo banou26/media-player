@@ -42,7 +42,11 @@ const inkOf = (root: ParentNode) => {
 }
 
 const rowsOf = (root: ParentNode) => [...root.querySelectorAll('.track-list > div')].map((row) => row.textContent ?? '')
-const ticked = (root: ParentNode) => rowsOf(root).find((row) => row.endsWith('✓'))?.slice(0, -1)
+const trackLabelOf = (row: ParentNode) => row.querySelector('.track-label')?.textContent ?? ''
+const ticked = (root: ParentNode) => {
+  const active = [...root.querySelectorAll('.track-list > div')].find((row) => row.textContent?.endsWith('✓'))
+  return active ? trackLabelOf(active) : undefined
+}
 
 const openSubtitles = async (root: ParentNode) => {
   await expect.poll(() => !!root.querySelector('button.subtitles'), { timeout: 30_000 }).toBe(true)
@@ -52,7 +56,7 @@ const openSubtitles = async (root: ParentNode) => {
 
 const selectRow = (root: ParentNode, label: string) => {
   const target = [...root.querySelectorAll('.track-list > div')].find(
-    (row) => row.textContent?.replace(/[✓…]/g, '') === label,
+    (row) => trackLabelOf(row) === label,
   ) as HTMLElement | undefined
   if (!target) throw new Error(`missing row ${label}; found ${JSON.stringify(rowsOf(root))}`)
   target.click()
@@ -135,9 +139,9 @@ describe('external subtitle tracks', () => {
     expect(rowsOf(screen.container)).toEqual([
       'Subtitles',
       'Disable✓',
-      'English (SRT)',
-      'French (VTT)',
-      'German (ASS)',
+      'English (SRT)External',
+      'French (VTT)External',
+      'German (ASS)External',
     ])
 
     selectRow(screen.container, 'English (SRT)')

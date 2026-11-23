@@ -1,6 +1,6 @@
 import type { AudioStream, PlaybackController, PlaybackOutput, SubtitleStream } from '../../engine'
 import type { Labels } from '../labels'
-import type { PlaybackErrorEntry } from '../source-feature'
+import type { PlaybackErrorEntry, TrackChoice } from '../source-feature'
 import type { ExternalSubtitleTrack, MediaPlayerLocalOptions } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isMediaElementError, startPlayback, toAssSubtitles } from '../../engine'
 import { usePlayer } from '../player'
 import { useLabels } from '../labels'
+import { externalTrackLabel, isExternalTrackId, rawExternalTrackId, toExternalTrackId } from '../../utils/external-subtitles'
 import { toNamedTracks } from '../../utils/track-label'
 import { languageOf, playsIn, startingTracks } from '../../language'
 
@@ -72,14 +73,6 @@ const causeChain = (error: unknown) => {
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
  * discovers. Nothing is mirrored in React state, so the store is the only place any of it lives.
  */
-// Prefixed in the store so string external track ids never collide with numeric muxed stream indices.
-const EXT_SUBTITLE_PREFIX = 'ext:'
-
-const isExternalTrackId = (id: string | number | undefined): id is string =>
-  typeof id === 'string' && id.startsWith(EXT_SUBTITLE_PREFIX)
-
-const rawExternalTrackId = (storeId: string) => storeId.slice(EXT_SUBTITLE_PREFIX.length)
-
 export const usePlayback = (
   video: HTMLVideoElement | null,
   subtitles: HTMLElement | null,
@@ -151,9 +144,10 @@ export const usePlayback = (
         playbackErrors: [],
         seekingTo: undefined,
         selectedSubtitleTrack: undefined,
-        subtitleTracks: externalSubtitlesRef.current.map((track) => ({
-          id: `${EXT_SUBTITLE_PREFIX}${track.id}`,
-          label: track.label.trim() || track.language || track.id,
+        subtitleTracks: externalSubtitlesRef.current.map((track): TrackChoice => ({
+          id: toExternalTrackId(track.id),
+          label: externalTrackLabel(track),
+          kind: 'external',
         })),
       })
     }
@@ -230,11 +224,12 @@ export const usePlayback = (
   const labels = useLabels()
   const labelsRef = useRef(labels)
   labelsRef.current = labels
-  const buildSubtitleTracks = useCallback((currentLabels: Labels) => [
-    ...toNamedTracks(streams.current.subtitles, currentLabels),
-    ...externalSubtitlesRef.current.map((track) => ({
-      id: `${EXT_SUBTITLE_PREFIX}${track.id}`,
-      label: track.label.trim() || track.language || track.id,
+  const buildSubtitleTracks = useCallback((currentLabels: Labels): TrackChoice[] => [
+    ...toNamedTracks(streams.current.subtitles, currentLabels).map((track): TrackChoice => ({ ...track, kind: 'native' })),
+    ...externalSubtitlesRef.current.map((track): TrackChoice => ({
+      id: toExternalTrackId(track.id),
+      label: externalTrackLabel(track),
+      kind: 'external',
     })),
   ], [])
 
@@ -348,7 +343,7 @@ export const usePlayback = (
     if (extStart === null || extStart < 0) return
     const match = ext[extStart]
     if (!match) return
-    const storeId = `${EXT_SUBTITLE_PREFIX}${match.id}`
+    const storeId = toExternalTrackId(match.id)
     if (player.selectedSubtitleTrack === storeId) return
 
     const gen = ++subtitleSelectionGen.current
@@ -516,7 +511,7 @@ export const usePlayback = (
     if (size === undefined) return
     const active = activeExternalRef.current
     if (active) {
-      const currentTrack = externalSubtitlesRef.current.find((track) => `${EXT_SUBTITLE_PREFIX}${track.id}` === active.id)
+      const currentTrack = externalSubtitlesRef.current.find((track) => toExternalTrackId(track.id) === active.id)
       if (!currentTrack) {
         activeExternalRef.current = null
         controllerRef.current?.clearExternalSubtitleTrack()

@@ -63,7 +63,7 @@ describe('the subtitles button', () => {
 
     // no back chevron, because there is no page above it to return to
     await expect.poll(() => rowsOf(screen.container), { timeout: 2000 })
-      .toEqual(['Subtitles', 'No subtitles✓', 'English', 'Japanese'])
+      .toEqual(['Subtitles', 'No subtitles✓', 'EnglishNative', 'JapaneseNative'])
     expect(screen.container.querySelector('.track-list .back svg')).toBeNull()
   })
 

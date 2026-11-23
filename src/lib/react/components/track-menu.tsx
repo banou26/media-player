@@ -125,8 +125,43 @@ export const popoverStyle = css`
 }
 
 .track-list {
+  > div {
+    gap: 6px;
+  }
+
   .description {
     word-break: break-word;
+  }
+
+  .track-label {
+    min-width: 0;
+    flex: 1;
+    text-align: start;
+  }
+
+  .track-end {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  && > div .track-kind {
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 10px;
+    line-height: 1.25;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  && > div .track-kind--external {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.28);
   }
 
   /* Dimmed and inert, but still listed. A source that names a track it cannot serve right now is
@@ -171,7 +206,7 @@ export const TrackMenu = (
 ) => {
   const { format } = useLabels()
   const busy = pending !== undefined
-  const row = (id: string | number | null, label: string, className?: string) => {
+  const row = (id: string | number | null, label: string, className?: string, kind?: TrackChoice['kind']) => {
     const isPending = busy && pending === id
     const disabled = busy || tracks.find((track) => track.id === id)?.disabled
     return (
@@ -180,8 +215,17 @@ export const TrackMenu = (
         onClick={() => { if (!disabled) onSelect(id ?? undefined) }}
         className={[className, disabled ? 'unavailable' : null].filter(Boolean).join(' ') || undefined}
       >
-        <span>{label}</span>
-        <span>{isPending ? '\u2026' : (selected ?? null) === id ? '\u2713' : ''}</span>
+        <span className='track-label'>{label}</span>
+        <span className='track-end'>
+          {kind
+            ? (
+              <span className={`track-kind track-kind--${kind}`}>
+                {format(kind === 'native' ? LABELS.nativeSubtitle : LABELS.externalSubtitle)}
+              </span>
+            )
+            : null}
+          <span className='track-check'>{isPending ? '\u2026' : (selected ?? null) === id ? '\u2713' : ''}</span>
+        </span>
       </div>
     )
   }
@@ -196,7 +240,7 @@ export const TrackMenu = (
       </div>
       {failed ? <div className="no-hover failed" dir="auto">{format(LABELS.switchFailed)}</div> : null}
       {offLabel ? row(null, offLabel) : null}
-      {tracks.map(({ id, label }) => row(id, label, 'description'))}
+      {tracks.map(({ id, label, kind }) => row(id, label, 'description', kind))}
     </div>
   )
 }

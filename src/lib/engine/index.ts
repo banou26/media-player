@@ -7,6 +7,9 @@ export type { SubtitleRenderer, SubtitleRendererOptions, SubtitleStream } from '
 export { toAssSubtitles } from './subtitle-convert'
 export type { ExternalSubtitleFormat } from './subtitle-convert'
 
+export { parseSubtitleCues, activeSubtitleCues } from './subtitle-cues'
+export type { SubtitleCue } from './subtitle-cues'
+
 export { createThumbnailGenerator } from './thumbnails'
 export type { ThumbnailGenerator, ThumbnailGeneratorOptions, ThumbnailImage } from './thumbnails'
 

@@ -110,7 +110,7 @@ describe('a player driving a media it does not own', () => {
 
     // The source's own options, not anything the engine discovered, and the tick sits on the one the
     // source says is selected: `selectedId` is a string id here, where the engine's is a stream index.
-    await expect.poll(() => textOf('.track-list .description')).toEqual(['English✓', 'Japanese'])
+    await expect.poll(() => textOf('.track-list .description')).toEqual(['EnglishNative✓', 'JapaneseNative'])
 
     await clickWith('.track-list .description', 'Japanese')
 

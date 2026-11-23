@@ -26,6 +26,8 @@ export const LABELS = {
   burnInHint: 'Now click your browser\'s pop out button',
   subtitles: 'Subtitles',
   subtitlesOff: 'Disable',
+  nativeSubtitle: 'Native',
+  externalSubtitle: 'External',
   settings: 'Settings',
   audio: 'Audio',
   quality: 'Quality',

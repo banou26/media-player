@@ -130,6 +130,8 @@ export type ChromeProps = {
   /** Absent means render no video element: the media belongs to someone else and arrives as children. */
   onVideoRef?: (element: HTMLVideoElement | null) => void
   onSubtitleRef: (element: HTMLDivElement | null) => void
+  /** Lightweight cue overlay rendered inside the subtitle layer (e.g. external tracks on remote players). */
+  subtitleOverlay?: ReactNode
   /** The app's own content, over the video and outside the click-to-pause region, unlike `children`. */
   overlay?: ReactNode
   /** False draws no control bar at all, leaving the picture, the title and the overlay. */
@@ -143,7 +145,7 @@ export type ChromeProps = {
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, children }: ChromeProps) => {
   const player = usePlayer()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
@@ -313,7 +315,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, overlay, controls, shor
       // focusable, so a click on the picture puts the focus, and with it the shortcuts, inside the player
       tabIndex={shortcuts === 'player' ? -1 : undefined}
     >
-      <Overlay onSubtitleRef={onSubtitleRef} />
+      <Overlay onSubtitleRef={onSubtitleRef} subtitleOverlay={subtitleOverlay} />
       {overlayItems(overlay).map(({ key, item }) => (
         <div
           key={key}

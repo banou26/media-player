@@ -47,9 +47,13 @@ const click = (element: Element | null | undefined) => {
 }
 
 const rowsOf = (root: Element) => [...root.querySelectorAll('.track-list > div')].map((row) => row.textContent ?? '')
-const ticked = (root: Element) => rowsOf(root).find((row) => row.endsWith('✓'))?.slice(0, -1)
+const trackLabelOf = (row: Element) => row.querySelector('.track-label')?.textContent ?? row.textContent?.replace('✓', '') ?? ''
+const ticked = (root: Element) => {
+  const active = [...root.querySelectorAll('.track-list > div')].find((row) => row.textContent?.endsWith('✓'))
+  return active ? trackLabelOf(active) : undefined
+}
 const row = (root: Element, label: string) =>
-  [...root.querySelectorAll('.track-list > div')].find((element) => element.textContent?.replace('✓', '') === label)
+  [...root.querySelectorAll('.track-list > div')].find((element) => trackLabelOf(element) === label)
 
 /** The subtitle track drawn, by the colour of its block. */
 const colour = (root: Element) => {

@@ -269,7 +269,7 @@ const ENGLISH: [string, string][] = [
   ['muted sound tooltip', 'Unmute (m)'],
   ['active picture-in-picture tooltip', 'Exit picture in picture'],
   ['active full-screen tooltip', 'Exit full screen (f)'],
-  ['subtitles menu', 'Subtitles | Disable | English✓'],
+  ['subtitles menu', 'Subtitles | Disable | EnglishNative✓'],
   ['subtitles menu failed', 'Could not switch. Try again.'],
   ['settings menu', 'Audio | QualityAuto | Playback speed(Default)'],
   ['audio menu', 'Audio | Japanese✓ | English'],
@@ -338,7 +338,8 @@ const mountFile = async (language?: string) => {
   return { root: screen.container, rerender: (language: string) => screen.rerender(player(language)) }
 }
 
-const fileTracks = (root: ParentNode) => rows(root, 'track-list').slice(2).map((track) => track.replace('\u2713', ''))
+const fileTracks = (root: ParentNode) =>
+  [...root.querySelectorAll('.track-list > div')].slice(2).map((row) => row.querySelector('.track-label')?.textContent ?? row.textContent!)
 
 describe('a player given no language', () => {
   // after the English walks above, in this file's own page: FormatJS and a catalogue come only with a language
