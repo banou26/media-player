@@ -1,12 +1,14 @@
 /// <reference types="@emotion/react/types/css-prop" />
+import { useState } from 'react'
 import { css } from '@emotion/react'
-import { Captions, CaptionsOff } from 'lucide-react'
+import { Captions, CaptionsOff, SlidersHorizontal } from 'lucide-react'
 
 import { usePlayer } from '../player'
 import { useLabels } from '../labels'
 import { LABELS } from '../../labels'
 import { TooltipDisplay } from './tooltip-display'
 import { TrackMenu, popoverStyle, useTrackMenu } from './track-menu'
+import { SubtitleSettingsMenu } from './subtitle-settings'
 
 const style = css`
 /* Not a containing block, for the reason given on popoverStyle: the menu anchors to the control bar,
@@ -40,8 +42,12 @@ export const SubtitlesAction = () => {
   const selectedSubtitleTrack = usePlayer((state) => state.selectedSubtitleTrack)
   const selectSubtitleTrack = usePlayer((state) => state.selectSubtitleTrack)
   const subtitleOffLabel = usePlayer((state) => state.subtitleOffLabel)
+  const subtitleSettings = usePlayer((state) => state.subtitleSettings)
 
-  const { open, toggle, containerRef, pending, failed, runSelect } = useTrackMenu()
+  const [view, setView] = useState<'tracks' | 'settings'>('tracks')
+  const { open, toggle, containerRef, pending, failed, runSelect } = useTrackMenu({
+    onReset: () => setView('tracks'),
+  })
 
   // After every hook, never before. One track is enough to offer the menu, because "off" is always a
   // second option; a file carrying none should not offer it at all.
@@ -71,7 +77,7 @@ export const SubtitlesAction = () => {
         toolTipText={<span>{format(LABELS.subtitles)}</span>}
       />
       {
-        open && (
+        open && view === 'tracks' && (
           <TrackMenu
             title={format(LABELS.subtitles)}
             tracks={subtitleTracks}
@@ -80,7 +86,22 @@ export const SubtitlesAction = () => {
             offLabel={subtitleOffLabel ?? format(LABELS.subtitlesOff)}
             pending={pending}
             failed={failed}
+            headerAction={subtitleSettings ? (
+              <button
+                type='button'
+                className='track-header-action subtitle-options-btn'
+                aria-label={format(LABELS.subtitleSettings)}
+                onClick={() => setView('settings')}
+              >
+                <SlidersHorizontal />
+              </button>
+            ) : undefined}
           />
+        )
+      }
+      {
+        open && view === 'settings' && (
+          <SubtitleSettingsMenu onBack={() => setView('tracks')} />
         )
       }
     </div>

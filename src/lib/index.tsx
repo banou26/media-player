@@ -32,8 +32,8 @@ export type { PlayerStore } from './react/player'
 // only hook the chrome needs.
 export { sourceFeature } from './react/source-feature'
 export type {
-  AutoplayNextControl, DownloadedRange, PassThroughControl, PlaybackErrorEntry, SourceState, ViewportBox,
-  VolumeNormalizerControl,
+  AutoplayNextControl, DownloadedRange, PassThroughControl, PlaybackErrorEntry, SourceState,
+  SubtitleSettingsControl, ViewportBox, VolumeNormalizerControl,
 } from './react/source-feature'
 
 export { useSeekThumbnails } from './react/hooks/use-thumbnails'
@@ -41,6 +41,18 @@ export { usePictureInPicture } from './react/hooks/use-picture-in-picture'
 
 export { inputToRemuxerInput } from './utils/source'
 export type { RemuxerInput } from './utils/source'
+export {
+  DEFAULT_SUBTITLE_SETTINGS,
+  clampSubtitleBackgroundOpacity,
+  clampSubtitleFontScale,
+  clampSubtitleOffset,
+  clampSubtitlePosition,
+  detectSubtitleFormat,
+  isSubtitleFile,
+  readDroppedSubtitleFiles,
+  subtitleLabelFromFilename,
+} from './utils/external-subtitles'
+export type { SubtitlePosition, SubtitleSettings } from './utils/external-subtitles'
 
 // The engine is also published on its own subpath for consumers that want the pipeline with no React.
 export type {
@@ -65,6 +77,7 @@ export {
   toAssSubtitles,
   parseSubtitleCues,
   activeSubtitleCues,
+  stripAssFormatting,
 } from './engine'
 
 export type { RemoteExternalSubtitleTrack } from './remote'

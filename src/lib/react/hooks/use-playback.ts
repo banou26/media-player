@@ -1,4 +1,4 @@
-import type { AudioStream, PlaybackController, PlaybackOutput, SubtitleStream } from '../../engine'
+import type { AudioStream, PlaybackController, PlaybackOutput, SubtitleCue, SubtitleStream } from '../../engine'
 import type { Labels } from '../labels'
 import type { PlaybackErrorEntry, TrackChoice } from '../source-feature'
 import type { ExternalSubtitleTrack, MediaPlayerLocalOptions } from '../video-player'
@@ -69,6 +69,12 @@ const causeChain = (error: unknown) => {
   return lines.length ? lines.join('\n') : undefined
 }
 
+export type PlaybackSubtitleControls = {
+  offset?: number
+  simpleMode?: boolean
+  onSimpleCues?: (cues: SubtitleCue[]) => void
+}
+
 /**
  * Owns the engine for the life of a source: start, teardown, and every piece of state the pipeline
  * discovers. Nothing is mirrored in React state, so the store is the only place any of it lives.
@@ -80,6 +86,7 @@ export const usePlayback = (
   options: MediaPlayerLocalOptions | null,
   onOutput?: (output: PlaybackOutput) => void,
   externalSubtitlesRevision?: number,
+  subtitleControls?: PlaybackSubtitleControls,
 ) => {
   const player = usePlayer()
   // The five asset urls are required on the local arm, so a default only ever applies when options is
@@ -221,6 +228,20 @@ export const usePlayback = (
   onPlaybackErrorRef.current = options?.onPlaybackError
   const onOutputRef = useRef(onOutput)
   onOutputRef.current = onOutput
+  const subtitleOffset = subtitleControls?.offset ?? 0
+  const subtitleSimpleMode = subtitleControls?.simpleMode ?? false
+  const subtitleOffsetRef = useRef(subtitleOffset)
+  subtitleOffsetRef.current = subtitleOffset
+  const simpleModeRef = useRef(subtitleSimpleMode)
+  simpleModeRef.current = subtitleSimpleMode
+  const onSimpleCuesRef = useRef(subtitleControls?.onSimpleCues)
+  onSimpleCuesRef.current = subtitleControls?.onSimpleCues
+  useEffect(() => {
+    controllerRef.current?.setSubtitleOffset(subtitleOffset)
+  }, [subtitleOffset])
+  useEffect(() => {
+    controllerRef.current?.setSubtitleSimpleMode(subtitleSimpleMode)
+  }, [subtitleSimpleMode])
   const labels = useLabels()
   const labelsRef = useRef(labels)
   labelsRef.current = labels
@@ -681,6 +702,7 @@ export const usePlayback = (
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
           onSeek: (fraction) => onSeekRef.current?.(fraction),
           onOutput: (output) => onOutputRef.current?.(output),
+          onSimpleCues: (cues) => { if (!cancelled) onSimpleCuesRef.current?.(cues) },
           onSubtitleStreams: (subtitles) => {
             if (cancelled) return
             streams.current.subtitles = subtitles
@@ -704,6 +726,8 @@ export const usePlayback = (
           return
         }
         controllerRef.current = controller
+        controller.setSubtitleOffset(subtitleOffsetRef.current)
+        controller.setSubtitleSimpleMode(simpleModeRef.current)
         // a caller's chapters beat the container's, and this is the writer that would otherwise
         // land last and overwrite them
         player.setSourceState({

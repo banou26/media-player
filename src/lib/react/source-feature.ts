@@ -1,4 +1,5 @@
 import type { MediaChapter, MediaIndex, PictureInPictureMode, ThumbnailImage } from '../engine'
+import type { SubtitlePosition } from '../utils/external-subtitles'
 import type { DelegatedSelection } from './media'
 
 import { definePlayerFeature } from '@videojs/core/dom'
@@ -99,6 +100,21 @@ export type PassThroughControl = {
   disarm: () => void
   /** Leaves picture in picture through the media. */
   exit: () => void
+}
+
+/** Subtitle timing and simple overlay controls rendered from the captions menu. */
+export type SubtitleSettingsControl = {
+  offset: number
+  setOffset: (offset: number) => void
+  simpleMode: boolean
+  simpleModeAvailable: boolean
+  setSimpleMode: (enabled: boolean) => void
+  fontScale: number
+  setFontScale: (scale: number) => void
+  backgroundOpacity: number
+  setBackgroundOpacity: (opacity: number) => void
+  position: SubtitlePosition | null
+  resetPosition: () => void
 }
 
 /** The settings menu's volume normalizer switch, for a player that offers one (see `normalizeVolume`). */
@@ -236,6 +252,9 @@ export type SourceState = {
   /** null when neither the host nor an embedder offers the switch. */
   autoplayNext: AutoplayNextControl | null
 
+  /** Subtitle timing offset, simple mode, and appearance controls. */
+  subtitleSettings: SubtitleSettingsControl | null
+
   /**
    * Move the playhead, letting the pipeline get the data there first.
    *
@@ -317,6 +336,7 @@ const initialState: SourceState = {
   burnedInSubtitles: false,
   volumeNormalizer: null,
   autoplayNext: null,
+  subtitleSettings: null,
   playbackError: null,
   playbackErrors: [],
   ready: false,

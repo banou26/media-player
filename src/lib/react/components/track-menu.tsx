@@ -1,4 +1,5 @@
 /// <reference types="@emotion/react/types/css-prop" />
+import type { ReactNode } from 'react'
 import type { TrackChoice } from '../source-feature'
 
 import { useEffect, useRef, useState } from 'react'
@@ -111,14 +112,83 @@ export const popoverStyle = css`
     justify-content: flex-start;
     border-bottom: 1px solid #4D4D4E;
 
-    svg {
+    > svg,
+    .track-back-chevron {
       transform: translateX(-4px);
       transition: transform 0.2s ease-in-out;
     }
 
-    :hover {
-      svg {
-        transform: translateX(-8px);
+    &:not(.no-hover):hover > svg,
+    &:not(.no-hover):hover .track-back-chevron {
+      transform: translateX(-8px);
+    }
+
+    &.has-action {
+      padding-inline-end: 34px;
+    }
+  }
+
+  .track-header-action-wrap {
+    position: absolute;
+    inset-block-start: 5px;
+    inset-inline-end: 6px;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .track-header-action {
+    appearance: none;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
+  .switch {
+    position: relative;
+    flex-shrink: 0;
+    width: 28px;
+    height: 16px;
+    margin-right: 6px;
+    margin-left: 8px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.3);
+    transition: background-color 0.15s ease-in-out;
+
+    ::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background-color: #fff;
+      transition: transform 0.15s ease-in-out;
+    }
+
+    &.on {
+      background-color: #fff;
+      ::after {
+        background-color: #1c1c1c;
+        transform: translateX(12px);
       }
     }
   }
@@ -190,7 +260,7 @@ export const popoverStyle = css`
  * moved yet and a tick next to it would be a lie.
  */
 export const TrackMenu = (
-  { title, tracks, selected, onSelect, onBack, offLabel, pending, failed }: {
+  { title, tracks, selected, onSelect, onBack, offLabel, pending, failed, headerAction }: {
     title: string
     tracks: readonly TrackChoice[]
     selected: string | number | undefined
@@ -202,6 +272,8 @@ export const TrackMenu = (
     /** The id currently being switched to, where `null` is the off row and undefined means idle. */
     pending?: string | number | null
     failed?: boolean
+    /** Optional compact action rendered at the trailing edge of the header row. */
+    headerAction?: ReactNode
   }
 ) => {
   const { format } = useLabels()
@@ -230,14 +302,24 @@ export const TrackMenu = (
     )
   }
 
+  const headerClass = [
+    onBack ? 'back' : 'back no-hover',
+    headerAction ? 'has-action' : null,
+  ].filter(Boolean).join(' ')
+
   return (
     <div className='popover track-list'>
       {/* The header keeps its name and its border either way. With no page to go back to there is
           nothing for a chevron to point at, and `no-hover` stops the row offering a dead click. */}
-      <div className={onBack ? 'back' : 'back no-hover'} onClick={onBack}>
-        {onBack ? <ChevronLeft /> : null}
+      <div className={headerClass} onClick={onBack}>
+        {onBack ? <ChevronLeft className='track-back-chevron' /> : null}
         <span>{title}</span>
       </div>
+      {headerAction ? (
+        <span className='track-header-action-wrap' onClick={(event) => event.stopPropagation()}>
+          {headerAction}
+        </span>
+      ) : null}
       {failed ? <div className="no-hover failed" dir="auto">{format(LABELS.switchFailed)}</div> : null}
       {offLabel ? row(null, offLabel) : null}
       {tracks.map(({ id, label, kind }) => row(id, label, 'description', kind))}

@@ -1,8 +1,11 @@
 import type { ASSEvent } from 'jassub/dist/worker/util'
 import type { Attachment, SubtitleFragment } from 'libav-wasm/build/worker'
+import type { SubtitleCue } from './subtitle-cues'
 
 import JASSUB from 'jassub'
 import { parse } from 'ass-compiler'
+
+import { parseSubtitleCues, stripAssFormatting } from './subtitle-cues'
 
 export type SubtitleStream = { streamIndex: number, title: string, language: string }
 
@@ -63,6 +66,8 @@ export type SubtitleRendererOptions = {
    */
   cjkFontUrl?: string
   onStreams?: (streams: SubtitleStream[]) => void
+  /** Invoked in simple mode whenever the active subtitle cue list changes. */
+  onSimpleCues?: (cues: SubtitleCue[]) => void
 }
 
 /**
@@ -193,7 +198,10 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const dialogues = new Map<number, Map<string, SubtitleDialoguePart>>()
   let selected: number | undefined
   let externalAss: string | null = null
+  let timeOffset = 0
+  let simpleMode = false
   let onStreams = options.onStreams
+  let onSimpleCues = options.onSimpleCues
   /**
    * Terminal, unlike a null `jassub`.
    *
@@ -303,11 +311,13 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const bootJassub = (subContent: string) => {
     const canvas = document.createElement('canvas')
     canvas.dataset.pending = ''
+    if (simpleMode) canvas.style.display = 'none'
     container.append(canvas)
     try {
       jassub = new JASSUB({
         canvas,
         subContent,
+        timeOffset: -timeOffset,
         workerUrl,
         modernWasmUrl: wasmUrl,
         modernWasmWorkerUrl: wasmWorkerUrl,
@@ -382,8 +392,36 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     attachments = [...attachments, ...incoming.map((a) => [a.filename, new Uint8Array(a.data)] as [string, Uint8Array])]
   }
 
+  const emitSimpleCues = () => {
+    if (!onSimpleCues) return
+    if (!simpleMode) {
+      onSimpleCues([])
+      return
+    }
+    if (externalAss !== null) {
+      onSimpleCues(parseSubtitleCues(externalAss, 'ass'))
+      return
+    }
+    if (selected === undefined || selected === SUBTITLES_OFF) {
+      onSimpleCues([])
+      return
+    }
+    const cues: SubtitleCue[] = []
+    for (const part of dialogues.get(selected)?.values() ?? []) {
+      const start = part.assEvent.Start / 1000
+      const end = (part.assEvent.Start + part.assEvent.Duration) / 1000
+      if (!(end > start)) continue
+      const text = stripAssFormatting(part.assEvent.Text)
+      if (!text) continue
+      cues.push({ start, end, text })
+    }
+    cues.sort((a, b) => a.start - b.start)
+    onSimpleCues(cues)
+  }
+
   const pushFragments = (fragments: SubtitleFragment[]) => {
     const incoming: ASSEvent[] = []
+    const prevSelected = selected
     for (const fragment of fragments) {
       if (fragment.type === 'header') {
         if (headers.has(fragment.streamIndex)) continue
@@ -410,7 +448,11 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         if (selected === fragment.streamIndex) incoming.push(part.assEvent)
       }
     }
-    if (!incoming.length) return
+    if (!incoming.length) {
+      if (simpleMode && selected !== prevSelected) emitSimpleCues()
+      return
+    }
+    if (simpleMode) emitSimpleCues()
     // one hop for the whole burst rather than one per event
     onRenderer((renderer) => Promise.all(incoming.map((event) => renderer.createEvent(event))))
     loadCjkFontFor(incoming)
@@ -423,6 +465,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     if (!wasExternal && next === selected) return
     externalAss = null
     selected = next
+    emitSimpleCues()
     if (!jassub) return
     const header = headers.get(next)
     const events = [...dialogues.get(next)?.values() ?? []].map((part) => part.assEvent)
@@ -441,6 +484,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     if (destroyed || externalAss === assContent) return
     externalAss = assContent
     selected = SUBTITLES_OFF
+    emitSimpleCues()
     if (!jassub) {
       bootJassub(assContent)
       loadCjkFontForText(assContent)
@@ -455,9 +499,37 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     if (externalAss === null) return
     externalAss = null
     selected = SUBTITLES_OFF
+    emitSimpleCues()
     if (!jassub) return
     onRenderer((renderer) => renderer.removeAllEvents())
     repaint()
+  }
+
+  const setTimeOffset = (offsetSeconds: number) => {
+    const next = Number.isFinite(offsetSeconds) ? offsetSeconds : 0
+    if (next === timeOffset) return
+    timeOffset = next
+    if (jassub) {
+      // jassub evaluates `_draw(mediaTime + timeOffset)`, so delaying cues by +offset needs -offset.
+      jassub.timeOffset = -timeOffset
+      if (!simpleMode) repaint()
+    }
+  }
+
+  const setSimpleMode = (enabled: boolean) => {
+    if (simpleMode === enabled) return
+    simpleMode = enabled
+    const canvas = container.querySelector('canvas')
+    if (canvas) canvas.style.display = enabled ? 'none' : ''
+    emitSimpleCues()
+    if (!enabled) {
+      if (!jassub && !destroyed) {
+        const activeContent = externalAss ?? (selected !== undefined && selected !== SUBTITLES_OFF ? headers.get(selected)?.content : undefined)
+        if (activeContent) bootJassub(activeContent)
+      } else {
+        repaint()
+      }
+    }
   }
 
   return {
@@ -466,11 +538,14 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     selectStream,
     setExternalTrack,
     clearExternalTrack,
+    setTimeOffset,
+    setSimpleMode,
     getStreams: () => [...streams],
     getSelectedStream: () => selected,
     setOnStreams: (cb: (streams: SubtitleStream[]) => void) => { onStreams = cb },
     destroy: () => {
       destroyed = true
+      if (simpleMode) onSimpleCues?.([])
       const instance = jassub
       jassub = undefined
       for (const type of REPAINT_ON) video.removeEventListener(type, onRepaintEvent)

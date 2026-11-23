@@ -30,38 +30,6 @@ position: static;
 
 ${popoverStyle}
 
-.switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 28px;
-  height: 16px;
-  margin-right: 6px;
-  margin-left: 8px;
-  border-radius: 8px;
-  background-color: rgba(255,255,255,.3);
-  transition: background-color 0.15s ease-in-out;
-
-  ::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: #fff;
-    transition: transform 0.15s ease-in-out;
-  }
-
-  &.on {
-    background-color: #fff;
-    ::after {
-      background-color: #1c1c1c;
-      transform: translateX(12px);
-    }
-  }
-}
-
 .unavailable {
   opacity: 0.5;
 }

@@ -1,9 +1,9 @@
-import type { MediaPlayerSource, RemuxerInput } from '@banou/media-player'
+import type { ExternalSubtitleTrack, MediaPlayerSource, RemuxerInput } from '@banou/media-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
-import MediaPlayer, { inputToRemuxerInput } from '@banou/media-player'
+import MediaPlayer, { inputToRemuxerInput, isSubtitleFile, readDroppedSubtitleFiles } from '@banou/media-player'
 import { playerAssets } from '../asset-urls'
 
 const style = css`
@@ -79,12 +79,14 @@ const slowRead = (read: RemuxerInput['read'], delay: number): RemuxerInput['read
 
 export const Home = () => {
   const [source, setSource] = useState<RemuxerInput | null>(null)
+  const [externalSubtitles, setExternalSubtitles] = useState<ExternalSubtitleTrack[]>([])
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const open = useCallback(async (next: Parameters<typeof inputToRemuxerInput>[0]) => {
     setError(null)
+    setExternalSubtitles([])
     try {
       setSource(await inputToRemuxerInput(next))
     } catch (cause) {
@@ -92,7 +94,19 @@ export const Home = () => {
     }
   }, [])
 
-  const openFile = useCallback((file: File) => open({ blob: file, name: file.name }), [open])
+  const openFile = useCallback((file: File, subtitles?: File[]) => {
+    setError(null)
+    setExternalSubtitles([])
+    void Promise.all([
+      inputToRemuxerInput({ blob: file, name: file.name }),
+      subtitles?.length ? readDroppedSubtitleFiles(subtitles) : Promise.resolve([]),
+    ]).then(([nextSource, tracks]) => {
+      setSource(nextSource)
+      setExternalSubtitles(tracks)
+    }).catch((cause) => {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    })
+  }, [])
 
   useEffect(() => {
     const src = srcParam()
@@ -107,8 +121,12 @@ export const Home = () => {
     const drop = (event: DragEvent) => {
       event.preventDefault()
       setDragging(false)
-      const file = event.dataTransfer?.files?.[0]
-      if (file) void openFile(file)
+      const files = Array.from(event.dataTransfer?.files ?? [])
+      if (!files.length) return
+      const subtitleFiles = files.filter(isSubtitleFile)
+      const mediaFile = files.find((file) => !isSubtitleFile(file))
+      if (source && !mediaFile && subtitleFiles.length) return
+      if (mediaFile) openFile(mediaFile, subtitleFiles)
     }
 
     const paste = (event: ClipboardEvent) => {
@@ -132,7 +150,7 @@ export const Home = () => {
       document.removeEventListener('drop', drop)
       document.removeEventListener('paste', paste)
     }
-  }, [open, openFile])
+  }, [open, openFile, source])
 
   // named rather than spread inline, because an inline ternary widens to two optional keys
   const sourceProps: MediaPlayerSource = source
@@ -145,6 +163,7 @@ export const Home = () => {
         {...playerAssets}
         {...sourceProps}
         title={source?.name}
+        externalSubtitles={externalSubtitles}
         seekPrepareBudgetMs={seekBudgetParam()}
         autoplay
       >

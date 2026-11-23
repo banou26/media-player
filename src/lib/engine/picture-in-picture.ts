@@ -33,6 +33,44 @@ const STALE_SUBTITLES_S = 2
 /** Long enough for a paused mirror to present one frame of a fresh seek before it stops again. */
 const FLUSH_FRAME_MS = 100
 
+/** Draws simple-mode DOM cue lines onto the composite PiP canvas at their scaled position. */
+const drawSimpleCueBox = (
+  context: CanvasRenderingContext2D,
+  composite: HTMLCanvasElement,
+  layer: HTMLElement,
+  cueBox: HTMLElement,
+) => {
+  const layerRect = layer.getBoundingClientRect()
+  if (layerRect.width <= 0 || layerRect.height <= 0) return
+  const scaleX = composite.width / layerRect.width
+  const scaleY = composite.height / layerRect.height
+  const lines = cueBox.querySelectorAll('.subtitle-cue-line')
+  for (const node of lines) {
+    const line = node as HTMLElement
+    const text = line.textContent?.trim()
+    if (!text) continue
+    const rect = line.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) continue
+    const style = getComputedStyle(line)
+    const fontSize = Math.max(10, parseFloat(style.fontSize || '16') * scaleY)
+    const x = (rect.left - layerRect.left) * scaleX
+    const y = (rect.top - layerRect.top) * scaleY
+    const width = rect.width * scaleX
+    const height = rect.height * scaleY
+    context.save()
+    context.fillStyle = style.backgroundColor || 'rgba(0, 0, 0, 0.75)'
+    context.fillRect(x, y, width, height)
+    context.font = `${fontSize}px ${style.fontFamily || 'sans-serif'}`
+    context.fillStyle = style.color || '#ffffff'
+    context.textAlign = 'center'
+    context.textBaseline = 'middle'
+    context.shadowColor = 'rgba(0, 0, 0, 0.9)'
+    context.shadowBlur = Math.max(1, 2 * scaleY)
+    context.fillText(text, x + width / 2, y + height / 2, Math.max(1, width - 8 * scaleX))
+    context.restore()
+  }
+}
+
 /**
  * `window` opens a real picture in picture window. `burn-in` cannot, and instead paints the
  * composite into the player itself so the browser's OWN picture in picture control carries the
@@ -185,13 +223,17 @@ export const createPictureInPicture = (options: PictureInPictureOptions): Pictur
     const surface = subtitles.querySelector('canvas')
     if (
       surface &&
+      surface.style.display !== 'none' &&
       !('pending' in surface.dataset) &&
       surface.width > 0 &&
       surface.height > 0 &&
       Math.abs(video.currentTime - frameTime) <= STALE_SUBTITLES_S
     ) {
       context.drawImage(surface, 0, 0, composite.width, composite.height)
+      return
     }
+    const cueBox = subtitles.querySelector('.subtitle-cues-box') as HTMLElement | null
+    if (cueBox) drawSimpleCueBox(context, composite, subtitles, cueBox)
   }
 
   // Sized off the intrinsic dimensions, never the layout, so only a video of another size resizes a

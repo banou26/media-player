@@ -3,10 +3,13 @@ import type { ReactNode, Ref } from 'react'
 import type { ViewportBox } from '../source-feature'
 import type { EpisodeNavigation, HostFullscreen } from '../video-player'
 
-import { Children, Fragment, isValidElement, useEffect, useRef } from 'react'
+import { Children, Fragment, isValidElement, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { usePlayer } from '../player'
+import { useLabels } from '../labels'
+import { LABELS } from '../../labels'
+import { isSubtitleFile } from '../../utils/external-subtitles'
 import { Overlay } from './overlay'
 import ControlBar from './control-bar'
 import BurnInHint from './burn-in-hint'
@@ -103,6 +106,27 @@ const style = css`
   &.hide {
     cursor: none;
   }
+
+  .subtitle-drop-hint {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.45);
+
+    > span {
+      padding: 8px 14px;
+      border-radius: 8px;
+      background: rgba(28, 28, 28, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+    }
+  }
 `
 
 /**
@@ -142,11 +166,14 @@ export type ChromeProps = {
   /** False leaves the last ending out of the skip offer. */
   endingOffered: boolean
   episodeNavigation?: EpisodeNavigation
+  /** Invoked when supported subtitle files (`.srt`, `.vtt`, `.ass`, `.ssa`) are dropped onto the player. */
+  onSubtitleFileDrop?: (files: File[]) => void
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, onSubtitleFileDrop, children }: ChromeProps) => {
   const player = usePlayer()
+  const { format } = useLabels()
   const hideUI = usePlayer((state) => state.hideUI)
   const setHideUI = usePlayer((state) => state.setHideUI)
   const hasMedia = usePlayer((state) => state.hasMedia)
@@ -159,6 +186,60 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overla
   // a mouse button held down with the mouse still is a drag on the seekbar or the volume, not yet over
   const pressed = useRef(false)
   const root = useRef<HTMLDivElement | null>(null)
+  const dragDepth = useRef(0)
+  const [draggingSubtitle, setDraggingSubtitle] = useState(false)
+  const subtitleDropRef = useRef(onSubtitleFileDrop)
+  subtitleDropRef.current = onSubtitleFileDrop
+  const hasMediaRef = useRef(hasMedia)
+  hasMediaRef.current = hasMedia
+
+  useEffect(() => {
+    const element = root.current
+    if (!element) return
+    const onDragEnter = (event: DragEvent) => {
+      if (!hasMediaRef.current || !subtitleDropRef.current) return
+      if (!event.dataTransfer?.types?.includes('Files')) return
+      dragDepth.current++
+      setDraggingSubtitle(true)
+    }
+    const onDragOver = (event: DragEvent) => {
+      if (!hasMediaRef.current || !subtitleDropRef.current) return
+      if (!event.dataTransfer?.types?.includes('Files')) return
+      event.preventDefault()
+    }
+    const onDragLeave = (event: DragEvent) => {
+      if (!hasMediaRef.current || !subtitleDropRef.current) return
+      if (!event.dataTransfer?.types?.includes('Files')) return
+      if (--dragDepth.current <= 0) {
+        dragDepth.current = 0
+        setDraggingSubtitle(false)
+      }
+    }
+    const onDrop = (event: DragEvent) => {
+      dragDepth.current = 0
+      setDraggingSubtitle(false)
+      if (!hasMediaRef.current || !subtitleDropRef.current) return
+      const files = Array.from(event.dataTransfer?.files ?? []).filter(isSubtitleFile)
+      if (!files.length) return
+      // Stop native propagation at the player element so host document/container drop handlers do not fire.
+      event.preventDefault()
+      event.stopPropagation()
+      subtitleDropRef.current(files)
+    }
+    const endDrag = () => { dragDepth.current = 0; setDraggingSubtitle(false) }
+    element.addEventListener('dragenter', onDragEnter)
+    element.addEventListener('dragover', onDragOver)
+    element.addEventListener('dragleave', onDragLeave)
+    element.addEventListener('drop', onDrop)
+    window.addEventListener('dragend', endDrag)
+    return () => {
+      element.removeEventListener('dragenter', onDragEnter)
+      element.removeEventListener('dragover', onDragOver)
+      element.removeEventListener('dragleave', onDragLeave)
+      element.removeEventListener('drop', onDrop)
+      window.removeEventListener('dragend', endDrag)
+    }
+  }, [])
 
   useEffect(() => () => clearTimeout(autoHide.current), [])
 
@@ -227,6 +308,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overla
     if (!root.current || x < 0) return false
     const hit = document.elementFromPoint(x, y)
     if (!hit || !root.current.contains(hit) || hit.closest('.video')) return false
+    if (hit.closest('.subtitle-cues')) return pressed.current
     if (hit.closest('.control-bar')) return pressed.current || !!root.current.querySelector('.control-bar [aria-expanded="true"]')
     return true
   }
@@ -333,6 +415,11 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overla
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}
       <BurnInHint />
       <SkipChapter endingOffered={endingOffered} />
+      {draggingSubtitle ? (
+        <div className="subtitle-drop-hint">
+          <span>{format(LABELS.dropSubtitleHint)}</span>
+        </div>
+      ) : null}
       {passThrough?.armed && root.current
         ? (
           <div

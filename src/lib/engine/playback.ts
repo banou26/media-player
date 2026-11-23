@@ -6,6 +6,7 @@ import { getTimeRanges, updateSourceBuffer } from './source-buffer'
 import { createSubtitleRenderer } from './subtitles'
 import { labelledError } from '../labels'
 import type { SubtitleStream } from './subtitles'
+import type { SubtitleCue } from './subtitle-cues'
 
 export type { AudioStream }
 
@@ -73,6 +74,7 @@ export type PlaybackOptions = {
   onRecovered?: () => void
   onSeek?: (fraction: number) => void
   onSubtitleStreams?: (streams: SubtitleStream[]) => void
+  onSimpleCues?: (cues: SubtitleCue[]) => void
   onAudioStreams?: (streams: AudioStream[], selected: number) => void
   onOutput?: (output: PlaybackOutput) => void
 }
@@ -91,6 +93,8 @@ export type PlaybackController = {
   selectSubtitleStream: (streamIndex: number | undefined) => void
   setExternalSubtitleTrack: (assContent: string) => void
   clearExternalSubtitleTrack: () => void
+  setSubtitleOffset: (offsetSeconds: number) => void
+  setSubtitleSimpleMode: (enabled: boolean) => void
   /** Keyframe index of the input, which is what maps a downloaded byte range onto the timeline. */
   indexes: MediaIndex[]
   /** Named spans the container declared, empty when it declared none. */
@@ -176,7 +180,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     jassubWorkerUrl, jassubWasmUrl, jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl,
     defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, chooseAudioStream, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
-    onAudioStreams, onOutput,
+    onSimpleCues, onAudioStreams, onOutput,
   } = options
 
   const make = (streamIndex: number | undefined) => makeRemuxer({
@@ -227,6 +231,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       defaultFontUrl,
       cjkFontUrl,
       onStreams: onSubtitleStreams,
+      onSimpleCues,
     })
     teardown.push(() => subtitles.destroy())
     if (metadata.attachments?.length) subtitles.pushAttachments(metadata.attachments)
@@ -880,6 +885,8 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       selectSubtitleStream: (streamIndex: number | undefined) => subtitles.selectStream(streamIndex),
       setExternalSubtitleTrack: (assContent: string) => subtitles.setExternalTrack(assContent),
       clearExternalSubtitleTrack: () => subtitles.clearExternalTrack(),
+      setSubtitleOffset: (offsetSeconds: number) => subtitles.setTimeOffset(offsetSeconds),
+      setSubtitleSimpleMode: (enabled: boolean) => subtitles.setSimpleMode(enabled),
       indexes: metadata.indexes ?? [],
       chapters: metadata.chapters ?? [],
       duration: metadata.info.input.duration,

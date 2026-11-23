@@ -1,11 +1,12 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode } from 'react'
 import type { ExternalSubtitleFormat, MediaChapter, SubtitleCue } from '../engine'
+import type { SubtitlePosition } from '../utils/external-subtitles'
 import type { DownloadedRange, TrackChoice, VolumeNormalizerControl } from './source-feature'
 import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
 import type { ExposePlayerOptions, RemoteExternalSubtitleTrack, ServedPlayer } from '../remote'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { useContainerAttach, useMediaAttach } from '@videojs/react'
 
@@ -21,7 +22,16 @@ import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
 import { SubtitleCueOverlay } from './components/cue-overlay'
 import { LabelsProvider } from './labels'
-import { externalTrackLabel, isExternalTrackId, rawExternalTrackId, toExternalTrackId } from '../utils/external-subtitles'
+import {
+  clampSubtitleBackgroundOpacity,
+  clampSubtitleFontScale,
+  clampSubtitleOffset,
+  externalTrackLabel,
+  isExternalTrackId,
+  rawExternalTrackId,
+  readDroppedSubtitleFiles,
+  toExternalTrackId,
+} from '../utils/external-subtitles'
 import { languageOf, playsIn } from '../language'
 
 /**
@@ -219,6 +229,8 @@ type CommonOptions = {
    * remotely). An embedder setting tracks via `expose` wins while connected.
    */
   externalSubtitles?: ExternalSubtitleTrack[]
+  /** Invoked when the viewer drops supported subtitle files onto the player. */
+  onExternalSubtitleDrop?: (tracks: ExternalSubtitleTrack[]) => void
 }
 
 /**
@@ -409,6 +421,25 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
 
   const [video, setVideo] = useState<HTMLVideoElement | null>(null)
   const [subtitleLayer, setSubtitleLayer] = useState<HTMLDivElement | null>(null)
+  const player = usePlayer()
+  const [droppedSubtitles, setDroppedSubtitles] = useState<ExternalSubtitleTrack[]>([])
+  const [subtitleOffset, setSubtitleOffset] = useState(0)
+  const [simpleMode, setSimpleMode] = useState(false)
+  const [fontScale, setFontScale] = useState(1)
+  const [backgroundOpacity, setBackgroundOpacity] = useState(0.75)
+  const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition | null>(null)
+  const [localSimpleCues, setLocalSimpleCues] = useState<SubtitleCue[]>([])
+  const pendingDropSelectRef = useRef<string | null>(null)
+  const mediaIdentity = remote ? remote.media : size
+  const prevMediaIdentityRef = useRef(mediaIdentity)
+  useEffect(() => {
+    if (prevMediaIdentityRef.current === mediaIdentity) return
+    prevMediaIdentityRef.current = mediaIdentity
+    pendingDropSelectRef.current = null
+    setDroppedSubtitles([])
+    setSubtitleOffset(0)
+    setLocalSimpleCues([])
+  }, [mediaIdentity])
 
   // Attaching is not optional in either arm: the store installs `setSourceState` in `attach`, and
   // video.js only runs attach once media is non-null, so skipping it would leave every write below a
@@ -565,19 +596,41 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     }))
   }, [embedderSubtitles, served])
 
+  const baseExternal = remoteExternalSubtitles ?? options.externalSubtitles
+  const allExternalSubtitles = useMemo(() => {
+    if (!baseExternal?.length) {
+      return droppedSubtitles.length
+        ? droppedSubtitles
+        : (baseExternal !== undefined ? [] : undefined)
+    }
+    return droppedSubtitles.length ? [...baseExternal, ...droppedSubtitles] : baseExternal
+  }, [baseExternal, droppedSubtitles])
+
   const playbackOptions = useMemo(() => {
     if (!local) return null
-    return remoteExternalSubtitles !== undefined
-      ? { ...local, externalSubtitles: remoteExternalSubtitles }
+    return allExternalSubtitles !== undefined
+      ? { ...local, externalSubtitles: allExternalSubtitles }
       : local
-  }, [local, remoteExternalSubtitles])
+  }, [local, allExternalSubtitles])
+
+  const subtitleControls = useMemo(
+    () => ({ offset: subtitleOffset, simpleMode, onSimpleCues: setLocalSimpleCues }),
+    [subtitleOffset, simpleMode],
+  )
 
   // one per file, as `size` is the source's identity everywhere here
   const tap = useMemo(() => createPlaybackTap(), [size])
 
   // Each of these no-ops on null inputs, which is what a remote arm supplies: it renders no <video>,
   // so there is nothing for them to attach to and nothing to guard at the call site.
-  usePlayback(video, subtitleLayer, playbackOptions, readsDownload ? tap.push : undefined, embedderSubtitlesRevision)
+  usePlayback(
+    video,
+    subtitleLayer,
+    playbackOptions,
+    readsDownload ? tap.push : undefined,
+    embedderSubtitlesRevision,
+    subtitleControls,
+  )
 
   const normalizeVolumeProp = local?.normalizeVolume ?? true
   const [normalizeVolume, setNormalizeVolume] = useState(normalizeVolumeProp)
@@ -700,7 +753,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   // and external choices share one menu with mutual exclusion and cues render in `subtitleOverlay`.
   const subtitles = remote?.subtitles?.selection
   const audio = remote?.audioTracks?.selection
-  const remoteExternal = remote ? (remoteExternalSubtitles ?? options.externalSubtitles) : undefined
+  const remoteExternal = remote ? allExternalSubtitles : undefined
   const [activeExternalId, setActiveExternalId] = useState<string | null>(null)
   const [externalCues, setExternalCues] = useState<SubtitleCue[]>([])
   const remoteCueCacheRef = useRef(new Map<string, { raw?: string, cues: SubtitleCue[] }>())
@@ -881,6 +934,48 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({ chapters })
   }, [setSourceState, chapters])
 
+  useEffect(() => {
+    setSourceState({
+      subtitleSettings: {
+        offset: subtitleOffset,
+        setOffset: (next) => setSubtitleOffset(clampSubtitleOffset(next)),
+        simpleMode,
+        simpleModeAvailable: !remote,
+        setSimpleMode,
+        fontScale,
+        setFontScale: (next) => setFontScale(clampSubtitleFontScale(next)),
+        backgroundOpacity,
+        setBackgroundOpacity: (next) => setBackgroundOpacity(clampSubtitleBackgroundOpacity(next)),
+        position: subtitlePosition,
+        resetPosition: () => setSubtitlePosition(null),
+      },
+    })
+  }, [setSourceState, !!remote, subtitleOffset, simpleMode, fontScale, backgroundOpacity, subtitlePosition])
+
+  const subtitleTracksState = usePlayer((state) => state.subtitleTracks)
+  useEffect(() => {
+    const pendingId = pendingDropSelectRef.current
+    if (!pendingId || !subtitleTracksState.some((track) => track.id === pendingId)) return
+    pendingDropSelectRef.current = null
+    void player.selectSubtitleTrack(pendingId)
+  }, [player, subtitleTracksState])
+
+  const onExternalSubtitleDropRef = useRef(options.onExternalSubtitleDrop)
+  onExternalSubtitleDropRef.current = options.onExternalSubtitleDrop
+  const handleSubtitleFileDrop = useCallback(async (files: File[]) => {
+    const identity = prevMediaIdentityRef.current
+    const added = await readDroppedSubtitleFiles(files)
+    if (!added.length || prevMediaIdentityRef.current !== identity) return
+    pendingDropSelectRef.current = toExternalTrackId(added[0]!.id)
+    setDroppedSubtitles((prev) => [...prev, ...added])
+    onExternalSubtitleDropRef.current?.(added)
+  }, [])
+
+  const overlayCues = remote
+    ? externalCues
+    : (simpleMode ? localSimpleCues : [])
+  const overlayMedia = remote ? remote.media : video
+
   return (
     <Chrome
       ref={setContainer}
@@ -888,7 +983,18 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       // passed in as children. Rendering an idle <video> here would sit over it.
       onVideoRef={remote ? undefined : setVideo}
       onSubtitleRef={setSubtitleLayer}
-      subtitleOverlay={remote && externalCues.length ? <SubtitleCueOverlay cues={externalCues} media={remote.media} /> : null}
+      onSubtitleFileDrop={handleSubtitleFileDrop}
+      subtitleOverlay={overlayCues.length ? (
+        <SubtitleCueOverlay
+          cues={overlayCues}
+          media={overlayMedia}
+          offset={subtitleOffset}
+          fontScale={fontScale}
+          backgroundOpacity={backgroundOpacity}
+          position={subtitlePosition}
+          onPositionChange={setSubtitlePosition}
+        />
+      ) : null}
       overlay={options.overlay}
       controls={options.controls}
       shortcuts={options.shortcuts}

@@ -66,9 +66,11 @@ const cleanTimedCueText = (lines: string[]): string => {
     .trim()
 }
 
-const cleanAssText = (raw: string): string =>
+/** Strips ASS drawing blocks and override tags, leaving plain display text with newlines. */
+export const stripAssFormatting = (raw: string): string =>
   raw
-    .replace(/\{\\[^}]*\}/g, '')
+    .replace(/\{[^}]*\\p[1-9][^}]*\}[\s\S]*?(?=\{[^}]*\\p0[^}]*\}|$)/g, '')
+    .replace(/\{[^}]*\}/g, '')
     .replace(/\\[Nn]/g, '\n')
     .replace(/\\h/g, ' ')
     .trim()
@@ -108,8 +110,7 @@ const parseAssFallback = (clean: string): SubtitleCue[] => {
     if (start === null || end === null || end <= start) continue
     const rawText = parts.slice(9).join(',')
     // Strip vector drawing blocks ({\p1}...{\p0}) when falling back outside ass-compiler.
-    const withoutDrawings = rawText.replace(/\{\\p[1-9][^}]*\}[\s\S]*?(?=\{\\p0[^}]*\}|$)/g, '')
-    const text = cleanAssText(withoutDrawings)
+    const text = stripAssFormatting(rawText)
     if (!text) continue
     cues.push({ start, end, text })
   }
@@ -127,7 +128,7 @@ const parseAss = (clean: string): SubtitleCue[] => {
         .filter((fragment) => !fragment.drawing)
         .map((fragment) => fragment.text)
         .join('')
-      const cleaned = cleanAssText(text)
+      const cleaned = stripAssFormatting(text)
       if (!cleaned) continue
       cues.push({ start: dialogue.start, end: dialogue.end, text: cleaned })
     }
