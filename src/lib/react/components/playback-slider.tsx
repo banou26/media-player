@@ -70,21 +70,22 @@ export const PlaybackSlider = () => {
   const trackRef = useRef<HTMLDivElement>(null)
 
   const MIN_RATE = 0.25
-  const MAX_RATE = 3.0
+  const MAX_RATE = 4.0
   const RANGE = MAX_RATE - MIN_RATE
 
-  const roundToStep = (value: number, step: number = 0.05): number => {
-    return Math.round(value / step) * step
-  }
+  const roundToStep = (value: number, step: number = 0.05): number =>
+    Number((Math.round(value / step) * step).toFixed(2))
 
-  const roundedRate = roundToStep(playbackRate || 1)
+  const clampRate = (rate: number): number =>
+    Math.min(MAX_RATE, Math.max(MIN_RATE, rate))
 
-  const getHandlePosition = (rate: number): number => {
-    return ((rate - MIN_RATE) / RANGE) * 100
-  }
+  const roundedRate = clampRate(roundToStep(playbackRate || 1))
+
+  const getHandlePosition = (rate: number): number =>
+    Math.max(0, Math.min(100, ((rate - MIN_RATE) / RANGE) * 100))
 
   // the inverse of getHandlePosition, measured across the track rather than the padded row
-  const getPlaybackRateFromFraction = (fraction: number): number => roundToStep(MIN_RATE + (fraction * RANGE))
+  const getPlaybackRateFromFraction = (fraction: number): number => clampRate(roundToStep(MIN_RATE + (fraction * RANGE)))
 
   const { handlers } = useDragValue({
     ref: trackRef,
@@ -94,15 +95,8 @@ export const PlaybackSlider = () => {
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault()
     const step = 0.05
-    let newRate = roundedRate
-
-    if (e.deltaY < 0) {
-      newRate = Math.min(MAX_RATE, newRate + step)
-    } else {
-      newRate = Math.max(MIN_RATE, newRate - step)
-    }
-
-    player.setPlaybackRate(newRate)
+    const delta = e.deltaY < 0 ? step : -step
+    player.setPlaybackRate(clampRate(roundToStep(roundedRate + delta)))
   }
 
   useEffect(() => {

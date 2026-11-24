@@ -275,7 +275,7 @@ const ENGLISH: [string, string][] = [
   ['audio menu', 'Audio | Japanese✓ | English'],
   ['quality menu', 'Quality | Auto✓ | 1080p | 720p'],
   ['speed menu', 'Playback speed'],
-  ['speed presets', '0.5x | 1x | 1.5x | 2x'],
+  ['speed presets', '0.5x | 1x | 1.5x | 2x | 2.5x | 3x | 3.5x | 4x'],
   ['speed readout', '1.00x'],
   ['settings menu at 1.25', 'Audio | QualityAuto | Playback speed1.25 | Normalize volume'],
   ['settings menu refused', 'Audio | QualityAuto | Playback speed1.25 | Normalize volumeUnavailable'],
@@ -360,7 +360,7 @@ describe('a player given a language', () => {
     expect(unchanged(seen)).toEqual(['play name', 'playing play tooltip', 'audio menu'])
     const shown = Object.fromEntries(seen)
     expect(shown['settings menu']).toBe('Audio | QualitéAuto | Vitesse de lecture(Normale)')
-    expect(shown['speed presets']).toBe('0,5x | 1x | 1,5x | 2x')
+    expect(shown['speed presets']).toBe('0,5x | 1x | 1,5x | 2x | 2,5x | 3x | 3,5x | 4x')
     expect(shown['speed readout']).toBe('1,00x')
     expect(shown['volume-slider tooltip']).toBe(new Intl.NumberFormat('fr', { style: 'percent' }).format(1))
     expect(shown['errors when']).toBe(`${clock(AT, 'fr')} position 13:39 lecture rétablie | de ${clock(AT + 60_000, 'fr')} à ${clock(AT + 120_000, 'fr')}\u00d740`)
@@ -411,7 +411,7 @@ describe('a player given a language', () => {
     row(root, 'menu', 2).click()
     await settle()
     expect(root.querySelector('.playback-rate .back')!.textContent).toBe('Playback speed')
-    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x'])
+    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x', '2,5x', '3x', '3,5x', '4x'])
     button(root, 'settings').click()
     expect(await tooltip(root, 'volume-slider')).toBe(new Intl.NumberFormat('en-DE', { style: 'percent' }).format(1))
   }, 30_000)
@@ -425,7 +425,7 @@ describe('a player given a language', () => {
     row(root, 'menu', 2).click()
     await settle()
     // es-419 itself writes 0.5
-    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x'])
+    expect([...root.querySelectorAll('.playback-rate .options > div')].map((preset) => preset.textContent?.trim())).toEqual(['0,5x', '1x', '1,5x', '2x', '2,5x', '3x', '3,5x', '4x'])
   }, 30_000)
 })
 
