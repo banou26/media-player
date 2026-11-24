@@ -19,6 +19,23 @@ const findChrome = () => {
   return undefined
 }
 
+const firefoxAll = process.env.MEDIA_PLAYER_FIREFOX_ALL === '1'
+const chromiumOnlyTests = [
+  'tests/park-pointer.browser.test.ts',
+  // Firefox OfflineAudioContext.decodeAudioData rejects FLAC-in-MKV, and headless PulseAudio + WebCodecs AAC-in-MKV
+  // intermittently stays on the live stage past the 6 s warm-up (Firefox 1538, 2026-11-24).
+  'tests/lib/audio/volume-normalizer-sync.browser.test.tsx',
+  'tests/lib/engine/subtitle-matrix-at-start.browser.test.ts',
+  'tests/lib/react/double-click-fullscreen.browser.test.tsx',
+  'tests/lib/react/host-fullscreen.browser.test.tsx',
+  'tests/lib/react/idle-hide.browser.test.tsx',
+  'tests/lib/react/pass-through-picture-in-picture.browser.test.tsx',
+  // Exercises W3C document.pictureInPictureElement / PictureInPictureWindow; Gecko uses burn-in PiP instead
+  'tests/lib/react/picture-in-picture-window.browser.test.tsx',
+  'tests/lib/react/skip-chapter-seek-preview.browser.test.tsx',
+  'tests/lib/react/subtitle-matrix.browser.test.tsx',
+]
+
 // a function, because vitest writes each project's name onto its instances
 const browser = (engine: 'chromium' | 'firefox' = 'chromium') => ({
   enabled: true,
@@ -148,11 +165,11 @@ export default defineConfig({
       /**
        * Firefox for the files that pin a Gecko behaviour, which the browser project also runs in Chromium as
        * the control. CI installs playwright's Firefox. Elsewhere it is opt-in: MEDIA_PLAYER_FIREFOX names a
-       * playwright Firefox build, and MEDIA_PLAYER_FIREFOX_ALL=1 widens the project to every non-autoplay
-       * browser test file. On NixOS an ffmpeg lib directory has to be on LD_LIBRARY_PATH, without which
-       * Firefox has no H.264 (measured 2026-10-11, Firefox 151), and for audio a libpulseaudio one, without
-       * which an AudioContext stays suspended after a click (measured 2026-10-26, Firefox 157; verified
-       * live 2026-11-24 on volume-normalizer tests).
+       * playwright Firefox build, and MEDIA_PLAYER_FIREFOX_ALL=1 runs every cross-browser non-autoplay
+       * browser test file (excluding CDP, W3C PiP window, WebAudio sync, and Chromium-only color-matrix specs). On NixOS an ffmpeg lib
+       * directory has to be on LD_LIBRARY_PATH, without which Firefox has no H.264 (measured 2026-10-11,
+       * Firefox 151), and for audio a libpulseaudio one, without which an AudioContext stays suspended
+       * after a click (measured 2026-10-26, Firefox 157; verified live 2026-11-24 on volume-normalizer tests).
        */
       ...(process.env.CI || process.env.MEDIA_PLAYER_FIREFOX
         ? [{
@@ -160,13 +177,13 @@ export default defineConfig({
           test: {
             name: 'firefox',
             include: [
-              process.env.MEDIA_PLAYER_FIREFOX_ALL
+              firefoxAll
                 ? 'tests/**/*.browser.test.{ts,tsx}'
                 : 'tests/**/*.firefox.browser.test.{ts,tsx}',
             ],
-            ...(process.env.MEDIA_PLAYER_FIREFOX_ALL
+            ...(firefoxAll
               ? {
-                exclude: ['tests/**/*.autoplay.browser.test.{ts,tsx}'],
+                exclude: ['tests/**/*.autoplay.browser.test.{ts,tsx}', ...chromiumOnlyTests],
               }
               : {}),
             browser: browser('firefox'),

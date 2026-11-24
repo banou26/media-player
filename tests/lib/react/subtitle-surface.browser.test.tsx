@@ -67,7 +67,7 @@ describe('reading the subtitle surface', () => {
       // the commit reaches the placeholder on the compositor's clock, not the worker's reply
       let read = readSurface(surface)
       const deadline = performance.now() + 5_000
-      while ((!read || !ink(read)) && performance.now() < deadline) {
+      while ((!read || !ink(read) || read.width !== RENDER.width || read.height !== RENDER.height) && performance.now() < deadline) {
         await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 50)))
         read = readSurface(surface)
       }

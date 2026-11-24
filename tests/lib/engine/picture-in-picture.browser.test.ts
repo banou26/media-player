@@ -69,8 +69,25 @@ const stub = (target: object, key: string, value: unknown) => {
   })
 }
 
+const hide = (target: object, key: string) => {
+  let current: object | null = target
+  while (current) {
+    if (Object.prototype.hasOwnProperty.call(current, key)) {
+      const owner = current
+      const original = Object.getOwnPropertyDescriptor(owner, key)
+      delete (owner as Record<string, unknown>)[key]
+      cleanups.push(() => {
+        if (original) Object.defineProperty(owner, key, original)
+      })
+    }
+    current = Object.getPrototypeOf(current)
+  }
+}
+
 describe('picture in picture mode detection', () => {
   it('opens a window where the W3C api exists', () => {
+    stub(HTMLVideoElement.prototype, 'requestPictureInPicture', async () => ({}) as PictureInPictureWindow)
+    stub(Document.prototype, 'pictureInPictureEnabled', true)
     expect(pictureInPictureMode()).toBe('window')
   })
 
@@ -85,13 +102,16 @@ describe('picture in picture mode detection', () => {
     // Safari: its picture in picture is webkitSetPresentationMode, which neither arm drives.
     stub(HTMLVideoElement.prototype, 'requestPictureInPicture', undefined)
     stub(Document.prototype, 'pictureInPictureEnabled', false)
+    hide(HTMLVideoElement.prototype, 'mozCaptureStream')
     expect(pictureInPictureMode()).toBeNull()
   })
 
   it('does not mistake a withheld permission for a missing api', () => {
     // A permissions policy can turn pictureInPictureEnabled off on a browser that implements it
     // perfectly. That frame must not be handed the Gecko variant.
+    stub(HTMLVideoElement.prototype, 'requestPictureInPicture', async () => ({}) as PictureInPictureWindow)
     stub(Document.prototype, 'pictureInPictureEnabled', false)
+    hide(HTMLVideoElement.prototype, 'mozCaptureStream')
     expect(pictureInPictureMode()).toBeNull()
   })
 })

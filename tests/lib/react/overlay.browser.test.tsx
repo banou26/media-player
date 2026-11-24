@@ -62,7 +62,8 @@ describe('the overlay', () => {
     // Right-aligned AND inside. Only the second half catches an item hanging off the edge with its
     // last glyphs cut away, because an overhang reads as a negative distance and passes the first.
     expect(player.right - item.right).toBeLessThan(player.width / 8)
-    expect(item.right).toBeLessThanOrEqual(player.right)
+    // 0.5 px absorbs Gecko sub-pixel rounding while still catching any real overhang
+    expect(item.right).toBeLessThanOrEqual(player.right + 0.5)
   })
 
   it('takes several items, each placed on its own', async () => {

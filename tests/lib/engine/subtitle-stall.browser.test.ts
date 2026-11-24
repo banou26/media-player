@@ -132,6 +132,9 @@ describe('a subtitle change during a buffering stall', () => {
     const frames: number[] = []
     const count = () => { frames.push(video.currentTime); video.requestVideoFrameCallback(count) }
     video.requestVideoFrameCallback(count)
+    // Gecko delivers one initial rVFC callback on registration for the existing frame before going silent during the stall
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    frames.length = 0
 
     expect(inkOf(), 'nothing was on screen to go stale').not.toBeNull()
     renderer.selectStream(SUBTITLES_OFF)
