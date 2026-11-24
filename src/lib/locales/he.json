@@ -44,6 +44,7 @@
   "Subtitle settings": "הגדרות כתוביות",
   "Subtitles": "כתוביות",
   "Subtitles are in the picture": "הכתוביות מוטמעות בתמונה",
+  "Switch source": "החלפת מקור",
   "Text size": "גודל טקסט",
   "The MediaSource closed before a SourceBuffer could be created": "ה-MediaSource נסגר לפני שנוצר SourceBuffer",
   "The MediaSource never opened": "ה-MediaSource לא נפתח",

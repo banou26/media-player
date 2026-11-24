@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { ReactNode, Ref } from 'react'
 import type { ViewportBox } from '../source-feature'
-import type { EpisodeNavigation, HostFullscreen } from '../video-player'
+import type { EpisodeNavigation, HostFullscreen, SourceSwitch } from '../video-player'
 
 import { Children, Fragment, isValidElement, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
@@ -166,12 +166,13 @@ export type ChromeProps = {
   /** False leaves the last ending out of the skip offer. */
   endingOffered: boolean
   episodeNavigation?: EpisodeNavigation
+  sourceSwitch?: SourceSwitch
   /** Invoked when supported subtitle files (`.srt`, `.vtt`, `.ass`, `.ssa`) are dropped onto the player. */
   onSubtitleFileDrop?: (files: File[]) => void
   children?: ReactNode
 }
 
-export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, onSubtitleFileDrop, children }: ChromeProps) => {
+export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overlay, controls, shortcuts, fullscreen, endingOffered, episodeNavigation, sourceSwitch, onSubtitleFileDrop, children }: ChromeProps) => {
   const player = usePlayer()
   const { format } = useLabels()
   const hideUI = usePlayer((state) => state.hideUI)
@@ -409,7 +410,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overla
       ))}
       {controls === false ? null : (
         <HostKeepsFullscreen value={!!fullscreen}>
-          <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} episodeNavigation={episodeNavigation} />
+          <ControlBar shortcuts={shortcuts} root={root} fullscreen={fullscreen} episodeNavigation={episodeNavigation} sourceSwitch={sourceSwitch} />
         </HostKeepsFullscreen>
       )}
       {/* Not tied to `hideUI`: it says what to do next, and it is on screen for nine seconds. */}

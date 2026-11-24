@@ -44,6 +44,7 @@
   "Subtitle settings": "Configuración de subtítulos",
   "Subtitles": "Subtítulos",
   "Subtitles are in the picture": "Los subtítulos están en la imagen",
+  "Switch source": "Cambiar fuente",
   "Text size": "Tamaño de texto",
   "The MediaSource closed before a SourceBuffer could be created": "La MediaSource se cerró antes de poder crear un SourceBuffer",
   "The MediaSource never opened": "La MediaSource nunca se abrió",

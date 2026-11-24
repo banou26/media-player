@@ -5,6 +5,7 @@ export type {
   EpisodeNavigation,
   EpisodeStep,
   ExternalSubtitleTrack,
+  SourceSwitch,
   HostFullscreen,
   MediaPlayerOptions,
   MediaPlayerLocalOptions,

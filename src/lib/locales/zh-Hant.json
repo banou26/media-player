@@ -44,6 +44,7 @@
   "Subtitle settings": "字幕設定",
   "Subtitles": "字幕",
   "Subtitles are in the picture": "字幕已嵌入畫面",
+  "Switch source": "切換來源",
   "Text size": "文字大小",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource 在建立 SourceBuffer 之前已關閉",
   "The MediaSource never opened": "MediaSource 始終未開啟",

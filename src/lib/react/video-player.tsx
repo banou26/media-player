@@ -74,6 +74,23 @@ export type EpisodeNavigation = {
   next?: EpisodeStep | null
 }
 
+/** Quick source and subsource switch control shown before subtitles when present. */
+export type SourceSwitch = EpisodeStep
+
+const resolveStep = (
+  served: EventTarget,
+  override: boolean | string | null | undefined,
+  prop: EpisodeStep | null | undefined,
+  event: 'previousrequest' | 'nextrequest' | 'sourceswitchrequest',
+): EpisodeStep | null | undefined => {
+  if (override === undefined) return prop
+  if (override === false || override === null) return null
+  return {
+    ...typeof override === 'string' && override ? { title: override } : {},
+    request: () => served.dispatchEvent(new Event(event)),
+  }
+}
+
 /** An external subtitle track loaded outside the media container and rendered via `SubtitleRenderer`. */
 export type ExternalSubtitleTrack = {
   id: string
@@ -119,6 +136,8 @@ type CommonOptions = {
 
   /** Previous and next episode navigation controls shown next to play. An embedder setting them via `expose` wins. */
   episodeNavigation?: EpisodeNavigation
+  /** Quick source switch button shown before subtitles. An embedder setting it via `expose` wins. */
+  sourceSwitch?: SourceSwitch
 
   /**
    * Named spans of the timeline, drawn as segments on the seekbar.
@@ -468,6 +487,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const [autoplayNext, setAutoplayNext] = useState(options.autoplayNext)
   const [embedderPrevious, setEmbedderPrevious] = useState<boolean | string | null | undefined>(undefined)
   const [embedderNext, setEmbedderNext] = useState<boolean | string | null | undefined>(undefined)
+  const [embedderSourceSwitch, setEmbedderSourceSwitch] = useState<boolean | string | null | undefined>(undefined)
   const [embedderSubtitles, setEmbedderSubtitles] = useState<RemoteExternalSubtitleTrack[] | null>(null)
   const [embedderSubtitlesRevision, setEmbedderSubtitlesRevision] = useState(0)
   const pendingSubtitleLoads = useRef(new Map<string, { resolve: (content: string) => void, reject: (error: Error) => void }>())
@@ -485,6 +505,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       },
       onPreviousEpisode: (step: boolean | string | null | undefined) => setEmbedderPrevious(step),
       onNextEpisode: (step: boolean | string | null | undefined) => setEmbedderNext(step),
+      onSourceSwitch: (value: boolean | string | null | undefined) => setEmbedderSourceSwitch(value),
       onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => {
         if (tracks === null) {
           for (const { reject } of pendingSubtitleLoads.current.values()) {
@@ -560,22 +581,15 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   })
 
   const episodeNavigation = useMemo<EpisodeNavigation | undefined>(() => {
-    const resolveStep = (
-      override: boolean | string | null | undefined,
-      prop: EpisodeStep | null | undefined,
-      event: 'previousrequest' | 'nextrequest',
-    ): EpisodeStep | null | undefined => {
-      if (override === undefined) return prop
-      if (override === false || override === null) return null
-      return {
-        ...typeof override === 'string' && override ? { title: override } : {},
-        request: () => served.dispatchEvent(new Event(event)),
-      }
-    }
-    const previous = resolveStep(embedderPrevious, options.episodeNavigation?.previous, 'previousrequest')
-    const next = resolveStep(embedderNext, options.episodeNavigation?.next, 'nextrequest')
+    const previous = resolveStep(served, embedderPrevious, options.episodeNavigation?.previous, 'previousrequest')
+    const next = resolveStep(served, embedderNext, options.episodeNavigation?.next, 'nextrequest')
     return previous !== undefined || next !== undefined ? { previous, next } : undefined
   }, [embedderPrevious, embedderNext, options.episodeNavigation, served])
+
+  const sourceSwitch = useMemo<SourceSwitch | undefined>(
+    () => resolveStep(served, embedderSourceSwitch, options.sourceSwitch, 'sourceswitchrequest') ?? undefined,
+    [embedderSourceSwitch, options.sourceSwitch, served],
+  )
 
   const remoteExternalSubtitles = useMemo<ExternalSubtitleTrack[] | undefined>(() => {
     if (!embedderSubtitles) return undefined
@@ -1001,6 +1015,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       fullscreen={fullscreen}
       endingOffered={endingOffered}
       episodeNavigation={episodeNavigation}
+      sourceSwitch={sourceSwitch}
     >
       {children}
     </Chrome>

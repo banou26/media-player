@@ -51,7 +51,7 @@ const tracks = (options: { id: string, label: string }[], selectedId: string | n
 })
 
 /** The player under test, its media, and a rerender with the host's fullscreen on or off. */
-const mount = async ({ language, width, height, pictureInPicture = true }: { language?: string, width?: number, height?: number, pictureInPicture?: boolean } = {}) => {
+const mount = async ({ language, width, height, pictureInPicture = true, episodeNavigation = false, sourceSwitch = false }: { language?: string, width?: number, height?: number, pictureInPicture?: boolean, episodeNavigation?: boolean, sourceSwitch?: boolean } = {}) => {
   const media = createFakeRemoteMedia({ duration: DURATION })
   const player = (active: boolean) => (
     <MediaPlayer
@@ -62,6 +62,8 @@ const mount = async ({ language, width, height, pictureInPicture = true }: { lan
       quality={tracks([{ id: '1080', label: '1080p' }, { id: '720', label: '720p' }], null, { offLabel: 'Auto' })}
       chapters={CHAPTERS}
       {...pictureInPicture ? { pictureInPicture: { onArmedChange: () => {} } } : {}}
+      {...episodeNavigation ? { episodeNavigation: { previous: { request: () => {} }, next: { request: () => {} } } } : {}}
+      {...sourceSwitch ? { sourceSwitch: { request: () => {} } } : {}}
       fullscreen={{ active, request: () => {} }}
     >
       <Store />
@@ -523,12 +525,12 @@ describe('at a phone\'s width', () => {
   it.each(['en', ...LANGUAGES])('%s keeps the bar, its menus, its tooltips, the errors and the skip offer inside the player', async (language) => {
     await page.viewport(390, 844)
     try {
-      const { root, media } = await mount({ language, width: 390, height: 220 })
+      const { root, media } = await mount({ language, width: 390, height: 220, episodeNavigation: true, sourceSwitch: true })
       if (language !== 'en') await translated(root)
       const found: string[] = []
       const look = (state: string) => found.push(...overflowing(root).map((problem) => `${state}: ${problem}`))
       look('at rest')
-      for (const id of ['play', 'sound', 'subtitles', 'settings', 'full-screen']) await tooltip(root, id, () => look(`${id} tooltip`))
+      for (const id of ['play', 'sound', 'source-switch', 'subtitles', 'settings', 'full-screen']) await tooltip(root, id, () => look(`${id} tooltip`))
       store.set!({ volumeNormalizer: { enabled: true, available: false, setEnabled: () => {} } })
       media.playbackRate = 1.25
       media.dispatchEvent(new Event('ratechange'))

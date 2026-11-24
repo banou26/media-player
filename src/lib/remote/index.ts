@@ -102,6 +102,7 @@ export type ServedPlayer = EventTarget & {
   onAutoplayNext: (on: boolean | null) => void
   onPreviousEpisode?: (step: boolean | string | null | undefined) => void
   onNextEpisode?: (step: boolean | string | null | undefined) => void
+  onSourceSwitch?: (sourceSwitch: boolean | string | null | undefined) => void
   onExternalSubtitles?: (tracks: RemoteExternalSubtitleTrack[] | null) => void
   onProvideExternalSubtitle?: (trackId: string, content: string | null, error?: string) => void
 }
@@ -180,6 +181,8 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   const tellPreviousEpisode = (id: string) => players.get(id)?.onPreviousEpisode?.(previousEpisode.has(id) ? previousEpisode.get(id) : undefined)
   const nextEpisode = new Map<string, boolean | string | null>()
   const tellNextEpisode = (id: string) => players.get(id)?.onNextEpisode?.(nextEpisode.has(id) ? nextEpisode.get(id) : undefined)
+  const sourceSwitch = new Map<string, boolean | string | null>()
+  const tellSourceSwitch = (id: string) => players.get(id)?.onSourceSwitch?.(sourceSwitch.has(id) ? sourceSwitch.get(id) : undefined)
   const externalSubtitles = new Map<string, RemoteExternalSubtitleTrack[]>()
   const tellExternalSubtitles = (id: string) => players.get(id)?.onExternalSubtitles?.(externalSubtitles.get(id) ?? null)
   const drop = (id: string, port: MessagePort) => {
@@ -189,6 +192,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (autoplayNext.delete(id)) tellAutoplayNext(id)
       if (previousEpisode.delete(id)) tellPreviousEpisode(id)
       if (nextEpisode.delete(id)) tellNextEpisode(id)
+      if (sourceSwitch.delete(id)) tellSourceSwitch(id)
       if (externalSubtitles.delete(id)) tellExternalSubtitles(id)
     }
     try { port.onmessage = null; port.close() } catch {}
@@ -264,14 +268,17 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         tellAutoplayNext(id)
         return
       }
-      if (name === 'previousEpisode' || name === 'nextEpisode') {
+      if (name === 'previousEpisode' || name === 'nextEpisode' || name === 'sourceSwitch') {
         if ((typeof value !== 'boolean' && typeof value !== 'string' && value !== null) || !ports.get(id)?.size) return
         if (name === 'previousEpisode') {
           previousEpisode.set(id, value)
           tellPreviousEpisode(id)
-        } else {
+        } else if (name === 'nextEpisode') {
           nextEpisode.set(id, value)
           tellNextEpisode(id)
+        } else {
+          sourceSwitch.set(id, value)
+          tellSourceSwitch(id)
         }
         return
       }
@@ -370,6 +377,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         previous.onHostFullscreen(null)
         previous.onPreviousEpisode?.(undefined)
         previous.onNextEpisode?.(undefined)
+        previous.onSourceSwitch?.(undefined)
         previous.onExternalSubtitles?.(null)
       }
       medias.set(player, media)
@@ -379,6 +387,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (autoplayNext.has(player)) tellAutoplayNext(player)
       if (previousEpisode.has(player)) tellPreviousEpisode(player)
       if (nextEpisode.has(player)) tellNextEpisode(player)
+      if (sourceSwitch.has(player)) tellSourceSwitch(player)
       if (externalSubtitles.has(player)) tellExternalSubtitles(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
@@ -393,6 +402,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
           around.onHostFullscreen(null)
           around.onPreviousEpisode?.(undefined)
           around.onNextEpisode?.(undefined)
+          around.onSourceSwitch?.(undefined)
           around.onExternalSubtitles?.(null)
         }
         post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
@@ -465,6 +475,11 @@ export type MediaPlayerHandle =
      * a string shows with that tooltip title, and `false` or `null` hides it. Clicking emits `nextrequest`.
      */
     nextEpisode: boolean | string | null
+    /**
+     * Source switch control shown by the far `<MediaPlayer expose>`. `true` shows with default label,
+     * a string shows with that tooltip title, and `false` or `null` hides it. Clicking emits `sourceswitchrequest`.
+     */
+    sourceSwitch: boolean | string | null
     /**
      * External subtitle tracks offered to the far `<MediaPlayer expose>`, persisted per player id while
      * any mirror listens.
@@ -560,7 +575,7 @@ type Link = {
   attach: (subscriber: Subscriber) => () => void
   set: (
     id: string,
-    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode',
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch',
     value: number | boolean | string | null,
   ) => Promise<unknown> | undefined
   setExternalSubtitles: (id: string, tracks: RemoteExternalSubtitleTrack[]) => Promise<unknown> | undefined
@@ -721,6 +736,7 @@ export const mediaPlayer = (
   let fullscreen = false
   let previousEpisode: boolean | string | null = null
   let nextEpisode: boolean | string | null = null
+  let sourceSwitch: boolean | string | null = null
   let externalSubtitles: RemoteExternalSubtitleTrack[] = []
   let pauseCount = 0
   const pauseListeners = new Set<() => void>()
@@ -822,6 +838,15 @@ export const mediaPlayer = (
       if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
       nextEpisode = value
       void after(() => link.set(playerId, 'nextEpisode', value))
+    },
+    enumerable: true,
+  })
+  Object.defineProperty(player, 'sourceSwitch', {
+    get: () => sourceSwitch,
+    set: (value: boolean | string | null) => {
+      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
+      sourceSwitch = value
+      void after(() => link.set(playerId, 'sourceSwitch', value))
     },
     enumerable: true,
   })

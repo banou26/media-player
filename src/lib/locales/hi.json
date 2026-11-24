@@ -44,6 +44,7 @@
   "Subtitle settings": "उपशीर्षक सेटिंग्स",
   "Subtitles": "सबटाइटल",
   "Subtitles are in the picture": "सबटाइटल तस्वीर में हैं",
+  "Switch source": "स्रोत बदलें",
   "Text size": "टेक्स्ट आकार",
   "The MediaSource closed before a SourceBuffer could be created": "SourceBuffer बनने से पहले MediaSource बंद हो गया",
   "The MediaSource never opened": "MediaSource कभी नहीं खुला",

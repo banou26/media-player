@@ -1,11 +1,11 @@
 /// <reference types="@emotion/react/types/css-prop" />
 import type { RefObject } from 'react'
 import type { PlayerMedia } from '../media'
-import type { EpisodeNavigation, HostFullscreen } from '../video-player'
+import type { EpisodeNavigation, HostFullscreen, SourceSwitch } from '../video-player'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { Maximize, Minimize, Pause, Play, RotateCcw, SkipBack, SkipForward } from 'lucide-react'
+import { Layers, Maximize, Minimize, Pause, Play, RotateCcw, SkipBack, SkipForward } from 'lucide-react'
 
 import { linearToLogVolume, logToLinearVolume } from '../../utils/volume-utils'
 import { formatMediaTime } from '../../utils/time'
@@ -45,7 +45,10 @@ const style = css`
 
     /* repeated per breakpoint: nested at-rules are hoisted after the rule, so a shorthand inside a
        media query would override a longhand above it and silently drop the safe-area inset */
-    padding: 6px calc(12px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+    padding: 6px calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px));
+    @media (min-width: 481px) {
+      padding: 6px calc(12px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px));
+    }
     @media (min-width: 768px) {
       padding: 8px calc(16px + env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
     }
@@ -89,7 +92,7 @@ const style = css`
         }
       }
 
-      .play, .previous, .next, .sound, .time, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
+      .play, .previous, .next, .sound, .time, .errors, .source-switch, .subtitles, .settings, .picture-in-picture, .full-screen {
         display: flex;
         align-items: center;
 
@@ -98,7 +101,10 @@ const style = css`
         border-radius: 4px;
         user-select: none;
 
-        padding: 8px;
+        padding: 8px 4px;
+        @media (min-width: 481px) {
+          padding: 8px;
+        }
         @media (min-width: 768px) {
           padding: 8px 12px;
         }
@@ -107,17 +113,7 @@ const style = css`
         }
       }
 
-      .play, .previous, .next, .sound, .errors, .subtitles, .settings, .picture-in-picture, .full-screen {
-        border-radius: 4px;
-
-        padding: 8px;
-        @media (min-width: 768px) {
-          padding: 8px 12px;
-        }
-        @media (min-width: 2560px) {
-          padding: 8px 12px;
-        }
-
+      .play, .previous, .next, .sound, .errors, .source-switch, .subtitles, .settings, .picture-in-picture, .full-screen {
         cursor: pointer;
 
         /* .armed is the hover of a control letting its click through, which takes no pointer events
@@ -131,9 +127,12 @@ const style = css`
         @media (pointer: coarse) {
           /* border-box explicitly, since a consumer reset cannot be assumed */
           box-sizing: border-box;
-          min-width: 44px;
+          min-width: 32px;
           min-height: 44px;
           justify-content: center;
+          @media (min-width: 481px) {
+            min-width: 44px;
+          }
         }
       }
     }
@@ -142,6 +141,7 @@ const style = css`
       .time {
         ${fonts.bMedium.regular}
         text-shadow: 0 0 4px rgba(0, 0, 0, 1);
+        white-space: nowrap;
       }
     }
     .right {
@@ -164,11 +164,12 @@ const style = css`
 `
 
 export const ControlBar = (
-  { shortcuts = 'window', root, fullscreen: host, episodeNavigation }: {
+  { shortcuts = 'window', root, fullscreen: host, episodeNavigation, sourceSwitch }: {
     shortcuts?: 'window' | 'player'
     root: RefObject<HTMLDivElement | null>
     fullscreen?: HostFullscreen
     episodeNavigation?: EpisodeNavigation
+    sourceSwitch?: SourceSwitch
   },
 ) => {
   const player = usePlayer()
@@ -421,6 +422,28 @@ export const ControlBar = (
         </div>
         <div className='right'>
           <ErrorsAction />
+          {sourceSwitch
+            ? (() => {
+              const label = sourceSwitch.title?.trim() || format(LABELS.switchSource)
+              return (
+                <TooltipDisplay
+                  id='source-switch'
+                  tooltipPlace='top-end'
+                  text={
+                    <button
+                      className='source-switch'
+                      type='button'
+                      onClick={sourceSwitch.request}
+                      aria-label={label}
+                    >
+                      <Layers />
+                    </button>
+                  }
+                  toolTipText={<span>{label}</span>}
+                />
+              )
+            })()
+            : null}
           <SubtitlesAction />
           <SettingsAction />
           {passThrough

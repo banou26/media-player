@@ -44,6 +44,7 @@
   "Subtitle settings": "Настройки субтитров",
   "Subtitles": "Субтитры",
   "Subtitles are in the picture": "Субтитры встроены в изображение",
+  "Switch source": "Сменить источник",
   "Text size": "Размер текста",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource закрылся до того, как удалось создать SourceBuffer",
   "The MediaSource never opened": "MediaSource так и не открылся",

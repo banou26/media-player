@@ -890,6 +890,7 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
   const autoplay: (boolean | null)[] = []
   const previous: (boolean | string | null | undefined)[] = []
   const next: (boolean | string | null | undefined)[] = []
+  const sourceSwitch: (boolean | string | null | undefined)[] = []
   const externalSubtitles: (RemoteExternalSubtitleTrack[] | null)[] = []
   const provided: [string, string | null, string | undefined][] = []
   const served = Object.assign(new EventTarget(), {
@@ -901,6 +902,7 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
     onAutoplayNext: (on: boolean | null) => { autoplay.push(on) },
     onPreviousEpisode: (step: boolean | string | null | undefined) => { previous.push(step) },
     onNextEpisode: (step: boolean | string | null | undefined) => { next.push(step) },
+    onSourceSwitch: (value: boolean | string | null | undefined) => { sourceSwitch.push(value) },
     onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => { externalSubtitles.push(tracks) },
     onProvideExternalSubtitle: (trackId: string, content: string | null, error?: string) => { provided.push([trackId, content, error]) },
   })
@@ -911,6 +913,7 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
     autoplay,
     previous,
     next,
+    sourceSwitch,
     externalSubtitles,
     provided,
   }
@@ -1468,6 +1471,64 @@ describe('episode navigation a mirror sets', () => {
     await service.set('elsewhere', 'nextEpisode', 'No mirror')
     expect(previous).toEqual([true])
     expect(next).toEqual(['Ep 2'])
+  })
+})
+
+describe('source switch a mirror sets', () => {
+  it('reaches the player, persists across replacements, emits sourceswitchrequest, and clears when the last mirror closes', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+
+    expect(player.sourceSwitch).toBe(null)
+
+    const requests: string[] = []
+    player.addEventListener('sourceswitchrequest', () => requests.push('switch'))
+
+    player.sourceSwitch = 'Choose source'
+    await settled()
+    expect(first.sourceSwitch).toEqual(['Choose source'])
+    expect(player.sourceSwitch).toBe('Choose source')
+
+    first.served.dispatchEvent(new Event('sourceswitchrequest'))
+    await settled()
+    expect(requests).toEqual(['switch'])
+
+    stopFirst()
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.sourceSwitch).toEqual(['Choose source'])
+
+    player.sourceSwitch = false
+    await settled()
+    expect(second.sourceSwitch.at(-1)).toBe(false)
+
+    player.destroy()
+    await settled()
+    expect(second.sourceSwitch.at(-1)).toBe(undefined)
+  })
+
+  it('queues writes made before ready and validates service inputs', async () => {
+    const { served, sourceSwitch } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    player.sourceSwitch = true
+    await settled()
+    expect(sourceSwitch).toEqual([])
+
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    await player.ready
+    await settled()
+    expect(sourceSwitch).toEqual([true])
+
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    await service.set('default', 'sourceSwitch', 123)
+    await service.set('elsewhere', 'sourceSwitch', 'No mirror')
+    expect(sourceSwitch).toEqual([true])
   })
 })
 

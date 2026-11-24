@@ -44,6 +44,7 @@
   "Subtitle settings": "Undertextinställningar",
   "Subtitles": "Undertexter",
   "Subtitles are in the picture": "Undertexterna finns i bilden",
+  "Switch source": "Byt källa",
   "Text size": "Textstorlek",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource stängdes innan en SourceBuffer kunde skapas",
   "The MediaSource never opened": "MediaSource öppnades aldrig",

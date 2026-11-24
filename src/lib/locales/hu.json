@@ -44,6 +44,7 @@
   "Subtitle settings": "Feliratbeállítások",
   "Subtitles": "Feliratok",
   "Subtitles are in the picture": "A feliratok a képben vannak",
+  "Switch source": "Forrás váltása",
   "Text size": "Szövegméret",
   "The MediaSource closed before a SourceBuffer could be created": "A MediaSource bezárult, mielőtt létrejöhetett volna egy SourceBuffer",
   "The MediaSource never opened": "A MediaSource meg sem nyílt",

@@ -44,6 +44,7 @@
   "Subtitle settings": "Nastavení titulků",
   "Subtitles": "Titulky",
   "Subtitles are in the picture": "Titulky jsou v obrazu",
+  "Switch source": "Přepnout zdroj",
   "Text size": "Velikost textu",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource se zavřel dřív, než bylo možné vytvořit SourceBuffer",
   "The MediaSource never opened": "MediaSource se vůbec neotevřel",

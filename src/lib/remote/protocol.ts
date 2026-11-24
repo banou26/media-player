@@ -60,7 +60,7 @@ export const PLAYER_EVENTS = [
 /**
  * The events a `<MediaPlayer expose>` raises beside its media's: its chapters changed, its viewer pressed
  * fullscreen while a mirror made with `fullscreen: true` has it, its autoplay switch changed, the viewer
- * clicked previous or next episode, or the player needs external subtitle content for a track id.
+ * clicked previous or next episode, clicked switch source, or the player needs external subtitle content for a track id.
  */
 export const SERVED_EVENTS = [
   'chapterschange',
@@ -68,6 +68,7 @@ export const SERVED_EVENTS = [
   'autoplaynextchange',
   'previousrequest',
   'nextrequest',
+  'sourceswitchrequest',
   'subtitleloadrequest',
 ] as const
 export type PlayerEvent = typeof PLAYER_EVENTS[number] | typeof SERVED_EVENTS[number]
@@ -115,11 +116,11 @@ export type PlayerService = {
   subscribe: (id: string, port: MessagePort, options?: { fullscreen?: boolean }) => void
   /**
    * `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise.
-   * `autoplayNext`, `previousEpisode` and `nextEpisode` are kept for the id while a mirror listens to it, and told to each player served under it.
+   * `autoplayNext`, `previousEpisode`, `nextEpisode` and `sourceSwitch` are kept for the id while a mirror listens to it, and told to each player served under it.
    */
   set: (
     id: string,
-    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode',
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch',
     value: number | boolean | string | null,
   ) => void
   call: (id: string, name: Callable) => Promise<void>

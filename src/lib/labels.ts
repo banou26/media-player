@@ -46,6 +46,7 @@ export const LABELS = {
   autoplayNext: 'Autoplay next episode',
   previousEpisode: 'Previous episode',
   nextEpisode: 'Next episode',
+  switchSource: 'Switch source',
   unavailable: 'Unavailable',
   switchFailed: 'Could not switch. Try again.',
   track: 'Track {number}',

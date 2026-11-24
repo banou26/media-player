@@ -44,6 +44,7 @@
   "Subtitle settings": "ตั้งค่าคำบรรยาย",
   "Subtitles": "คำบรรยาย",
   "Subtitles are in the picture": "คำบรรยายอยู่ในภาพแล้ว",
+  "Switch source": "สลับแหล่งที่มา",
   "Text size": "ขนาดข้อความ",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource ปิดไปก่อนที่จะสร้าง SourceBuffer ได้",
   "The MediaSource never opened": "MediaSource ไม่เคยเปิด",

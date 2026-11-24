@@ -44,6 +44,7 @@
   "Subtitle settings": "자막 설정",
   "Subtitles": "자막",
   "Subtitles are in the picture": "자막이 화면에 들어가 있습니다",
+  "Switch source": "소스 전환",
   "Text size": "텍스트 크기",
   "The MediaSource closed before a SourceBuffer could be created": "SourceBuffer를 만들기 전에 MediaSource가 닫혔습니다",
   "The MediaSource never opened": "MediaSource가 열리지 않았습니다",

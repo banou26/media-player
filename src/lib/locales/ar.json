@@ -44,6 +44,7 @@
   "Subtitle settings": "إعدادات الترجمة",
   "Subtitles": "الترجمة",
   "Subtitles are in the picture": "الترجمة مدمجة في الصورة",
+  "Switch source": "تبديل المصدر",
   "Text size": "حجم النص",
   "The MediaSource closed before a SourceBuffer could be created": "أُغلق MediaSource قبل إنشاء SourceBuffer",
   "The MediaSource never opened": "لم يُفتح MediaSource",

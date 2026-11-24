@@ -44,6 +44,7 @@
   "Subtitle settings": "字幕設定",
   "Subtitles": "字幕",
   "Subtitles are in the picture": "字幕は映像に焼き込まれています",
+  "Switch source": "ソースを切り替え",
   "Text size": "文字サイズ",
   "The MediaSource closed before a SourceBuffer could be created": "SourceBuffer を作成する前に MediaSource が閉じました",
   "The MediaSource never opened": "MediaSource が開きませんでした",

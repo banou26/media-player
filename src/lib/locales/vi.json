@@ -44,6 +44,7 @@
   "Subtitle settings": "Cài đặt phụ đề",
   "Subtitles": "Phụ đề",
   "Subtitles are in the picture": "Phụ đề đã nằm trong hình",
+  "Switch source": "Đổi nguồn",
   "Text size": "Cỡ chữ",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource đã đóng trước khi tạo được SourceBuffer",
   "The MediaSource never opened": "MediaSource chưa bao giờ mở",

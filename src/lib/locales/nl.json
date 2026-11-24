@@ -44,6 +44,7 @@
   "Subtitle settings": "Ondertitelinstellingen",
   "Subtitles": "Ondertitels",
   "Subtitles are in the picture": "De ondertitels staan in het beeld",
+  "Switch source": "Bron wisselen",
   "Text size": "Tekstgrootte",
   "The MediaSource closed before a SourceBuffer could be created": "De MediaSource sloot voordat er een SourceBuffer kon worden gemaakt",
   "The MediaSource never opened": "De MediaSource is nooit geopend",

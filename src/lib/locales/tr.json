@@ -44,6 +44,7 @@
   "Subtitle settings": "Altyazı ayarları",
   "Subtitles": "Altyazılar",
   "Subtitles are in the picture": "Altyazılar görüntüye gömülü",
+  "Switch source": "Kaynağı değiştir",
   "Text size": "Metin boyutu",
   "The MediaSource closed before a SourceBuffer could be created": "MediaSource, SourceBuffer oluşturulamadan kapandı",
   "The MediaSource never opened": "MediaSource hiç açılmadı",
