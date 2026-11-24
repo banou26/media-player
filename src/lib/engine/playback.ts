@@ -383,6 +383,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     // whether nothing was removed since, so everything read forward from there is still buffered
     let positioned = true
     let evicting = 0
+    let activePrepare: { time: number, generation: number, promise: Promise<void> } | undefined
     // Where the playhead sat when a quota refusal could not free anything inside the kept window, so
     // pump() waits for playback to move, cross a keyframe, or stall for 1 s instead of spinning while paused.
     let quotaAnchor: { time: number, keyframe: number | undefined, at: number } | undefined
@@ -624,7 +625,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
           if (fragments?.length) subtitles.pushFragments(fragments)
           if (data.byteLength) onOutput?.({ type: 'fragment', data })
           if (done) onOutput?.({ type: 'end' })
-          if (!data.byteLength) return
+          if (!data.byteLength) {
+            if (done) trackAppendedEnd()
+            return
+          }
           pending = data
           pendingAttempts = 0
         }
@@ -688,11 +692,16 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
 
     const endBufferedInSource = () =>
       lastAppendedEnd > 0 && (getTimeRanges(sourceBuffer).at(-1)?.end ?? 0) >= lastAppendedEnd - 0.1
+    const strictlyAtBufferedEnd = (time: number) =>
+      time >= lastAppendedEnd - 0.1 ||
+      getTimeRanges(sourceBuffer).some(
+        (r) => r.start <= time && time < r.end && r.end >= lastAppendedEnd - 0.1,
+      )
     const samePreparedEnd = (time: number) =>
       finished &&
+      endAppended &&
       endBufferedInSource() &&
-      atEnd(time) &&
-      (Math.abs(time - lastSeekPosition) < 0.001 || lastSeekPosition >= lastAppendedEnd - 0.1)
+      strictlyAtBufferedEnd(time)
     const alreadyPrepared = (time: number) =>
       positioned &&
       (((seeking || runwayFrom(time) > 0) && Math.abs(time - lastSeekPosition) < 0.001) ||
@@ -716,10 +725,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * island the reader never extends. The CALLER owns the deadline: this can take as long as a read
      * takes, and over a torrent that is unbounded.
      */
-    const prepareSeek = async (time: number) => {
-      if (destroyed || elementFailed || videoElement.error) return
-      if (playableAt(time) && hasRunway(time)) return
-      if (alreadyPrepared(time)) return
+    const prepareSeek = (time: number): Promise<void> => {
+      if (destroyed || elementFailed || videoElement.error) return Promise.resolve()
+      if (playableAt(time) && hasRunway(time)) return Promise.resolve()
+      if (positioned && samePreparedEnd(time)) return Promise.resolve()
+      if (
+        activePrepare &&
+        activePrepare.generation === seekGeneration &&
+        Math.abs(activePrepare.time - time) < 0.001
+      ) {
+        return activePrepare.promise
+      }
       // A drag still settling holds every read, so the runway would never be read, and its settle would then position the
       // remuxer back where the drag stopped. A seek back under 250 ms after a seek forward is one (Firefox 153 and 157,
       // 2026-10-23).
@@ -728,40 +744,46 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       finished = false
       preparing++
       prepareTarget = time
-      try {
-        await seekTo(time)
-        /*
-         * Captured AFTER the seek, never before.
-         *
-         * `seekTo` bumps `seekGeneration` itself, so a generation read before it is stale the moment
-         * it returns and every staleness check below fails on its first pass. That silently disabled
-         * this entire loop: prepares came back in ~170ms with a 0.5s to 1.9s island and the runway
-         * was never built at all.
-         */
-        const generation = seekGeneration
-        /*
-         * Then keep reading until there is something to PLAY, not merely something to land on.
-         *
-         * `remuxer.seek` returns a single chunk, so the first version of this left a small island:
-         * the element arrived on covered ground, played through it in well under a second, and ran
-         * dry there. That underrun drains the decoder exactly as a seek into a hole would, and it
-         * wedged in production with every seek reporting itself as prepared. Preparing a point was
-         * never the requirement; preparing a runway is.
-         *
-         * Bounded twice over: by the runway being reached, and by a read that returns nothing new.
-         * The caller's deadline bounds the wall clock on top of that.
-         */
-        for (let attempt = 0; attempt < SEEK_RUNWAY_READS; attempt++) {
-          if (destroyed || generation !== seekGeneration || finished) break
-          if (runwayFrom(time) >= SEEK_RUNWAY) break
-          const before = runwayFrom(time)
-          await pump()
-          if (runwayFrom(time) <= before) break
+      const seekPromise = seekTo(time)
+      /*
+       * Captured AFTER the seek starts, never before.
+       *
+       * `seekTo` bumps `seekGeneration` synchronously before its first `await`, so a generation read
+       * before it is stale the moment it returns and every staleness check below fails on its first pass.
+       * That silently disabled this entire loop: prepares came back in ~170ms with a 0.5s to 1.9s island
+       * and the runway was never built at all.
+       */
+      const generation = seekGeneration
+      const run = (async () => {
+        try {
+          await seekPromise
+          /*
+           * Then keep reading until there is something to PLAY, not merely something to land on.
+           *
+           * `remuxer.seek` returns a single chunk, so the first version of this left a small island:
+           * the element arrived on covered ground, played through it in well under a second, and ran
+           * dry there. That underrun drains the decoder exactly as a seek into a hole would, and it
+           * wedged in production with every seek reporting itself as prepared. Preparing a point was
+           * never the requirement; preparing a runway is.
+           *
+           * Bounded twice over: by the runway being reached, and by a read that returns nothing new.
+           * The caller's deadline bounds the wall clock on top of that.
+           */
+          for (let attempt = 0; attempt < SEEK_RUNWAY_READS; attempt++) {
+            if (destroyed || generation !== seekGeneration || finished) break
+            if (runwayFrom(time) >= SEEK_RUNWAY) break
+            const before = runwayFrom(time)
+            await pump()
+            if (runwayFrom(time) <= before) break
+          }
+        } finally {
+          preparing--
+          if (prepareTarget === time) prepareTarget = undefined
+          if (activePrepare?.generation === generation) activePrepare = undefined
         }
-      } finally {
-        preparing--
-        if (prepareTarget === time) prepareTarget = undefined
-      }
+      })()
+      activePrepare = { time, generation, promise: run }
+      return run
     }
 
     /**
@@ -825,23 +847,17 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       const now = performance.now()
       const dragging = now - lastSeekingAt < DRAG_SETTLE_MS
       lastSeekingAt = now
-      if (alreadyPlayable(time)) return
-      /*
-       * The remuxer is already positioned at exactly this time with nothing removed since, so let it
-       * read on. Its seek still running or data at the target is required too: the browser also removes
-       * data, by its own eviction when an append goes over its memory budget.
-       *
-       * `prepareSeek` positions it BEFORE the playhead moves, and the caller moves the playhead anyway
-       * once its budget runs out, with the seek or the runway's reads still running. Without this, the
-       * move fires `seeking`, which starts the identical read again and bumps the generation, throwing
-       * away everything the first one had done. The benchmark caught it as a seek that took twice as
-       * long as seeking the old way.
-       */
-      if (alreadyPrepared(time)) return
-      finished = false
+      if (alreadyPlayable(time) || alreadyPrepared(time)) {
+        if (dragTimer) {
+          clearTimeout(dragTimer)
+          dragTimer = undefined
+        }
+        return
+      }
       if (dragTimer) clearTimeout(dragTimer)
       if (!dragging) {
         dragTimer = undefined
+        finished = false
         void seekTo(time)
         return
       }
@@ -850,7 +866,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         if (destroyed) return
         // where the drag ENDED, which is the only position anyone is waiting on
         const settled = videoElement.currentTime
-        if (alreadyPlayable(settled)) return
+        if (alreadyPlayable(settled) || alreadyPrepared(settled)) return
         finished = false
         void seekTo(settled)
       }, DRAG_SETTLE_MS)

@@ -57,6 +57,46 @@ const runwayFrom = (video: HTMLVideoElement, time: number) => {
   return range ? range[1] - time : 0
 }
 
+const LONG_FIXTURE = '/short-gop-tone.mkv'
+
+const openSource = async (
+  fixture: string,
+  options?: {
+    bufferSize?: number
+    readDelayMs?: () => number
+    waitReadGate?: () => Promise<void> | undefined
+    onOutput?: Parameters<typeof startPlayback>[0]['onOutput']
+  },
+) => {
+  const head = await fetch(fixture, { method: 'HEAD' })
+  if (!head.ok) return null
+  const size = Number(head.headers.get('content-length'))
+  if (!size) return null
+  const { video, subtitles, container } = sized()
+  const controller = await startPlayback({
+    videoElement: video,
+    subtitleContainer: subtitles,
+    length: size,
+    bufferSize: options?.bufferSize,
+    onOutput: options?.onOutput,
+    read: async (offset, length) => {
+      const gate = options?.waitReadGate?.()
+      if (gate) await gate
+      const delay = options?.readDelayMs?.() ?? 0
+      if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay))
+      const end = Math.min(offset + length, size) - 1
+      if (end < offset) return new ArrayBuffer(0)
+      const res = await fetch(fixture, { headers: { range: `bytes=${offset}-${end}` } })
+      return res.arrayBuffer()
+    },
+    ...playerAssets,
+  })
+  return { video, controller, container }
+}
+
+const exactCovers = (video: HTMLVideoElement, time: number) =>
+  buffered(video).some(([start, end]) => start <= time && time < end)
+
 describe('preparing a seek', () => {
   it('puts the target in the buffer and leaves the playhead where it was', async () => {
     const source = await httpSource()
@@ -142,22 +182,16 @@ describe('preparing a seek', () => {
     }
   }, 120_000)
   it('does not re-seek when repeating prepareSeek or setting currentTime near the buffered end', async () => {
-    const source = await httpSource()
-    if (!source) return
-
     const runs: number[] = []
     let countRuns = false
-    const { video, subtitles, container } = sized()
-    const controller = await startPlayback({
-      videoElement: video,
-      subtitleContainer: subtitles,
-      read: source.read,
-      length: source.size,
-      ...playerAssets,
+    const opened = await openSource(LONG_FIXTURE, {
+      bufferSize: 32_768,
       onOutput: (output) => {
         if (countRuns && output.type === 'run') runs.push(output.from)
       },
     })
+    if (!opened) return
+    const { video, controller, container } = opened
 
     try {
       await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
@@ -182,8 +216,215 @@ describe('preparing a seek', () => {
 
       expect(runs.length, 'moving currentTime to a prepared end target must not re-seek').toBe(1)
 
-      await controller.prepareSeek(0.5)
+      const away = 15
+      expect(covers(video, away), 'away target must be unbuffered before prepareSeek').toBe(false)
+      await controller.prepareSeek(away)
       expect(runs.length, 'a real seek away after prepared EOF must invoke the remuxer').toBe(2)
+    } finally {
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
+
+  it('seeks into an unbuffered hole under BOUNDARY_SLACK before a prepared EOF', async () => {
+    const runs: number[] = []
+    let countRuns = false
+    const opened = await openSource(LONG_FIXTURE, {
+      bufferSize: 32_768,
+      onOutput: (output) => {
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+    if (!opened) return
+    const { video, controller, container } = opened
+
+    try {
+      await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
+      const target = Math.max(0, controller.duration - 0.01)
+      await controller.prepareSeek(target)
+
+      const lastRange = buffered(video).at(-1)!
+      expect(lastRange[0]).toBeGreaterThan(20)
+      const holeTarget = lastRange[0] - 0.4
+      expect(exactCovers(video, holeTarget)).toBe(false)
+
+      countRuns = true
+      await controller.prepareSeek(holeTarget)
+      expect(runs.length, 'seeking into a hole within BOUNDARY_SLACK of EOF must still invoke the remuxer').toBe(1)
+      expect(exactCovers(video, holeTarget)).toBe(true)
+    } finally {
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
+
+  it('coalesces concurrent prepareSeek calls to the same target and waits for runway', async () => {
+    const runs: number[] = []
+    let countRuns = false
+    let gatePromise: Promise<void> | undefined
+    let releaseGate: (() => void) | undefined
+    const armGate = () => {
+      gatePromise = new Promise<void>((resolve) => {
+        releaseGate = () => {
+          gatePromise = undefined
+          releaseGate = undefined
+          resolve()
+        }
+      })
+    }
+
+    const opened = await openSource(LONG_FIXTURE, {
+      bufferSize: 32_768,
+      waitReadGate: () => gatePromise,
+      onOutput: (output) => {
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+    if (!opened) return
+    const { video, controller, container } = opened
+
+    try {
+      await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
+      const target = 12
+      expect(exactCovers(video, target)).toBe(false)
+
+      countRuns = true
+      armGate()
+      const p1 = controller.prepareSeek(target)
+      const p2 = controller.prepareSeek(target)
+      let p2ResolvedEarly = false
+      void p2.then(() => {
+        p2ResolvedEarly = true
+      })
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      expect(p2ResolvedEarly, 'second concurrent prepareSeek must wait while seek is in flight').toBe(false)
+
+      releaseGate?.()
+      await Promise.all([p1, p2])
+
+      expect(runs.length, 'concurrent prepareSeek calls must trigger only one remuxer seek').toBe(1)
+      expect(exactCovers(video, target)).toBe(true)
+      expect(runwayFrom(video, target)).toBeGreaterThanOrEqual(2.5)
+    } finally {
+      releaseGate?.()
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
+
+  it('does not let a zero-byte EOF prepareSeek suppress subsequent seeks', async () => {
+    const runs: number[] = []
+    let countRuns = false
+    const opened = await openSource(LONG_FIXTURE, {
+      bufferSize: 32_768,
+      onOutput: (output) => {
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+    if (!opened) return
+    const { video, controller, container } = opened
+
+    try {
+      await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
+      expect(buffered(video).at(-1)![1]).toBeLessThan(20)
+
+      countRuns = true
+      await controller.prepareSeek(controller.duration + 1)
+      expect(exactCovers(video, 15)).toBe(false)
+
+      await controller.prepareSeek(15)
+      expect(runs.length).toBeGreaterThanOrEqual(2)
+      expect(exactCovers(video, 15)).toBe(true)
+      expect(runwayFrom(video, 15)).toBeGreaterThanOrEqual(2.5)
+    } finally {
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
+
+  it('does not re-seek near EOF after natural playback buffering reaches the end', async () => {
+    const runs: number[] = []
+    let countRuns = false
+    let endReached = false
+    let capturedSource: MediaSource | undefined
+    const origAddSourceBuffer = MediaSource.prototype.addSourceBuffer
+    MediaSource.prototype.addSourceBuffer = function (type: string) {
+      capturedSource = this
+      return origAddSourceBuffer.call(this, type)
+    }
+    const opened = await openSource(FIXTURE, {
+      onOutput: (output) => {
+        if (output.type === 'end') endReached = true
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+    MediaSource.prototype.addSourceBuffer = origAddSourceBuffer
+    if (!opened) return
+    const { video, controller, container } = opened
+
+    try {
+      await expect.poll(
+        () => endReached && video.buffered.length > 0 && capturedSource?.readyState === 'ended',
+        { timeout: 30_000 },
+      ).toBe(true)
+      const target = Math.max(0, controller.duration - 0.01)
+      countRuns = true
+
+      await controller.prepareSeek(target)
+      expect(runs.length, 'prepareSeek near EOF after natural end must not re-seek').toBe(0)
+
+      const seeked = new Promise<void>((resolve) => {
+        video.addEventListener('seeked', () => resolve(), { once: true })
+      })
+      video.currentTime = target
+      await seeked
+      await new Promise((resolve) => setTimeout(resolve, 250))
+      expect(runs.length, 'setting currentTime near EOF after natural end must not re-seek').toBe(0)
+    } finally {
+      MediaSource.prototype.addSourceBuffer = origAddSourceBuffer
+      controller.destroy()
+      container.remove()
+    }
+  }, 120_000)
+
+  it('clears a pending drag timer when settling onto a prepared EOF', async () => {
+    const runs: number[] = []
+    let countRuns = false
+    const opened = await openSource(LONG_FIXTURE, {
+      bufferSize: 32_768,
+      onOutput: (output) => {
+        if (countRuns && output.type === 'run') runs.push(output.from)
+      },
+    })
+    if (!opened) return
+    const { video, controller, container } = opened
+
+    const onceSeeking = () =>
+      new Promise<void>((resolve) => {
+        video.addEventListener('seeking', () => resolve(), { once: true })
+      })
+
+    try {
+      await expect.poll(() => video.buffered.length > 0, { timeout: 30_000 }).toBe(true)
+      const target = Math.max(0, controller.duration - 0.001)
+      await controller.prepareSeek(target)
+
+      countRuns = true
+      // First seeking event stamps lastSeekingAt while leaving prepared EOF untouched
+      const s1 = onceSeeking()
+      video.currentTime = target
+      await s1
+      // Second seeking event within DRAG_SETTLE_MS starts dragTimer for unbuffered 12s
+      const s2 = onceSeeking()
+      video.currentTime = 12
+      await s2
+      // Settling back on prepared EOF must cancel dragTimer and avoid a delayed re-seek
+      const s3 = onceSeeking()
+      video.currentTime = target
+      await s3
+      await new Promise((resolve) => setTimeout(resolve, 350))
+
+      expect(runs.length, 'settling a drag back onto prepared EOF must not re-seek').toBe(0)
     } finally {
       controller.destroy()
       container.remove()
