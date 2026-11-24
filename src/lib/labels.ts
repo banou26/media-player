@@ -25,6 +25,7 @@ export const LABELS = {
   noSubtitles: 'This file has no subtitles',
   burnInHint: 'Now click your browser\'s pop out button',
   subtitles: 'Subtitles',
+  browseSubtitles: 'Look for more',
   subtitlesOff: 'Disable',
   nativeSubtitle: 'Native',
   externalSubtitle: 'External',

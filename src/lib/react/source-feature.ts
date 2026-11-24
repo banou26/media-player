@@ -4,6 +4,14 @@ import type { DelegatedSelection } from './media'
 
 import { definePlayerFeature } from '@videojs/core/dom'
 
+/** Control inside the subtitles menu to find additional external subtitles. */
+export type BrowseSubtitles = {
+  /** Custom label shown for this action; falls back to the localized default label. */
+  title?: string
+  /** Invoked when the viewer chooses to find more subtitles. */
+  request: () => void
+}
+
 /**
  * One row of a track menu, already named.
  *
@@ -195,6 +203,7 @@ export type SourceState = {
   selectSubtitleTrack: (id: string | number | undefined) => void | Promise<void>
   /** What the row that turns subtitles off is called, when the source would rather name it itself. */
   subtitleOffLabel?: string
+  browseSubtitles: BrowseSubtitles | null
 
   audioTracks: TrackChoice[]
   selectedAudioTrack: string | number | undefined
@@ -323,6 +332,7 @@ const initialState: SourceState = {
   subtitleTracks: [],
   selectedSubtitleTrack: undefined,
   selectSubtitleTrack: () => {},
+  browseSubtitles: null,
   audioTracks: [],
   selectedAudioTrack: undefined,
   selectAudioTrack: () => {},

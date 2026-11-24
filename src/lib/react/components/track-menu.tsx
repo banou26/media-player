@@ -249,6 +249,39 @@ export const popoverStyle = css`
     color: #f66;
     ${fonts.bSmall.regular}
   }
+
+  .track-footer-action {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    background-color: rgba(28, 28, 28, 0.98);
+    border-top: 1px solid #4D4D4E;
+    justify-content: flex-start;
+    gap: 8px;
+
+    svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    &:not(.no-hover):not(.unavailable):hover {
+      background-color: rgba(50, 50, 50, 0.98);
+    }
+
+    &.unavailable:hover {
+      background-color: rgba(28, 28, 28, 0.98);
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.8);
+      outline-offset: -2px;
+    }
+  }
+
+  .back + .track-footer-action {
+    border-top: none;
+  }
 }
 `
 
@@ -260,7 +293,7 @@ export const popoverStyle = css`
  * moved yet and a tick next to it would be a lie.
  */
 export const TrackMenu = (
-  { title, tracks, selected, onSelect, onBack, offLabel, pending, failed, headerAction }: {
+  { title, tracks, selected, onSelect, onBack, offLabel, pending, failed, headerAction, footerAction }: {
     title: string
     tracks: readonly TrackChoice[]
     selected: string | number | undefined
@@ -274,6 +307,8 @@ export const TrackMenu = (
     failed?: boolean
     /** Optional compact action rendered at the trailing edge of the header row. */
     headerAction?: ReactNode
+    /** Optional trailing row rendered after the track rows. */
+    footerAction?: ReactNode
   }
 ) => {
   const { format } = useLabels()
@@ -323,6 +358,7 @@ export const TrackMenu = (
       {failed ? <div className="no-hover failed" dir="auto">{format(LABELS.switchFailed)}</div> : null}
       {offLabel ? row(null, offLabel) : null}
       {tracks.map(({ id, label, kind }) => row(id, label, 'description', kind))}
+      {footerAction}
     </div>
   )
 }

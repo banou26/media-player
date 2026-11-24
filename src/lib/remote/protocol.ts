@@ -69,6 +69,7 @@ export const SERVED_EVENTS = [
   'previousrequest',
   'nextrequest',
   'sourceswitchrequest',
+  'subtitlesbrowserequest',
   'subtitleloadrequest',
 ] as const
 export type PlayerEvent = typeof PLAYER_EVENTS[number] | typeof SERVED_EVENTS[number]
@@ -116,11 +117,11 @@ export type PlayerService = {
   subscribe: (id: string, port: MessagePort, options?: { fullscreen?: boolean }) => void
   /**
    * `fullscreen` is the state shown by a player whose fullscreen a mirror has taken over, and is ignored otherwise.
-   * `autoplayNext`, `previousEpisode`, `nextEpisode` and `sourceSwitch` are kept for the id while a mirror listens to it, and told to each player served under it.
+   * `autoplayNext`, `previousEpisode`, `nextEpisode`, `sourceSwitch` and `browseSubtitles` are kept for the id while a mirror listens to it, and told to each player served under it.
    */
   set: (
     id: string,
-    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch',
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch' | 'browseSubtitles',
     value: number | boolean | string | null,
   ) => void
   call: (id: string, name: Callable) => Promise<void>
@@ -128,6 +129,8 @@ export type PlayerService = {
   setExternalSubtitles: (id: string, tracks: RemoteExternalSubtitleTrack[]) => void
   /** Delivers loaded subtitle content (or an error when `content` is null) for a pending `subtitleloadrequest`. */
   provideExternalSubtitle: (id: string, trackId: string, content: string | null, error?: string) => void
+  /** Requests immediate activation of external subtitle track `trackId` on the player served under `id`. */
+  selectExternalSubtitle: (id: string, trackId: string) => void
 }
 
 /**

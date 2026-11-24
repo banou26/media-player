@@ -103,8 +103,10 @@ export type ServedPlayer = EventTarget & {
   onPreviousEpisode?: (step: boolean | string | null | undefined) => void
   onNextEpisode?: (step: boolean | string | null | undefined) => void
   onSourceSwitch?: (sourceSwitch: boolean | string | null | undefined) => void
+  onBrowseSubtitles?: (browseSubtitles: boolean | string | null | undefined) => void
   onExternalSubtitles?: (tracks: RemoteExternalSubtitleTrack[] | null) => void
   onProvideExternalSubtitle?: (trackId: string, content: string | null, error?: string) => void
+  onSelectExternalSubtitle?: (trackId: string) => void
 }
 
 /**
@@ -183,6 +185,8 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   const tellNextEpisode = (id: string) => players.get(id)?.onNextEpisode?.(nextEpisode.has(id) ? nextEpisode.get(id) : undefined)
   const sourceSwitch = new Map<string, boolean | string | null>()
   const tellSourceSwitch = (id: string) => players.get(id)?.onSourceSwitch?.(sourceSwitch.has(id) ? sourceSwitch.get(id) : undefined)
+  const browseSubtitles = new Map<string, boolean | string | null>()
+  const tellBrowseSubtitles = (id: string) => players.get(id)?.onBrowseSubtitles?.(browseSubtitles.has(id) ? browseSubtitles.get(id) : undefined)
   const externalSubtitles = new Map<string, RemoteExternalSubtitleTrack[]>()
   const tellExternalSubtitles = (id: string) => players.get(id)?.onExternalSubtitles?.(externalSubtitles.get(id) ?? null)
   const drop = (id: string, port: MessagePort) => {
@@ -193,6 +197,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (previousEpisode.delete(id)) tellPreviousEpisode(id)
       if (nextEpisode.delete(id)) tellNextEpisode(id)
       if (sourceSwitch.delete(id)) tellSourceSwitch(id)
+      if (browseSubtitles.delete(id)) tellBrowseSubtitles(id)
       if (externalSubtitles.delete(id)) tellExternalSubtitles(id)
     }
     try { port.onmessage = null; port.close() } catch {}
@@ -268,7 +273,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         tellAutoplayNext(id)
         return
       }
-      if (name === 'previousEpisode' || name === 'nextEpisode' || name === 'sourceSwitch') {
+      if (name === 'previousEpisode' || name === 'nextEpisode' || name === 'sourceSwitch' || name === 'browseSubtitles') {
         if ((typeof value !== 'boolean' && typeof value !== 'string' && value !== null) || !ports.get(id)?.size) return
         if (name === 'previousEpisode') {
           previousEpisode.set(id, value)
@@ -276,9 +281,12 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         } else if (name === 'nextEpisode') {
           nextEpisode.set(id, value)
           tellNextEpisode(id)
-        } else {
+        } else if (name === 'sourceSwitch') {
           sourceSwitch.set(id, value)
           tellSourceSwitch(id)
+        } else {
+          browseSubtitles.set(id, value)
+          tellBrowseSubtitles(id)
         }
         return
       }
@@ -310,6 +318,10 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (content !== null && typeof content !== 'string') return
       if (error !== undefined && typeof error !== 'string') return
       players.get(id)?.onProvideExternalSubtitle?.(trackId, content, error)
+    },
+    selectExternalSubtitle: (id, trackId) => {
+      if (typeof id !== 'string' || typeof trackId !== 'string' || !ports.get(id)?.size) return
+      players.get(id)?.onSelectExternalSubtitle?.(trackId)
     },
     call: async (id, name) => {
       const media = medias.get(id)
@@ -378,6 +390,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         previous.onPreviousEpisode?.(undefined)
         previous.onNextEpisode?.(undefined)
         previous.onSourceSwitch?.(undefined)
+        previous.onBrowseSubtitles?.(undefined)
         previous.onExternalSubtitles?.(null)
       }
       medias.set(player, media)
@@ -388,6 +401,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (previousEpisode.has(player)) tellPreviousEpisode(player)
       if (nextEpisode.has(player)) tellNextEpisode(player)
       if (sourceSwitch.has(player)) tellSourceSwitch(player)
+      if (browseSubtitles.has(player)) tellBrowseSubtitles(player)
       if (externalSubtitles.has(player)) tellExternalSubtitles(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
@@ -403,6 +417,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
           around.onPreviousEpisode?.(undefined)
           around.onNextEpisode?.(undefined)
           around.onSourceSwitch?.(undefined)
+          around.onBrowseSubtitles?.(undefined)
           around.onExternalSubtitles?.(null)
         }
         post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
@@ -481,6 +496,11 @@ export type MediaPlayerHandle =
      */
     sourceSwitch: boolean | string | null
     /**
+     * Subtitle search action shown in the far `<MediaPlayer expose>` subtitle menu. `true` shows with default
+     * label, a string shows that label, and `false` or `null` hides it. Clicking emits `subtitlesbrowserequest`.
+     */
+    browseSubtitles: boolean | string | null
+    /**
      * External subtitle tracks offered to the far `<MediaPlayer expose>`, persisted per player id while
      * any mirror listens.
      */
@@ -489,6 +509,8 @@ export type MediaPlayerHandle =
     setExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[]) => void
     /** Resolves or rejects a pending `subtitleloadrequest` emitted for `trackId`. */
     provideExternalSubtitle: (trackId: string, content: string | null, error?: string) => void
+    /** Selects and activates an external subtitle track by id on the far player. */
+    selectExternalSubtitle: (trackId: string) => void
     /**
      * Settles once the far side has first answered with its state; reads before that answer the
      * empty defaults. Stays pending for as long as nobody answers, and rejects with an AbortError on
@@ -575,11 +597,12 @@ type Link = {
   attach: (subscriber: Subscriber) => () => void
   set: (
     id: string,
-    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch',
+    name: Writable | 'fullscreen' | 'endingOffered' | 'autoplayNext' | 'previousEpisode' | 'nextEpisode' | 'sourceSwitch' | 'browseSubtitles',
     value: number | boolean | string | null,
   ) => Promise<unknown> | undefined
   setExternalSubtitles: (id: string, tracks: RemoteExternalSubtitleTrack[]) => Promise<unknown> | undefined
   provideExternalSubtitle: (id: string, trackId: string, content: string | null, error?: string) => Promise<unknown> | undefined
+  selectExternalSubtitle: (id: string, trackId: string) => Promise<unknown> | undefined
   call: (id: string, name: Callable) => Promise<void>
 }
 
@@ -663,6 +686,7 @@ const linkTo = (target: HTMLIFrameElement | Window | Transport, options: MediaPl
     set: (id, name, value) => service?.set(id, name, value),
     setExternalSubtitles: (id, tracks) => service?.setExternalSubtitles?.(id, tracks),
     provideExternalSubtitle: (id, trackId, content, error) => service?.provideExternalSubtitle?.(id, trackId, content, error),
+    selectExternalSubtitle: (id, trackId) => service?.selectExternalSubtitle?.(id, trackId),
     call: async (id, name) => {
       if (!service) throw new DOMException('the remote player was closed', 'AbortError')
       await service.call(id, name)
@@ -737,6 +761,7 @@ export const mediaPlayer = (
   let previousEpisode: boolean | string | null = null
   let nextEpisode: boolean | string | null = null
   let sourceSwitch: boolean | string | null = null
+  let browseSubtitles: boolean | string | null = null
   let externalSubtitles: RemoteExternalSubtitleTrack[] = []
   let pauseCount = 0
   const pauseListeners = new Set<() => void>()
@@ -862,8 +887,20 @@ export const mediaPlayer = (
     enumerable: true,
   })
   player.setExternalSubtitles = updateExternalSubtitles
+  Object.defineProperty(player, 'browseSubtitles', {
+    get: () => browseSubtitles,
+    set: (value: boolean | string | null) => {
+      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
+      browseSubtitles = value
+      void after(() => link.set(playerId, 'browseSubtitles', value))
+    },
+    enumerable: true,
+  })
   player.provideExternalSubtitle = (trackId: string, content: string | null, error?: string) => {
     void after(() => link.provideExternalSubtitle(playerId, trackId, content, error))
+  }
+  player.selectExternalSubtitle = (trackId: string) => {
+    void after(() => link.selectExternalSubtitle(playerId, trackId))
   }
 
   const call = (name: Callable) => ready.then(() => {

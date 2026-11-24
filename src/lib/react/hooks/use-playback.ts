@@ -73,6 +73,7 @@ export type PlaybackSubtitleControls = {
   offset?: number
   simpleMode?: boolean
   onSimpleCues?: (cues: SubtitleCue[]) => void
+  onSubtitleSelect?: () => void
 }
 
 /**
@@ -236,6 +237,8 @@ export const usePlayback = (
   simpleModeRef.current = subtitleSimpleMode
   const onSimpleCuesRef = useRef(subtitleControls?.onSimpleCues)
   onSimpleCuesRef.current = subtitleControls?.onSimpleCues
+  const onSubtitleSelectRef = useRef(subtitleControls?.onSubtitleSelect)
+  onSubtitleSelectRef.current = subtitleControls?.onSubtitleSelect
   useEffect(() => {
     controllerRef.current?.setSubtitleOffset(subtitleOffset)
   }, [subtitleOffset])
@@ -281,6 +284,7 @@ export const usePlayback = (
   }, [player, labels, buildSubtitleTracks])
 
   const selectSubtitleTrack = useCallback((id: string | number | undefined): void | Promise<void> => {
+    onSubtitleSelectRef.current?.()
     const mediaSize = sizeRef.current
     const gen = ++subtitleSelectionGen.current
     const wasOff = player.selectedSubtitleTrack === undefined

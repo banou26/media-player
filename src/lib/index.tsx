@@ -2,8 +2,10 @@
 
 export { MediaPlayer, default } from './react/video-player'
 export type {
+  BrowseSubtitles,
   EpisodeNavigation,
   EpisodeStep,
+  ExternalSubtitleSelection,
   ExternalSubtitleTrack,
   SourceSwitch,
   HostFullscreen,

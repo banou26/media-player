@@ -1,7 +1,7 @@
 /// <reference types="@emotion/react/types/css-prop" />
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { css } from '@emotion/react'
-import { Captions, CaptionsOff, SlidersHorizontal } from 'lucide-react'
+import { Captions, CaptionsOff, Search, SlidersHorizontal } from 'lucide-react'
 
 import { usePlayer } from '../player'
 import { useLabels } from '../labels'
@@ -43,19 +43,21 @@ export const SubtitlesAction = () => {
   const selectSubtitleTrack = usePlayer((state) => state.selectSubtitleTrack)
   const subtitleOffLabel = usePlayer((state) => state.subtitleOffLabel)
   const subtitleSettings = usePlayer((state) => state.subtitleSettings)
+  const browseSubtitles = usePlayer((state) => state.browseSubtitles)
 
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const [view, setView] = useState<'tracks' | 'settings'>('tracks')
-  const { open, toggle, containerRef, pending, failed, runSelect } = useTrackMenu({
+  const { open, toggle, close, containerRef, pending, failed, runSelect } = useTrackMenu({
     onReset: () => setView('tracks'),
   })
 
-  // After every hook, never before. One track is enough to offer the menu, because "off" is always a
-  // second option; a file carrying none should not offer it at all.
-  if (subtitleTracks.length === 0) return null
+  // After every hook, never before. Offer the menu when tracks exist or when the host lets viewers browse for more.
+  if (subtitleTracks.length === 0 && !browseSubtitles) return null
 
   // Read from the store, never from `pending`: mid-switch the selection has not moved, and flipping
   // the glyph early is the same lie a tick on the pending row would be.
   const on = selectedSubtitleTrack !== undefined
+  const busy = pending !== undefined
 
   return (
     <div css={style} ref={containerRef}>
@@ -64,6 +66,7 @@ export const SubtitlesAction = () => {
         disabled={open}
         text={
           <button
+            ref={buttonRef}
             className='subtitles'
             type='button'
             onClick={toggle}
@@ -83,10 +86,10 @@ export const SubtitlesAction = () => {
             tracks={subtitleTracks}
             selected={selectedSubtitleTrack}
             onSelect={(id) => runSelect(id ?? null, () => selectSubtitleTrack(id))}
-            offLabel={subtitleOffLabel ?? format(LABELS.subtitlesOff)}
+            offLabel={subtitleTracks.length ? (subtitleOffLabel ?? format(LABELS.subtitlesOff)) : undefined}
             pending={pending}
             failed={failed}
-            headerAction={subtitleSettings ? (
+            headerAction={subtitleTracks.length && subtitleSettings ? (
               <button
                 type='button'
                 className='track-header-action subtitle-options-btn'
@@ -95,6 +98,31 @@ export const SubtitlesAction = () => {
               >
                 <SlidersHorizontal />
               </button>
+            ) : undefined}
+            footerAction={browseSubtitles ? (
+              <div
+                role='button'
+                tabIndex={busy ? -1 : 0}
+                aria-disabled={busy || undefined}
+                className={['track-footer-action', 'browse-subtitles', busy ? 'unavailable' : null].filter(Boolean).join(' ')}
+                onClick={() => {
+                  if (busy) return
+                  close()
+                  browseSubtitles.request()
+                }}
+                onKeyDown={(event) => {
+                  if (busy) return
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  close()
+                  buttonRef.current?.focus()
+                  browseSubtitles.request()
+                }}
+              >
+                <Search aria-hidden='true' />
+                <span className='track-label'>{browseSubtitles.title?.trim() || format(LABELS.browseSubtitles)}</span>
+              </div>
             ) : undefined}
           />
         )

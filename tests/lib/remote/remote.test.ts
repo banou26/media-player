@@ -891,8 +891,10 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
   const previous: (boolean | string | null | undefined)[] = []
   const next: (boolean | string | null | undefined)[] = []
   const sourceSwitch: (boolean | string | null | undefined)[] = []
+  const browseSubtitles: (boolean | string | null | undefined)[] = []
   const externalSubtitles: (RemoteExternalSubtitleTrack[] | null)[] = []
   const provided: [string, string | null, string | undefined][] = []
+  const selectedExternal: string[] = []
   const served = Object.assign(new EventTarget(), {
     chapters,
     endingOffered: true,
@@ -903,8 +905,10 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
     onPreviousEpisode: (step: boolean | string | null | undefined) => { previous.push(step) },
     onNextEpisode: (step: boolean | string | null | undefined) => { next.push(step) },
     onSourceSwitch: (value: boolean | string | null | undefined) => { sourceSwitch.push(value) },
+    onBrowseSubtitles: (value: boolean | string | null | undefined) => { browseSubtitles.push(value) },
     onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => { externalSubtitles.push(tracks) },
     onProvideExternalSubtitle: (trackId: string, content: string | null, error?: string) => { provided.push([trackId, content, error]) },
+    onSelectExternalSubtitle: (trackId: string) => { selectedExternal.push(trackId) },
   })
   return {
     served: served as ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null },
@@ -914,8 +918,10 @@ const servedPlayer = (chapters: MediaChapter[] = []) => {
     previous,
     next,
     sourceSwitch,
+    browseSubtitles,
     externalSubtitles,
     provided,
+    selectedExternal,
   }
 }
 
@@ -1597,5 +1603,73 @@ describe('external subtitles a mirror sets', () => {
       { id: 'good', language: 'en', label: 'Good', format: 'vtt' },
     ])
     expect(externalSubtitles).toEqual([[{ id: 'good', language: 'en', label: 'Good', format: 'vtt' }]])
+  })
+})
+
+describe('browse subtitles control and external track selection', () => {
+  it('persists browseSubtitles per id, forwards subtitlesbrowserequest and selectExternalSubtitle, and resets on close', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    const stopFirst = exposePlayer(fakeMedia(), { transport: port1, player: first.served })
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+
+    expect(player.browseSubtitles).toBe(null)
+    const requests: string[] = []
+    player.addEventListener('subtitlesbrowserequest', () => requests.push('browse'))
+
+    player.browseSubtitles = 'Search subtitles'
+    await settled()
+    expect(first.browseSubtitles).toEqual(['Search subtitles'])
+    expect(player.browseSubtitles).toBe('Search subtitles')
+
+    first.served.dispatchEvent(new Event('subtitlesbrowserequest'))
+    await settled()
+    expect(requests).toEqual(['browse'])
+
+    player.selectExternalSubtitle('ext-en')
+    await settled()
+    expect(first.selectedExternal).toEqual(['ext-en'])
+
+    stopFirst()
+    const second = servedPlayer()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: second.served }))
+    expect(second.browseSubtitles).toEqual(['Search subtitles'])
+
+    player.destroy()
+    await settled()
+    expect(second.browseSubtitles.at(-1)).toBe(undefined)
+  })
+
+  it('ignores non-string/non-boolean browseSubtitles and non-string or unlistened selectExternalSubtitle', async () => {
+    const first = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: first.served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+
+    await service.selectExternalSubtitle('default', 'ext-1')
+    expect(first.selectedExternal).toEqual([])
+
+    const player = mediaPlayer(port2)
+    open.push(player.destroy)
+    await player.ready
+
+    player.browseSubtitles = 123 as never
+    player.selectExternalSubtitle(123 as never)
+    await settled()
+    expect(player.browseSubtitles).toBe(null)
+    expect(first.browseSubtitles).toEqual([])
+    expect(first.selectedExternal).toEqual([])
+
+    player.browseSubtitles = false
+    await settled()
+    expect(player.browseSubtitles).toBe(false)
+    expect(first.browseSubtitles).toEqual([false])
+
+    player.browseSubtitles = null
+    await settled()
+    expect(player.browseSubtitles).toBe(null)
+    expect(first.browseSubtitles).toEqual([false, null])
   })
 })

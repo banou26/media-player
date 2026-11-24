@@ -2,7 +2,7 @@
 import type { ReactNode } from 'react'
 import type { ExternalSubtitleFormat, MediaChapter, SubtitleCue } from '../engine'
 import type { SubtitlePosition } from '../utils/external-subtitles'
-import type { DownloadedRange, TrackChoice, VolumeNormalizerControl } from './source-feature'
+import type { BrowseSubtitles, DownloadedRange, TrackChoice, VolumeNormalizerControl } from './source-feature'
 import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
 import type { ExposePlayerOptions, RemoteExternalSubtitleTrack, ServedPlayer } from '../remote'
 
@@ -76,12 +76,15 @@ export type EpisodeNavigation = {
 
 /** Quick source and subsource switch control shown before subtitles when present. */
 export type SourceSwitch = EpisodeStep
+export type { BrowseSubtitles }
+/** One-shot request to activate external subtitle track `id` whenever `seq` changes. */
+export type ExternalSubtitleSelection = { id: string, seq: number }
 
 const resolveStep = (
   served: EventTarget,
   override: boolean | string | null | undefined,
   prop: EpisodeStep | null | undefined,
-  event: 'previousrequest' | 'nextrequest' | 'sourceswitchrequest',
+  event: 'previousrequest' | 'nextrequest' | 'sourceswitchrequest' | 'subtitlesbrowserequest',
 ): EpisodeStep | null | undefined => {
   if (override === undefined) return prop
   if (override === false || override === null) return null
@@ -248,6 +251,10 @@ type CommonOptions = {
    * remotely). An embedder setting tracks via `expose` wins while connected.
    */
   externalSubtitles?: ExternalSubtitleTrack[]
+  /** Action inside the subtitles menu to find more subtitles; keeps CC visible even with 0 tracks. */
+  browseSubtitles?: BrowseSubtitles
+  /** One-shot activation request for an external subtitle track by raw `id`, triggered each time `seq` increments. */
+  externalSubtitleSelection?: ExternalSubtitleSelection
   /** Invoked when the viewer drops supported subtitle files onto the player. */
   onExternalSubtitleDrop?: (tracks: ExternalSubtitleTrack[]) => void
 }
@@ -448,13 +455,18 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const [backgroundOpacity, setBackgroundOpacity] = useState(0.75)
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition | null>(null)
   const [localSimpleCues, setLocalSimpleCues] = useState<SubtitleCue[]>([])
-  const pendingDropSelectRef = useRef<string | null>(null)
+  const pendingExternalSelectRef = useRef<string | null>(null)
+  const lastExternalSelectSeqRef = useRef<number | undefined>(undefined)
+  const staleTracksRef = useRef<readonly TrackChoice[] | null>(null)
+  const flushingExternalSelectRef = useRef(false)
+  const onSelectExternalSubtitleRef = useRef<(trackId: string) => void>(() => {})
   const mediaIdentity = remote ? remote.media : size
   const prevMediaIdentityRef = useRef(mediaIdentity)
   useEffect(() => {
     if (prevMediaIdentityRef.current === mediaIdentity) return
     prevMediaIdentityRef.current = mediaIdentity
-    pendingDropSelectRef.current = null
+    pendingExternalSelectRef.current = null
+    staleTracksRef.current = player.subtitleTracks
     setDroppedSubtitles([])
     setSubtitleOffset(0)
     setLocalSimpleCues([])
@@ -488,6 +500,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const [embedderPrevious, setEmbedderPrevious] = useState<boolean | string | null | undefined>(undefined)
   const [embedderNext, setEmbedderNext] = useState<boolean | string | null | undefined>(undefined)
   const [embedderSourceSwitch, setEmbedderSourceSwitch] = useState<boolean | string | null | undefined>(undefined)
+  const [embedderBrowseSubtitles, setEmbedderBrowseSubtitles] = useState<boolean | string | null | undefined>(undefined)
   const [embedderSubtitles, setEmbedderSubtitles] = useState<RemoteExternalSubtitleTrack[] | null>(null)
   const [embedderSubtitlesRevision, setEmbedderSubtitlesRevision] = useState(0)
   const pendingSubtitleLoads = useRef(new Map<string, { resolve: (content: string) => void, reject: (error: Error) => void }>())
@@ -506,6 +519,8 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       onPreviousEpisode: (step: boolean | string | null | undefined) => setEmbedderPrevious(step),
       onNextEpisode: (step: boolean | string | null | undefined) => setEmbedderNext(step),
       onSourceSwitch: (value: boolean | string | null | undefined) => setEmbedderSourceSwitch(value),
+      onBrowseSubtitles: (value: boolean | string | null | undefined) => setEmbedderBrowseSubtitles(value),
+      onSelectExternalSubtitle: (trackId: string) => onSelectExternalSubtitleRef.current(trackId),
       onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => {
         if (tracks === null) {
           for (const { reject } of pendingSubtitleLoads.current.values()) {
@@ -591,6 +606,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     [embedderSourceSwitch, options.sourceSwitch, served],
   )
 
+  const browseSubtitles = useMemo<BrowseSubtitles | undefined>(
+    () => resolveStep(served, embedderBrowseSubtitles, options.browseSubtitles, 'subtitlesbrowserequest') ?? undefined,
+    [embedderBrowseSubtitles, options.browseSubtitles, served],
+  )
+
   const remoteExternalSubtitles = useMemo<ExternalSubtitleTrack[] | undefined>(() => {
     if (!embedderSubtitles) return undefined
     return embedderSubtitles.map((track) => ({
@@ -628,7 +648,14 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   }, [local, allExternalSubtitles])
 
   const subtitleControls = useMemo(
-    () => ({ offset: subtitleOffset, simpleMode, onSimpleCues: setLocalSimpleCues }),
+    () => ({
+      offset: subtitleOffset,
+      simpleMode,
+      onSimpleCues: setLocalSimpleCues,
+      onSubtitleSelect: () => {
+        if (!flushingExternalSelectRef.current) pendingExternalSelectRef.current = null
+      },
+    }),
     [subtitleOffset, simpleMode],
   )
 
@@ -762,6 +789,10 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({ passThroughPictureInPicture })
   }, [setSourceState, passThroughPictureInPicture])
 
+  useEffect(() => {
+    setSourceState({ browseSubtitles: browseSubtitles ?? null })
+  }, [setSourceState, browseSubtitles])
+
   // A delegated track list writes the same store fields the engine writes, so the menus never learn
   // which arm they are showing. When `externalSubtitles` are also given on the remote arm, native
   // and external choices share one menu with mutual exclusion and cues render in `subtitleOverlay`.
@@ -855,6 +886,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
       subtitleTracks: mergedTracks,
       selectedSubtitleTrack: activeExternalId ?? subtitles?.selectedId ?? undefined,
       selectSubtitleTrack: (id) => {
+        if (!flushingExternalSelectRef.current) pendingExternalSelectRef.current = null
         const now = latest.current
         const gen = ++remoteSubGenRef.current
         if (id == null) {
@@ -967,12 +999,43 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   }, [setSourceState, !!remote, subtitleOffset, simpleMode, fontScale, backgroundOpacity, subtitlePosition])
 
   const subtitleTracksState = usePlayer((state) => state.subtitleTracks)
+  const flushPendingExternalSelect = useCallback(() => {
+    const pendingId = pendingExternalSelectRef.current
+    if (!pendingId) return
+    if (staleTracksRef.current !== null) {
+      if (player.subtitleTracks === staleTracksRef.current) return
+      staleTracksRef.current = null
+    }
+    if (!player.subtitleTracks.some((track) => track.id === pendingId)) return
+    pendingExternalSelectRef.current = null
+    flushingExternalSelectRef.current = true
+    try {
+      Promise.resolve()
+        .then(() => player.selectSubtitleTrack(pendingId))
+        .catch((err) => { console.warn('[media-player] external subtitle selection failed:', err) })
+    } finally {
+      flushingExternalSelectRef.current = false
+    }
+  }, [player])
+
+  onSelectExternalSubtitleRef.current = (trackId: string) => {
+    pendingExternalSelectRef.current = toExternalTrackId(trackId)
+    flushPendingExternalSelect()
+  }
+
+  const externalSelectId = options.externalSubtitleSelection?.id
+  const externalSelectSeq = options.externalSubtitleSelection?.seq
   useEffect(() => {
-    const pendingId = pendingDropSelectRef.current
-    if (!pendingId || !subtitleTracksState.some((track) => track.id === pendingId)) return
-    pendingDropSelectRef.current = null
-    void player.selectSubtitleTrack(pendingId)
-  }, [player, subtitleTracksState])
+    if (externalSelectId === undefined || externalSelectSeq === undefined) return
+    if (lastExternalSelectSeqRef.current === externalSelectSeq) return
+    lastExternalSelectSeqRef.current = externalSelectSeq
+    pendingExternalSelectRef.current = toExternalTrackId(externalSelectId)
+    flushPendingExternalSelect()
+  }, [externalSelectId, externalSelectSeq, flushPendingExternalSelect])
+
+  useEffect(() => {
+    flushPendingExternalSelect()
+  }, [subtitleTracksState, flushPendingExternalSelect])
 
   const onExternalSubtitleDropRef = useRef(options.onExternalSubtitleDrop)
   onExternalSubtitleDropRef.current = options.onExternalSubtitleDrop
@@ -980,7 +1043,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     const identity = prevMediaIdentityRef.current
     const added = await readDroppedSubtitleFiles(files)
     if (!added.length || prevMediaIdentityRef.current !== identity) return
-    pendingDropSelectRef.current = toExternalTrackId(added[0]!.id)
+    pendingExternalSelectRef.current = toExternalTrackId(added[0]!.id)
     setDroppedSubtitles((prev) => [...prev, ...added])
     onExternalSubtitleDropRef.current?.(added)
   }, [])
