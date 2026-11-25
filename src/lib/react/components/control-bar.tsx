@@ -224,7 +224,7 @@ export const ControlBar = (
 
   const toggleFullscreen = useCallback(() => {
     if (latestHost.current) latestHost.current.request()
-    else void player.toggleFullscreen()
+    else void player.toggleFullscreen().catch(() => {})
   }, [player])
 
   useEffect(() => {

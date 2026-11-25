@@ -370,7 +370,7 @@ export const Chrome = ({ ref, onVideoRef, onSubtitleRef, subtitleOverlay, overla
     if (pausedBeforeClick.current) player.pause()
     else void player.play().catch(() => {})
     if (fullscreen) fullscreen.request()
-    else void player.toggleFullscreen()
+    else void player.toggleFullscreen().catch(() => {})
   }
 
   // relatedTarget alone is not enough: the browser fires mouseout with a null one while the pointer
