@@ -138,12 +138,12 @@ const leaveFullscreen = (media: EventTarget | null): Promise<void> => {
   }
 
   if (video.webkitDisplayingFullscreen) {
-    if (media instanceof Element) return exitDocumentFullscreen(doc)
     const exitVideo = video.webkitExitFullscreen ?? video.webkitExitFullScreen
     if (typeof exitVideo === 'function') {
       exitVideo.call(video)
       return Promise.resolve()
     }
+    if (media instanceof Element) return exitDocumentFullscreen(doc)
   }
 
   if (typeof video.exitFullscreen === 'function') {

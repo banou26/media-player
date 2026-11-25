@@ -3,6 +3,7 @@ import { userEvent } from 'vite-plus/test/browser'
 import { render } from 'vitest-browser-react'
 
 import { playerAssets } from '../../../src/asset-urls'
+import { usePlayer } from '../../../src/lib/react/player'
 import MediaPlayer from '../../../src/lib/react/video-player'
 
 type WebKitVideo = HTMLVideoElement & {
@@ -227,6 +228,95 @@ describe('Mobile Safari fullscreen on @banou/media-player', () => {
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(enterCalls).toEqual(['enter'])
     expect(unhandled).toEqual([])
+  })
+
+  it('swallows synchronous InvalidStateError from chrome double-click without unhandled rejections', async () => {
+    stubIPhoneFullscreen()
+    const { container, video } = await mountLocalPlayer()
+
+    const unhandled: unknown[] = []
+    const onUnhandled = (event: PromiseRejectionEvent) => unhandled.push(event.reason)
+    window.addEventListener('unhandledrejection', onUnhandled)
+    restores.push(() => window.removeEventListener('unhandledrejection', onUnhandled))
+
+    const enterCalls: string[] = []
+    stubDescriptor(video, 'webkitSetPresentationMode', { value: undefined, writable: true, configurable: true })
+    stubDescriptor(video, 'webkitEnterFullscreen', {
+      value: () => {
+        enterCalls.push('enter')
+        throw new DOMException('InvalidStateError', 'InvalidStateError')
+      },
+      writable: true,
+      configurable: true,
+    })
+
+    const videoBox = container.querySelector('.video')!
+    videoBox.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(enterCalls).toEqual(['enter'])
+    expect(unhandled).toEqual([])
+  })
+
+  it('reports fullscreenAvailability as available under iPhone Safari stubs', async () => {
+    stubIPhoneFullscreen()
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitSetPresentationMode', {
+      value: undefined,
+      writable: true,
+      configurable: true,
+    })
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitEnterFullscreen', {
+      value: () => {},
+      writable: true,
+      configurable: true,
+    })
+
+    const seen: string[] = []
+    const Probe = () => {
+      const availability = usePlayer((state) => state.fullscreenAvailability)
+      if (seen.at(-1) !== availability) seen.push(availability)
+      return null
+    }
+
+    const container = document.createElement('div')
+    container.style.cssText = 'position: fixed; inset: 0 auto auto 0; width: 390px; height: 220px;'
+    document.body.append(container)
+    restores.push(() => container.remove())
+    await render(<MediaPlayer {...playerAssets}><Probe /></MediaPlayer>, { container })
+    await expect.poll(() => seen.includes('available'), { timeout: 3000 }).toBe(true)
+  })
+
+  it('exits webkitDisplayingFullscreen inside a shadow root even when native controls entered fullscreen', async () => {
+    stubIPhoneFullscreen()
+    const host = document.createElement('div')
+    document.body.append(host)
+    restores.push(() => host.remove())
+    const shadow = host.attachShadow({ mode: 'open' })
+    const container = document.createElement('div')
+    container.style.cssText = 'width: 390px; height: 220px;'
+    shadow.append(container)
+
+    await render(<MediaPlayer {...playerAssets} />, { container })
+    await expect.poll(() => !!container.querySelector('button.full-screen'), { timeout: 5000 }).toBe(true)
+    const button = container.querySelector('button.full-screen')! as HTMLButtonElement
+    const video = container.querySelector('video')! as WebKitVideo
+
+    let displaying = true
+    const calls: string[] = []
+    stubDescriptor(video, 'webkitDisplayingFullscreen', { get: () => displaying, configurable: true })
+    stubDescriptor(video, 'webkitExitFullscreen', {
+      value: () => {
+        calls.push('exit')
+        displaying = false
+      },
+      writable: true,
+      configurable: true,
+    })
+
+    video.dispatchEvent(new Event('webkitbeginfullscreen'))
+    await expect.poll(() => button.getAttribute('aria-pressed'), { timeout: 3000 }).toBe('true')
+
+    button.click()
+    expect(calls).toEqual(['exit'])
   })
 
   it('drives Mobile Safari fullscreen via the f keyboard shortcut', async () => {
