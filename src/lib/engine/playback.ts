@@ -1,5 +1,6 @@
 import type { AudioStream } from 'libav-wasm/build/worker'
 
+import { MediaSource } from '@banou/ponyfill/media-source'
 import { makeRemuxer } from 'libav-wasm'
 
 import { getTimeRanges, updateSourceBuffer } from './source-buffer'
@@ -122,6 +123,15 @@ export class MediaElementError extends Error {
 
 export const isMediaElementError = (error: unknown): boolean =>
   !!error && typeof error === 'object' && (error as { mediaElement?: boolean }).mediaElement === true
+
+type ManagedMediaSourceLike = MediaSource & { streaming?: boolean }
+type BufferedChangeEvent = Event & { removedRanges?: TimeRanges }
+
+const isManagedMediaSource = (source: MediaSource): source is ManagedMediaSourceLike => {
+  if ('streaming' in source) return true
+  const ctor = (globalThis as { ManagedMediaSource?: { prototype: object } }).ManagedMediaSource
+  return typeof ctor === 'function' && source instanceof ctor
+}
 
 // ~20s behind and ~60s ahead of the playhead, refilled when the forward buffer dips under 30s
 const PRE_EVICT = -20
@@ -275,6 +285,21 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     }
 
     const mediaSource = new MediaSource()
+    const managed = isManagedMediaSource(mediaSource)
+    if (managed) {
+      // iOS Safari opens ManagedMediaSource via object URL only once remote playback is disabled
+      // (or a secondary AirPlay <source> is present); restore the caller's setting after load() reset.
+      const hasProp = Reflect.has(videoElement, 'disableRemotePlayback')
+      const priorProp = hasProp ? videoElement.disableRemotePlayback : undefined
+      const priorAttr = videoElement.getAttribute('disableremoteplayback')
+      if (hasProp) videoElement.disableRemotePlayback = true
+      else videoElement.setAttribute('disableremoteplayback', '')
+      teardown.push(() => {
+        if (hasProp && priorProp !== undefined) videoElement.disableRemotePlayback = priorProp
+        if (priorAttr !== null) videoElement.setAttribute('disableremoteplayback', priorAttr)
+        else if (!hasProp) videoElement.removeAttribute('disableremoteplayback')
+      })
+    }
     const mediaSourceUrl = URL.createObjectURL(mediaSource)
     teardown.push(() => URL.revokeObjectURL(mediaSourceUrl))
     videoElement.src = mediaSourceUrl
@@ -383,6 +408,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     // whether nothing was removed since, so everything read forward from there is still buffered
     let positioned = true
     let evicting = 0
+    let reanchorOnPump = false
     let activePrepare: { time: number, generation: number, promise: Promise<void> } | undefined
     // Where the playhead sat when a quota refusal could not free anything inside the kept window, so
     // pump() waits for playback to move, cross a keyframe, or stall for 1 s instead of spinning while paused.
@@ -512,6 +538,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       finished || (endAppended && (getTimeRanges(sourceBuffer).at(-1)?.end ?? 0) >= lastAppendedEnd - 0.1)
 
     const seekTo = async (time: number) => {
+      reanchorOnPump = false
       seeking = true
       pending = null
       pendingAttempts = 0
@@ -605,6 +632,16 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       // a settling drag is about to reposition the remuxer, so reading forward from where it
       // happens to sit is throwing a read away
       if (reading || seeking || dragTimer !== undefined || destroyed) return
+      if (managed && mediaSource.streaming === false && preparing === 0) return
+      if (reanchorOnPump && needsData()) {
+        reanchorOnPump = false
+        pending = null
+        pendingAttempts = 0
+        finished = false
+        await seekTo(playheadRange()?.end ?? bufferAnchor())
+        if (!positioned && !destroyed && !elementFailed) reanchorOnPump = true
+        return
+      }
       if (quotaAnchor !== undefined) {
         const ct = videoElement.currentTime
         const moved = Math.abs(ct - quotaAnchor.time) >= 1 || activeKeyframe(ct) !== quotaAnchor.keyframe
@@ -878,6 +915,47 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       onOutput?.({ type: 'run', pts: metadata.timestampOffset, from: 0 })
       if (metadata.subtitles?.length) subtitles.pushFragments(metadata.subtitles)
       onReady?.()
+    }
+
+    if (managed && !elementFailed && !destroyed) {
+      const onStartStreaming = () => {
+        if (!elementFailed && !destroyed) pump().catch((error) => reportError(error, false))
+      }
+      const onBufferedChange = (event: Event) => {
+        // Ignore our own evict() removals: in WebKit 26.5, bufferedchange fires before updateend on
+        // remove() (so evicting > 0 catches our own trims) and fires with empty removedRanges on append.
+        if (evicting > 0 || elementFailed || destroyed) return
+        const removed = (event as BufferedChangeEvent).removedRanges
+        if (!removed || removed.length === 0) return
+        positioned = false
+        const ct = bufferAnchor()
+        const windowEnd = ct + BUFFER_TARGET
+        const bufferedEnd = getTimeRanges(sourceBuffer).at(-1)?.end ?? 0
+        let needsReanchor = false
+        for (let i = 0; i < removed.length; i++) {
+          const start = removed.start(i)
+          const end = removed.end(i)
+          if (
+            (start < windowEnd && end > ct) ||
+            (lastAppendedEnd > 0 && end >= lastAppendedEnd - 0.1 && bufferedEnd < lastAppendedEnd - 0.1)
+          ) {
+            needsReanchor = true
+            break
+          }
+        }
+        if (!needsReanchor) return
+        finished = false
+        reanchorOnPump = true
+        pending = null
+        pendingAttempts = 0
+        pump().catch((error) => reportError(error, false))
+      }
+      mediaSource.addEventListener('startstreaming', onStartStreaming)
+      sourceBuffer.addEventListener('bufferedchange', onBufferedChange)
+      teardown.push(() => {
+        mediaSource.removeEventListener('startstreaming', onStartStreaming)
+        sourceBuffer.removeEventListener('bufferedchange', onBufferedChange)
+      })
     }
 
     if (!elementFailed && !destroyed) {
