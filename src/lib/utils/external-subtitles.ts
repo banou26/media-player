@@ -65,6 +65,10 @@ const FANSUB_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
   cht: 'zh-Hant',
   sc: 'zh-Hans',
   tc: 'zh-Hant',
+  'zh-cn': 'zh-Hans',
+  'zh-sg': 'zh-Hans',
+  'zh-tw': 'zh-Hant',
+  'zh-hk': 'zh-Hant',
 }
 
 // Tags Intl knows that do not identify a spoken/written subtitle language in a filename suffix.

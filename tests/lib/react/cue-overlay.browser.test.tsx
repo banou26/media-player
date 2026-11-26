@@ -135,20 +135,35 @@ describe('SubtitleCueOverlay drag lifecycle and stall extrapolation', () => {
 
     const media = makeMedia({ currentTime: 1.5, paused: false })
     const cues: SubtitleCue[] = [
-      { start: 1, end: 2.2, text: 'First cue' },
+      { start: 1, end: 1.8, text: 'First cue' },
       { start: 2.5, end: 4, text: 'Future cue' },
     ]
     const container = await mountOverlay(cues, media)
     await expect.poll(() => container.querySelector('.subtitle-cue-line')?.textContent, { timeout: 2000 }).toBe('First cue')
 
     media.dispatchEvent(new Event('waiting'))
-    nowMs = 3000
+    nowMs = 1400
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     expect(container.querySelector('.subtitle-cue-line')?.textContent).toBe('First cue')
 
     media.currentTime = 2.6
     media.dispatchEvent(new Event('playing'))
     await expect.poll(() => container.querySelector('.subtitle-cue-line')?.textContent, { timeout: 2000 }).toBe('Future cue')
+  })
+
+  it('stops cue clock extrapolation on ended', async () => {
+    let nowMs = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => nowMs)
+
+    const media = makeMedia({ currentTime: 1.5, paused: false })
+    const cues: SubtitleCue[] = [{ start: 1, end: 1.8, text: 'Final cue' }]
+    const container = await mountOverlay(cues, media)
+    await expect.poll(() => container.querySelector('.subtitle-cue-line')?.textContent, { timeout: 2000 }).toBe('Final cue')
+
+    media.dispatchEvent(new Event('ended'))
+    nowMs = 1400
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    expect(container.querySelector('.subtitle-cue-line')?.textContent).toBe('Final cue')
   })
 
   it('caps silent cue clock extrapolation past 0.5s when timeupdate stalls without waiting', async () => {

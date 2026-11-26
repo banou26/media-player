@@ -462,7 +462,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
       onSimpleCues([])
       return
     }
-    onSimpleCues([...buildStreamCues(selected)])
+    onSimpleCues(buildStreamCues(selected))
   }
 
   const scheduleSimpleEmit = () => {

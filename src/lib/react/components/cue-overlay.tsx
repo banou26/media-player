@@ -14,7 +14,6 @@ export interface SubtitleCueMedia {
   readonly currentTime: number
   readonly paused?: boolean
   readonly playbackRate?: number
-  readonly readyState?: number
   readonly ended?: boolean
   addEventListener(type: string, listener: EventListenerOrEventListenerObject): void
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void
@@ -193,7 +192,6 @@ export const SubtitleCueOverlay = ({
     media.addEventListener('play', onPlay)
     media.addEventListener('pause', onPlayState)
     media.addEventListener('waiting', onStall)
-    media.addEventListener('stalled', onStall)
     media.addEventListener('ended', onStall)
     media.addEventListener('playing', onResume)
     media.addEventListener('canplay', onResume)
@@ -208,7 +206,6 @@ export const SubtitleCueOverlay = ({
       media.removeEventListener('play', onPlay)
       media.removeEventListener('pause', onPlayState)
       media.removeEventListener('waiting', onStall)
-      media.removeEventListener('stalled', onStall)
       media.removeEventListener('ended', onStall)
       media.removeEventListener('playing', onResume)
       media.removeEventListener('canplay', onResume)
