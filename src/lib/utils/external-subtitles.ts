@@ -55,59 +55,37 @@ const SUBTITLE_MIME_TYPES = new Set([
   'text/ass',
 ])
 
-const LANGUAGE_SUFFIX_ALIASES: Readonly<Record<string, string>> = {
-  ara: 'ar',
-  ces: 'cs',
-  cze: 'cs',
-  deu: 'de',
-  ger: 'de',
-  ell: 'el',
-  gre: 'el',
-  eng: 'en',
-  spa: 'es',
-  fra: 'fr',
-  fre: 'fr',
-  heb: 'he',
-  hin: 'hi',
-  hun: 'hu',
-  ind: 'id',
-  ita: 'it',
-  jpn: 'ja',
-  kor: 'ko',
-  msa: 'ms',
-  may: 'ms',
-  nld: 'nl',
-  dut: 'nl',
-  pol: 'pl',
-  por: 'pt',
-  ron: 'ro',
-  rum: 'ro',
-  rus: 'ru',
-  swe: 'sv',
-  tha: 'th',
-  tur: 'tr',
-  ukr: 'uk',
-  vie: 'vi',
-  zho: 'zh',
-  chi: 'zh',
+export const MAX_EXTERNAL_SUBTITLE_TRACKS = 64
+export const MAX_EXTERNAL_SUBTITLE_BYTES = 5 * 1024 * 1024
+export const MAX_DROPPED_SUBTITLE_FILES = 32
+export const REMOTE_SUBTITLE_LOAD_TIMEOUT_MS = 15_000
+
+const FANSUB_LANGUAGE_ALIASES: Readonly<Record<string, string>> = {
   chs: 'zh-Hans',
   cht: 'zh-Hant',
   sc: 'zh-Hans',
   tc: 'zh-Hant',
-  'zh-cn': 'zh-Hans',
-  'zh-sg': 'zh-Hans',
-  'zh-hans': 'zh-Hans',
-  'zh-tw': 'zh-Hant',
-  'zh-hk': 'zh-Hant',
-  'zh-hant': 'zh-Hant',
-  'pt-br': 'pt-BR',
-  'es-419': 'es-419',
 }
 
-const TWO_LETTER_LANGUAGES = new Set([
-  'ar', 'cs', 'de', 'el', 'en', 'es', 'fr', 'he', 'hi', 'hu', 'id', 'it', 'ja',
-  'ko', 'ms', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'vi', 'zh',
-])
+// Tags Intl knows that do not identify a spoken/written subtitle language in a filename suffix.
+const NOT_FILENAME_LANGUAGES = new Set(['und', 'zxx', 'mul', 'mis', 'sdh'])
+
+const languageDisplay = new Intl.DisplayNames(['en'], { type: 'language', fallback: 'none' })
+
+const normalizeLanguageToken = (raw: string): string | undefined => {
+  const token = raw.toLowerCase().replace('_', '-')
+  if (token in FANSUB_LANGUAGE_ALIASES) return FANSUB_LANGUAGE_ALIASES[token]
+  if (NOT_FILENAME_LANGUAGES.has(token)) return undefined
+  try {
+    const canonical = Intl.getCanonicalLocales(token)[0]
+    if (!canonical) return undefined
+    const locale = new Intl.Locale(canonical)
+    if (NOT_FILENAME_LANGUAGES.has(locale.language) || !languageDisplay.of(locale.language)) return undefined
+    return canonical
+  } catch {
+    return undefined
+  }
+}
 
 let droppedCounter = 0
 
@@ -164,26 +142,24 @@ export const isSubtitleFile = (file: Pick<File, 'name' | 'type'>): boolean => {
 export const subtitleLabelFromFilename = (filename: string): { label: string, language: string } => {
   const trimmed = filename.trim()
   const stem = trimmed.replace(/\.(?:srt|vtt|ass|ssa)$/i, '').trim() || trimmed || 'Subtitles'
-  const suffixMatch = /(?:^|[._\-[\](\s])(zh[-_](?:hans|hant|cn|tw|hk|sg)|pt[-_]br|es[-_]419|[a-z]{2,3})(?:\]|\))?$/i.exec(stem)
-  let language = 'und'
-  if (suffixMatch) {
-    const token = suffixMatch[1]!.toLowerCase().replace('_', '-')
-    if (token in LANGUAGE_SUFFIX_ALIASES) language = LANGUAGE_SUFFIX_ALIASES[token]!
-    else if (TWO_LETTER_LANGUAGES.has(token)) language = token
-  }
+  const suffixMatch = /(?:^|[._\-[\](\s])([a-z]{2,3}(?:[-_](?:[a-z]{2,4}|\d{3}))?)(?:\]|\))?$/i.exec(stem)
+  const language = (suffixMatch ? normalizeLanguageToken(suffixMatch[1]!) : undefined) ?? 'und'
   return { label: stem, language }
 }
 
-/** Reads every supported subtitle file from `files` into loaded `ExternalSubtitleTrack` entries. */
+/** Reads up to `MAX_DROPPED_SUBTITLE_FILES` supported subtitle files within `MAX_EXTERNAL_SUBTITLE_BYTES`. */
 export const readDroppedSubtitleFiles = async (
   files: Iterable<File>,
   idPrefix = 'drop',
 ): Promise<ExternalSubtitleTrack[]> => {
-  const matched = Array.from(files).filter(isSubtitleFile)
-  return Promise.all(matched.map(async (file) => {
+  const matched = Array.from(files)
+    .filter((file) => isSubtitleFile(file) && file.size <= MAX_EXTERNAL_SUBTITLE_BYTES)
+    .slice(0, MAX_DROPPED_SUBTITLE_FILES)
+  const loaded = await Promise.all(matched.map(async (file): Promise<ExternalSubtitleTrack | null> => {
     const format = detectSubtitleFormat(file.name) ?? 'srt'
     const { label, language } = subtitleLabelFromFilename(file.name)
     const content = await file.text()
+    if (content.length > MAX_EXTERNAL_SUBTITLE_BYTES) return null
     const seq = ++droppedCounter
     return {
       id: `${idPrefix}:${seq}:${file.name}`,
@@ -193,4 +169,5 @@ export const readDroppedSubtitleFiles = async (
       content,
     }
   }))
+  return loaded.filter((track): track is ExternalSubtitleTrack => track !== null)
 }

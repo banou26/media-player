@@ -65,6 +65,7 @@ export type SubtitleRendererOptions = {
    * else. May be relative, as `defaultFontUrl`.
    */
   cjkFontUrl?: string
+  simpleMode?: boolean
   onStreams?: (streams: SubtitleStream[]) => void
   /** Invoked in simple mode whenever the active subtitle cue list changes. */
   onSimpleCues?: (cues: SubtitleCue[]) => void
@@ -181,6 +182,42 @@ const toDialoguePart = (header: SubtitleHeaderPart, fragment: SubtitleFragment &
 
 export type SubtitleRenderer = ReturnType<typeof createSubtitleRenderer>
 
+const toSimpleCue = (assEvent: ASSEvent): SubtitleCue | null => {
+  const start = assEvent.Start / 1000
+  const end = (assEvent.Start + assEvent.Duration) / 1000
+  if (!(end > start)) return null
+  const text = stripAssFormatting(assEvent.Text)
+  return text ? { start, end, text } : null
+}
+
+const isMonotonicFrom = (cues: readonly SubtitleCue[], floor: number): boolean => {
+  let prev = floor
+  for (const cue of cues) {
+    if (cue.start < prev) return false
+    prev = cue.start
+  }
+  return true
+}
+
+const mergeSortedCues = (existing: readonly SubtitleCue[], added: SubtitleCue[]): SubtitleCue[] => {
+  if (!added.length) return existing as SubtitleCue[]
+  const lastExisting = existing.length ? existing[existing.length - 1]!.start : Number.NEGATIVE_INFINITY
+  if (isMonotonicFrom(added, lastExisting)) {
+    return [...existing, ...added]
+  }
+  added.sort((a, b) => a.start - b.start)
+  const merged: SubtitleCue[] = []
+  let i = 0
+  let j = 0
+  while (i < existing.length && j < added.length) {
+    if (existing[i]!.start <= added[j]!.start) merged.push(existing[i++]!)
+    else merged.push(added[j++]!)
+  }
+  while (i < existing.length) merged.push(existing[i++]!)
+  while (j < added.length) merged.push(added[j++]!)
+  return merged
+}
+
 export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const { video, container, workerUrl } = options
   const wasmUrl = workerFetched(options.wasmUrl)!
@@ -196,12 +233,15 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
   const headers = new Map<number, SubtitleHeaderPart>()
   const streams: SubtitleStream[] = []
   const dialogues = new Map<number, Map<string, SubtitleDialoguePart>>()
+  const simpleCuesByStream = new Map<number, SubtitleCue[]>()
+  let externalSimpleCues: { raw: string, cues: SubtitleCue[] } | null = null
+  let simpleEmitQueued = false
   let selected: number | undefined
   let externalAss: string | null = null
   let timeOffset = 0
-  let simpleMode = false
+  let simpleMode = options.simpleMode ?? false
   let onStreams = options.onStreams
-  let onSimpleCues = options.onSimpleCues
+  const onSimpleCues = options.onSimpleCues
   /**
    * Terminal, unlike a null `jassub`.
    *
@@ -392,35 +432,61 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     attachments = [...attachments, ...incoming.map((a) => [a.filename, new Uint8Array(a.data)] as [string, Uint8Array])]
   }
 
+  const buildStreamCues = (streamIndex: number): SubtitleCue[] => {
+    const cached = simpleCuesByStream.get(streamIndex)
+    if (cached) return cached
+    const cues: SubtitleCue[] = []
+    for (const part of dialogues.get(streamIndex)?.values() ?? []) {
+      const cue = toSimpleCue(part.assEvent)
+      if (cue) cues.push(cue)
+    }
+    cues.sort((a, b) => a.start - b.start)
+    simpleCuesByStream.set(streamIndex, cues)
+    return cues
+  }
+
   const emitSimpleCues = () => {
-    if (!onSimpleCues) return
+    if (!onSimpleCues || destroyed) return
     if (!simpleMode) {
       onSimpleCues([])
       return
     }
     if (externalAss !== null) {
-      onSimpleCues(parseSubtitleCues(externalAss, 'ass'))
+      if (!externalSimpleCues || externalSimpleCues.raw !== externalAss) {
+        externalSimpleCues = { raw: externalAss, cues: parseSubtitleCues(externalAss, 'ass') }
+      }
+      onSimpleCues(externalSimpleCues.cues)
       return
     }
     if (selected === undefined || selected === SUBTITLES_OFF) {
       onSimpleCues([])
       return
     }
-    const cues: SubtitleCue[] = []
-    for (const part of dialogues.get(selected)?.values() ?? []) {
-      const start = part.assEvent.Start / 1000
-      const end = (part.assEvent.Start + part.assEvent.Duration) / 1000
-      if (!(end > start)) continue
-      const text = stripAssFormatting(part.assEvent.Text)
-      if (!text) continue
-      cues.push({ start, end, text })
-    }
-    cues.sort((a, b) => a.start - b.start)
-    onSimpleCues(cues)
+    onSimpleCues([...buildStreamCues(selected)])
+  }
+
+  const scheduleSimpleEmit = () => {
+    if (simpleEmitQueued || !onSimpleCues || !simpleMode || destroyed) return
+    simpleEmitQueued = true
+    queueMicrotask(() => {
+      simpleEmitQueued = false
+      emitSimpleCues()
+    })
+  }
+
+  const bootStreamWithEvents = (header: SubtitleHeaderPart) => {
+    bootJassub(header.content)
+    const events = [...dialogues.get(header.streamIndex)?.values() ?? []].map((part) => part.assEvent)
+    if (!events.length) return
+    onRenderer((renderer) => Promise.all(events.map((event) => renderer.createEvent(event))))
+    loadCjkFontFor(events)
+    repaint()
   }
 
   const pushFragments = (fragments: SubtitleFragment[]) => {
     const incoming: ASSEvent[] = []
+    const addedByStream = new Map<number, SubtitleCue[]>()
+    let selectedSimpleChanged = false
     const prevSelected = selected
     for (const fragment of fragments) {
       if (fragment.type === 'header') {
@@ -431,7 +497,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         streams.push({ streamIndex: fragment.streamIndex, title: fragment.title, language: fragment.language })
         onStreams?.([...streams])
         if (selected === undefined && externalAss === null) selected = fragment.streamIndex
-        if (!jassub && !destroyed) bootJassub(header.content)
+        if (!jassub && !destroyed && !simpleMode) bootJassub(header.content)
       } else {
         const header = headers.get(fragment.streamIndex)
         if (!header) continue
@@ -445,14 +511,27 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
         if (byLine.has(key)) continue
         const part = toDialoguePart(header, fragment)
         byLine.set(key, part)
+        if (simpleCuesByStream.has(fragment.streamIndex)) {
+          const cue = toSimpleCue(part.assEvent)
+          if (cue) {
+            let bucket = addedByStream.get(fragment.streamIndex)
+            if (!bucket) { bucket = []; addedByStream.set(fragment.streamIndex, bucket) }
+            bucket.push(cue)
+            if (fragment.streamIndex === selected) selectedSimpleChanged = true
+          }
+        } else if (simpleMode && fragment.streamIndex === selected && toSimpleCue(part.assEvent)) {
+          selectedSimpleChanged = true
+        }
         if (selected === fragment.streamIndex) incoming.push(part.assEvent)
       }
     }
-    if (!incoming.length) {
-      if (simpleMode && selected !== prevSelected) emitSimpleCues()
-      return
+    for (const [streamIndex, added] of addedByStream) {
+      simpleCuesByStream.set(streamIndex, mergeSortedCues(simpleCuesByStream.get(streamIndex)!, added))
     }
-    if (simpleMode) emitSimpleCues()
+    if (simpleMode && (selectedSimpleChanged || selected !== prevSelected)) {
+      scheduleSimpleEmit()
+    }
+    if (!incoming.length || !jassub) return
     // one hop for the whole burst rather than one per event
     onRenderer((renderer) => Promise.all(incoming.map((event) => renderer.createEvent(event))))
     loadCjkFontFor(incoming)
@@ -466,8 +545,11 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     externalAss = null
     selected = next
     emitSimpleCues()
-    if (!jassub) return
     const header = headers.get(next)
+    if (!jassub) {
+      if (!simpleMode && !destroyed && header) bootStreamWithEvents(header)
+      return
+    }
     const events = [...dialogues.get(next)?.values() ?? []].map((part) => part.assEvent)
     onRenderer((renderer) => {
       // Off empties the track rather than freeing it. jassub redoes a draw asked for while one is in flight without
@@ -485,6 +567,7 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     externalAss = assContent
     selected = SUBTITLES_OFF
     emitSimpleCues()
+    if (simpleMode && !jassub) return
     if (!jassub) {
       bootJassub(assContent)
       loadCjkFontForText(assContent)
@@ -524,9 +607,14 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     emitSimpleCues()
     if (!enabled) {
       if (!jassub && !destroyed) {
-        const activeContent = externalAss ?? (selected !== undefined && selected !== SUBTITLES_OFF ? headers.get(selected)?.content : undefined)
-        if (activeContent) bootJassub(activeContent)
-      } else {
+        if (externalAss !== null) {
+          bootJassub(externalAss)
+          loadCjkFontForText(externalAss)
+        } else if (selected !== undefined && selected !== SUBTITLES_OFF) {
+          const header = headers.get(selected)
+          if (header) bootStreamWithEvents(header)
+        }
+      } else if (jassub) {
         repaint()
       }
     }
@@ -546,6 +634,8 @@ export const createSubtitleRenderer = (options: SubtitleRendererOptions) => {
     destroy: () => {
       destroyed = true
       if (simpleMode) onSimpleCues?.([])
+      simpleCuesByStream.clear()
+      externalSimpleCues = null
       const instance = jassub
       jassub = undefined
       for (const type of REPAINT_ON) video.removeEventListener(type, onRepaintEvent)

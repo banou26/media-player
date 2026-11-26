@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { expose } from 'osra'
 
 import { exposePlayer, mediaPlayer, PLAYER_CHANNEL } from '../../../src/lib/remote/index'
+import { MAX_EXTERNAL_SUBTITLE_BYTES, MAX_EXTERNAL_SUBTITLE_TRACKS } from '../../../src/lib/utils/external-subtitles'
 import type { RemoteExternalSubtitleTrack, ServedPlayer } from '../../../src/lib/remote/index'
 import type { PlayerService, PlayerUpdate } from '../../../src/lib/remote/protocol'
 import { EMPTY_SNAPSHOT, snapshotOf } from '../../../src/lib/remote/protocol'
@@ -1671,5 +1672,31 @@ describe('browse subtitles control and external track selection', () => {
     await settled()
     expect(player.browseSubtitles).toBe(null)
     expect(first.browseSubtitles).toEqual([false, null])
+  })
+
+  it('enforces remote external subtitle track count and payload byte caps', async () => {
+    const { served, externalSubtitles, provided } = servedPlayer()
+    const { port1, port2 } = new MessageChannel()
+    open.push(exposePlayer(fakeMedia(), { transport: port1, player: served }))
+    const service = await expose<PlayerService>({}, { transport: port2, key: PLAYER_CHANNEL })
+    const { port1: mine, port2: theirs } = new MessageChannel()
+    await service.subscribe('default', theirs)
+    open.push(() => mine.close())
+
+    const oversized = 'x'.repeat(MAX_EXTERNAL_SUBTITLE_BYTES + 1)
+    const manyTracks: RemoteExternalSubtitleTrack[] = Array.from({ length: MAX_EXTERNAL_SUBTITLE_TRACKS + 10 }, (_, i) => ({
+      id: `t-${i}`,
+      language: 'en',
+      label: `Track ${i}`,
+      format: 'srt',
+      ...(i === 0 ? { content: oversized } : {}),
+    }))
+
+    await service.setExternalSubtitles('default', manyTracks)
+    expect(externalSubtitles.at(-1)).toHaveLength(MAX_EXTERNAL_SUBTITLE_TRACKS)
+    expect(externalSubtitles.at(-1)!.some((track) => track.id === 't-0')).toBe(false)
+
+    await service.provideExternalSubtitle('default', 't-1', oversized)
+    expect(provided.at(-1)).toEqual(['t-1', null, 'External subtitle exceeds size limit'])
   })
 })

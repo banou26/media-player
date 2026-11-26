@@ -17,10 +17,23 @@ import type { Callable, PlayerEvent, PlayerService, PlayerSnapshot, PlayerUpdate
 
 import { expose } from 'osra'
 
+import { MAX_EXTERNAL_SUBTITLE_BYTES, MAX_EXTERNAL_SUBTITLE_TRACKS } from '../utils/external-subtitles'
 import { CALLABLE, DEFAULT_PLAYER_ID, EMPTY_SNAPSHOT, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS, snapshotOf, syncEventsFor, toTimeRanges, WRITABLE } from './protocol'
 
 export type { PlayerEvent, PlayerSnapshot, PlayerUpdate, RemoteExternalSubtitleTrack } from './protocol'
 export { DEFAULT_PLAYER_ID, PLAYER_CHANNEL, PLAYER_EVENTS, SERVED_EVENTS } from './protocol'
+
+const STEP_SETTINGS = [
+  ['previousEpisode', 'onPreviousEpisode'],
+  ['nextEpisode', 'onNextEpisode'],
+  ['sourceSwitch', 'onSourceSwitch'],
+  ['browseSubtitles', 'onBrowseSubtitles'],
+] as const
+type StepSettingName = typeof STEP_SETTINGS[number][0]
+type StepCallbackName = typeof STEP_SETTINGS[number][1]
+type StepSettingValue = boolean | string | null
+const STEP_SETTING_CALLBACKS = Object.fromEntries(STEP_SETTINGS) as Record<StepSettingName, StepCallbackName>
+const isStepSetting = (name: string): name is StepSettingName => Object.hasOwn(STEP_SETTING_CALLBACKS, name)
 
 /** How long a peer has to answer its handshake before the mirror stops waiting on it and moves on. */
 const HANDSHAKE_MS = 10_000
@@ -179,14 +192,13 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
   // id, and the next one has to show the switch without the embedder writing it again.
   const autoplayNext = new Map<string, boolean>()
   const tellAutoplayNext = (id: string) => players.get(id)?.onAutoplayNext(autoplayNext.get(id) ?? null)
-  const previousEpisode = new Map<string, boolean | string | null>()
-  const tellPreviousEpisode = (id: string) => players.get(id)?.onPreviousEpisode?.(previousEpisode.has(id) ? previousEpisode.get(id) : undefined)
-  const nextEpisode = new Map<string, boolean | string | null>()
-  const tellNextEpisode = (id: string) => players.get(id)?.onNextEpisode?.(nextEpisode.has(id) ? nextEpisode.get(id) : undefined)
-  const sourceSwitch = new Map<string, boolean | string | null>()
-  const tellSourceSwitch = (id: string) => players.get(id)?.onSourceSwitch?.(sourceSwitch.has(id) ? sourceSwitch.get(id) : undefined)
-  const browseSubtitles = new Map<string, boolean | string | null>()
-  const tellBrowseSubtitles = (id: string) => players.get(id)?.onBrowseSubtitles?.(browseSubtitles.has(id) ? browseSubtitles.get(id) : undefined)
+  const stepSettings = new Map<StepSettingName, Map<string, StepSettingValue>>(
+    STEP_SETTINGS.map(([name]) => [name, new Map()]),
+  )
+  const tellStep = (id: string, name: StepSettingName) => {
+    const map = stepSettings.get(name)!
+    players.get(id)?.[STEP_SETTING_CALLBACKS[name]]?.(map.has(id) ? map.get(id) : undefined)
+  }
   const externalSubtitles = new Map<string, RemoteExternalSubtitleTrack[]>()
   const tellExternalSubtitles = (id: string) => players.get(id)?.onExternalSubtitles?.(externalSubtitles.get(id) ?? null)
   const drop = (id: string, port: MessagePort) => {
@@ -194,10 +206,9 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
     if (hosts.get(id)?.delete(port)) tellHost(id)
     if (!ports.get(id)?.size) {
       if (autoplayNext.delete(id)) tellAutoplayNext(id)
-      if (previousEpisode.delete(id)) tellPreviousEpisode(id)
-      if (nextEpisode.delete(id)) tellNextEpisode(id)
-      if (sourceSwitch.delete(id)) tellSourceSwitch(id)
-      if (browseSubtitles.delete(id)) tellBrowseSubtitles(id)
+      for (const [name, map] of stepSettings) {
+        if (map.delete(id)) tellStep(id, name)
+      }
       if (externalSubtitles.delete(id)) tellExternalSubtitles(id)
     }
     try { port.onmessage = null; port.close() } catch {}
@@ -273,21 +284,10 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         tellAutoplayNext(id)
         return
       }
-      if (name === 'previousEpisode' || name === 'nextEpisode' || name === 'sourceSwitch' || name === 'browseSubtitles') {
+      if (isStepSetting(name)) {
         if ((typeof value !== 'boolean' && typeof value !== 'string' && value !== null) || !ports.get(id)?.size) return
-        if (name === 'previousEpisode') {
-          previousEpisode.set(id, value)
-          tellPreviousEpisode(id)
-        } else if (name === 'nextEpisode') {
-          nextEpisode.set(id, value)
-          tellNextEpisode(id)
-        } else if (name === 'sourceSwitch') {
-          sourceSwitch.set(id, value)
-          tellSourceSwitch(id)
-        } else {
-          browseSubtitles.set(id, value)
-          tellBrowseSubtitles(id)
-        }
+        stepSettings.get(name)!.set(id, value)
+        tellStep(id, name)
         return
       }
       const media = medias.get(id)
@@ -298,10 +298,12 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (typeof id !== 'string' || !ports.get(id)?.size || !Array.isArray(tracks)) return
       const normalized: RemoteExternalSubtitleTrack[] = []
       for (const item of tracks) {
+        if (normalized.length >= MAX_EXTERNAL_SUBTITLE_TRACKS) break
         if (!item || typeof item !== 'object') continue
         const { id: trackId, language, label, format, content } = item as Partial<RemoteExternalSubtitleTrack>
         if (typeof trackId !== 'string' || typeof language !== 'string' || typeof label !== 'string') continue
         if (format !== 'srt' && format !== 'vtt' && format !== 'ass') continue
+        if (typeof content === 'string' && content.length > MAX_EXTERNAL_SUBTITLE_BYTES) continue
         normalized.push({
           id: trackId,
           language,
@@ -317,6 +319,10 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       if (typeof id !== 'string' || typeof trackId !== 'string' || !ports.get(id)?.size) return
       if (content !== null && typeof content !== 'string') return
       if (error !== undefined && typeof error !== 'string') return
+      if (typeof content === 'string' && content.length > MAX_EXTERNAL_SUBTITLE_BYTES) {
+        players.get(id)?.onProvideExternalSubtitle?.(trackId, null, 'External subtitle exceeds size limit')
+        return
+      }
       players.get(id)?.onProvideExternalSubtitle?.(trackId, content, error)
     },
     selectExternalSubtitle: (id, trackId) => {
@@ -387,10 +393,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       const previous = players.get(player)
       if (previous && previous !== around) {
         previous.onHostFullscreen(null)
-        previous.onPreviousEpisode?.(undefined)
-        previous.onNextEpisode?.(undefined)
-        previous.onSourceSwitch?.(undefined)
-        previous.onBrowseSubtitles?.(undefined)
+        for (const [, cb] of STEP_SETTINGS) previous[cb]?.(undefined)
         previous.onExternalSubtitles?.(null)
       }
       medias.set(player, media)
@@ -398,10 +401,9 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
       else players.delete(player)
       tellHost(player)
       if (autoplayNext.has(player)) tellAutoplayNext(player)
-      if (previousEpisode.has(player)) tellPreviousEpisode(player)
-      if (nextEpisode.has(player)) tellNextEpisode(player)
-      if (sourceSwitch.has(player)) tellSourceSwitch(player)
-      if (browseSubtitles.has(player)) tellBrowseSubtitles(player)
+      for (const [name, map] of stepSettings) {
+        if (map.has(player)) tellStep(player, name)
+      }
       if (externalSubtitles.has(player)) tellExternalSubtitles(player)
       // the switch, told the way an element tells it: what was there is gone, and here is the new
       // one's state, ready to be synced from
@@ -414,10 +416,7 @@ const channelFor = (options: ExposePlayerOptions): Channel => {
         if (around && players.get(player) === around) {
           players.delete(player)
           around.onHostFullscreen(null)
-          around.onPreviousEpisode?.(undefined)
-          around.onNextEpisode?.(undefined)
-          around.onSourceSwitch?.(undefined)
-          around.onBrowseSubtitles?.(undefined)
+          for (const [, cb] of STEP_SETTINGS) around[cb]?.(undefined)
           around.onExternalSubtitles?.(null)
         }
         post(player, { event: 'emptied', snapshot: { ...EMPTY_SNAPSHOT } })
@@ -758,10 +757,12 @@ export const mediaPlayer = (
   // whether the far side has said anything about THIS player yet, which is what `ready` means
   let answered = false
   let fullscreen = false
-  let previousEpisode: boolean | string | null = null
-  let nextEpisode: boolean | string | null = null
-  let sourceSwitch: boolean | string | null = null
-  let browseSubtitles: boolean | string | null = null
+  const stepState: Record<StepSettingName, StepSettingValue> = {
+    previousEpisode: null,
+    nextEpisode: null,
+    sourceSwitch: null,
+    browseSubtitles: null,
+  }
   let externalSubtitles: RemoteExternalSubtitleTrack[] = []
   let pauseCount = 0
   const pauseListeners = new Set<() => void>()
@@ -848,33 +849,17 @@ export const mediaPlayer = (
     set: (value: boolean | null) => { if (typeof value === 'boolean') void after(() => link.set(playerId, 'autoplayNext', value)) },
     enumerable: true,
   })
-  Object.defineProperty(player, 'previousEpisode', {
-    get: () => previousEpisode,
-    set: (value: boolean | string | null) => {
-      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
-      previousEpisode = value
-      void after(() => link.set(playerId, 'previousEpisode', value))
-    },
-    enumerable: true,
-  })
-  Object.defineProperty(player, 'nextEpisode', {
-    get: () => nextEpisode,
-    set: (value: boolean | string | null) => {
-      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
-      nextEpisode = value
-      void after(() => link.set(playerId, 'nextEpisode', value))
-    },
-    enumerable: true,
-  })
-  Object.defineProperty(player, 'sourceSwitch', {
-    get: () => sourceSwitch,
-    set: (value: boolean | string | null) => {
-      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
-      sourceSwitch = value
-      void after(() => link.set(playerId, 'sourceSwitch', value))
-    },
-    enumerable: true,
-  })
+  for (const [name] of STEP_SETTINGS) {
+    Object.defineProperty(player, name, {
+      get: () => stepState[name],
+      set: (value: StepSettingValue) => {
+        if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
+        stepState[name] = value
+        void after(() => link.set(playerId, name, value))
+      },
+      enumerable: true,
+    })
+  }
   const updateExternalSubtitles = (tracks: RemoteExternalSubtitleTrack[]) => {
     if (!Array.isArray(tracks)) return
     const copy = tracks.map((track) => ({ ...track }))
@@ -887,15 +872,6 @@ export const mediaPlayer = (
     enumerable: true,
   })
   player.setExternalSubtitles = updateExternalSubtitles
-  Object.defineProperty(player, 'browseSubtitles', {
-    get: () => browseSubtitles,
-    set: (value: boolean | string | null) => {
-      if (typeof value !== 'boolean' && typeof value !== 'string' && value !== null) return
-      browseSubtitles = value
-      void after(() => link.set(playerId, 'browseSubtitles', value))
-    },
-    enumerable: true,
-  })
   player.provideExternalSubtitle = (trackId: string, content: string | null, error?: string) => {
     void after(() => link.provideExternalSubtitle(playerId, trackId, content, error))
   }

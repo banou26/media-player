@@ -75,6 +75,7 @@ export type PlaybackOptions = {
   onRecovered?: () => void
   onSeek?: (fraction: number) => void
   onSubtitleStreams?: (streams: SubtitleStream[]) => void
+  simpleMode?: boolean
   onSimpleCues?: (cues: SubtitleCue[]) => void
   onAudioStreams?: (streams: AudioStream[], selected: number) => void
   onOutput?: (output: PlaybackOutput) => void
@@ -190,7 +191,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     jassubWorkerUrl, jassubWasmUrl, jassubWasmWorkerUrl, jassubLegacyWasmUrl, jassubLegacyWasmWorkerUrl,
     defaultFontUrl, cjkFontUrl, bufferSize = DEFAULT_BUFFER_SIZE,
     audioStreamIndex, chooseAudioStream, onReady, onError, onRecovered, onSeek, onSubtitleStreams,
-    onSimpleCues, onAudioStreams, onOutput,
+    simpleMode, onSimpleCues, onAudioStreams, onOutput,
   } = options
 
   const make = (streamIndex: number | undefined) => makeRemuxer({
@@ -240,6 +241,7 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       legacyWasmWorkerUrl: jassubLegacyWasmWorkerUrl,
       defaultFontUrl,
       cjkFontUrl,
+      simpleMode,
       onStreams: onSubtitleStreams,
       onSimpleCues,
     })

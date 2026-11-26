@@ -1,51 +1,33 @@
 import { definePlayerFeature } from '@videojs/core/dom'
-import { exitFullscreen as exitDocumentFullscreen, requestFullscreen as requestElementFullscreen } from '@banou/ponyfill/fullscreen'
+import {
+  exitFullscreen as exitDocumentFullscreen,
+  fullscreenElement as getFullscreenElement,
+  fullscreenEnabled as checkFullscreenEnabled,
+  requestFullscreen as requestElementFullscreen,
+} from '@banou/ponyfill/fullscreen'
 
 type FullscreenAvailability = 'available' | 'unavailable' | 'unsupported'
 
 type WebKitPresentationMode = 'inline' | 'fullscreen' | 'picture-in-picture'
 
-type WebKitDocument = Document & {
-  webkitFullscreenEnabled?: boolean
-  webkitFullscreenElement?: Element | null
-  webkitExitFullscreen?: () => Promise<void> | void
-}
-
-type WebKitVideoLike = {
+type WebKitPiPLike = {
   webkitPresentationMode?: WebKitPresentationMode
-  webkitSupportsPresentationMode?: (mode: WebKitPresentationMode) => boolean
   webkitSetPresentationMode?: (mode: WebKitPresentationMode) => void
-  webkitDisplayingFullscreen?: boolean
-  webkitEnterFullscreen?: () => void
-  webkitEnterFullScreen?: () => void
-  webkitExitFullscreen?: () => void
-  webkitExitFullScreen?: () => void
-  requestFullscreen?: () => Promise<unknown>
-  exitFullscreen?: () => Promise<unknown>
-  isFullscreen?: boolean
-  webkitRequestFullscreen?: () => Promise<void> | void
   isPictureInPicture?: boolean
   exitPictureInPicture?: () => Promise<unknown>
 }
 
-const isVideoFullscreenCapable = (video: WebKitVideoLike | null) =>
-  !!video && (
-    typeof video.webkitSetPresentationMode === 'function'
-    || typeof video.webkitEnterFullscreen === 'function'
-    || typeof video.webkitEnterFullScreen === 'function'
-    || typeof video.requestFullscreen === 'function'
-    || typeof video.webkitRequestFullscreen === 'function'
-  )
-
-const isFullscreenEnabled = (media: EventTarget | null) => {
-  const doc = document as WebKitDocument
-  if (doc.fullscreenEnabled || doc.webkitFullscreenEnabled) return true
-  if (media && isVideoFullscreenCapable(media as WebKitVideoLike)) return true
-  return isVideoFullscreenCapable(document.createElement('video') as unknown as WebKitVideoLike)
+type RemoteFullscreenLike = {
+  requestFullscreen?: () => Promise<unknown>
+  exitFullscreen?: () => Promise<unknown>
+  isFullscreen?: boolean
 }
 
-const getFullscreenElement = (doc: WebKitDocument) =>
-  doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null
+const docOf = (container: HTMLElement | null, media: EventTarget | null): Document =>
+  container?.ownerDocument ?? (media instanceof Node ? media.ownerDocument : null) ?? document
+
+const isFullscreenEnabled = (container: HTMLElement | null, media: EventTarget | null) =>
+  media !== null && checkFullscreenEnabled(docOf(container, media), media instanceof Element ? media : null)
 
 const matchesFullscreen = (element: EventTarget | null) => {
   if (!(element instanceof Element)) return false
@@ -59,34 +41,31 @@ const matchesFullscreen = (element: EventTarget | null) => {
 
 const isFullscreen = (container: HTMLElement | null, media: EventTarget | null) => {
   if (!media) return false
-  const video = media as WebKitVideoLike
-  if (video.webkitPresentationMode === 'fullscreen' || video.webkitDisplayingFullscreen === true) return true
-
-  const doc = (container?.ownerDocument ?? (media instanceof Node ? media.ownerDocument : null) ?? document) as WebKitDocument
-  const fullscreenElement = getFullscreenElement(doc)
-  if (fullscreenElement && (fullscreenElement === container || fullscreenElement === media)) return true
+  const active = getFullscreenElement(docOf(container, media), media instanceof Element ? media : null)
+  if (active && (active === container || active === media)) return true
   if (matchesFullscreen(container) || matchesFullscreen(media)) return true
-
-  return video.isFullscreen ?? false
+  return (media as RemoteFullscreenLike).isFullscreen ?? false
 }
 
-const isPictureInPicture = (media: EventTarget | null) => {
+const isPictureInPicture = (container: HTMLElement | null, media: EventTarget | null) => {
   if (!media) return false
-  const video = media as WebKitVideoLike
+  const video = media as WebKitPiPLike
   if (video.webkitPresentationMode === 'picture-in-picture') return true
-  if (typeof document !== 'undefined' && document.pictureInPictureElement === media) return true
+  const doc = docOf(container, media)
+  if (doc.pictureInPictureElement === media) return true
   return video.isPictureInPicture ?? false
 }
 
-const exitPictureInPicture = (media: EventTarget | null): Promise<void> => {
+const exitPictureInPicture = (container: HTMLElement | null, media: EventTarget | null): Promise<void> => {
   if (!media) return Promise.resolve()
-  const video = media as WebKitVideoLike
+  const video = media as WebKitPiPLike
   if (video.webkitPresentationMode === 'picture-in-picture' && typeof video.webkitSetPresentationMode === 'function') {
     video.webkitSetPresentationMode('inline')
     return Promise.resolve()
   }
-  if (typeof document !== 'undefined' && typeof document.exitPictureInPicture === 'function') {
-    return Promise.resolve(document.exitPictureInPicture()).then(() => undefined)
+  const doc = docOf(container, media)
+  if (doc.pictureInPictureElement === media && typeof doc.exitPictureInPicture === 'function') {
+    return Promise.resolve(doc.exitPictureInPicture()).then(() => undefined)
   }
   if (typeof video.exitPictureInPicture === 'function') {
     return Promise.resolve(video.exitPictureInPicture()).then(() => undefined)
@@ -97,23 +76,19 @@ const exitPictureInPicture = (media: EventTarget | null): Promise<void> => {
 // Not `async` so WebKit fallback methods run synchronously inside the user activation turn when `!doc.fullscreenEnabled`.
 const enterFullscreen = (container: HTMLElement | null, media: EventTarget | null): Promise<void> => {
   if (!media) return Promise.resolve()
-  const doc = (container?.ownerDocument ?? (media instanceof Node ? media.ownerDocument : null) ?? document) as WebKitDocument
-  const video = media as WebKitVideoLike
-
-  const hasMediaFullscreen =
-    media instanceof Element
-      ? isVideoFullscreenCapable(video)
-      : typeof video.requestFullscreen === 'function'
+  const doc = docOf(container, media)
+  const remote = media as RemoteFullscreenLike
+  const hasMediaFullscreen = media instanceof Element || typeof remote.requestFullscreen === 'function'
 
   const requestMedia = (): Promise<void> => {
     if (media instanceof Element) return requestElementFullscreen(media)
-    if (typeof video.requestFullscreen === 'function') {
-      return Promise.resolve(video.requestFullscreen()).then(() => undefined)
+    if (typeof remote.requestFullscreen === 'function') {
+      return Promise.resolve(remote.requestFullscreen()).then(() => undefined)
     }
     return Promise.resolve()
   }
 
-  if (container && (doc.fullscreenEnabled || doc.webkitFullscreenEnabled)) {
+  if (container && checkFullscreenEnabled(doc)) {
     return requestElementFullscreen(container).catch((error) => {
       if (hasMediaFullscreen) return requestMedia()
       return Promise.reject(error instanceof Error ? error : new Error(String(error)))
@@ -123,38 +98,13 @@ const enterFullscreen = (container: HTMLElement | null, media: EventTarget | nul
   return requestMedia()
 }
 
-const leaveFullscreen = (media: EventTarget | null): Promise<void> => {
+const leaveFullscreen = (container: HTMLElement | null, media: EventTarget | null): Promise<void> => {
   if (!media) return Promise.resolve()
-  const doc = ((media instanceof Node ? media.ownerDocument : null) ?? document) as WebKitDocument
-  const video = media as WebKitVideoLike
-
-  if (doc.fullscreenElement || doc.webkitFullscreenElement) {
-    return exitDocumentFullscreen(doc)
+  const remote = media as RemoteFullscreenLike
+  if (!(media instanceof Element) && typeof remote.exitFullscreen === 'function') {
+    return Promise.resolve(remote.exitFullscreen()).then(() => undefined)
   }
-
-  if (video.webkitPresentationMode === 'fullscreen' && typeof video.webkitSetPresentationMode === 'function') {
-    video.webkitSetPresentationMode('inline')
-    return Promise.resolve()
-  }
-
-  if (video.webkitDisplayingFullscreen) {
-    const exitVideo = video.webkitExitFullscreen ?? video.webkitExitFullScreen
-    if (typeof exitVideo === 'function') {
-      exitVideo.call(video)
-      return Promise.resolve()
-    }
-    if (media instanceof Element) return exitDocumentFullscreen(doc)
-  }
-
-  if (typeof video.exitFullscreen === 'function') {
-    return Promise.resolve(video.exitFullscreen()).then(() => undefined)
-  }
-
-  if (typeof doc.exitFullscreen === 'function' || typeof doc.webkitExitFullscreen === 'function') {
-    return exitDocumentFullscreen(doc)
-  }
-
-  return Promise.resolve()
+  return exitDocumentFullscreen(docOf(container, media), media instanceof Element ? media : null)
 }
 
 type FullscreenState = {
@@ -172,32 +122,35 @@ export const fullscreenFeature = definePlayerFeature({
     fullscreenAvailability: 'unavailable',
     requestFullscreen() {
       const { media, container } = target()
-      if (isPictureInPicture(media)) {
-        return exitPictureInPicture(media).then(() => enterFullscreen(container, media))
+      if (isPictureInPicture(container, media)) {
+        return exitPictureInPicture(container, media).then(() => enterFullscreen(container, media))
       }
       return enterFullscreen(container, media)
     },
     exitFullscreen() {
-      const { media } = target()
-      return leaveFullscreen(media)
+      const { media, container } = target()
+      return leaveFullscreen(container, media)
     },
     toggleFullscreen() {
       const { media, container } = target()
-      if (isFullscreen(container, media)) return leaveFullscreen(media)
-      if (isPictureInPicture(media)) {
-        return exitPictureInPicture(media).then(() => enterFullscreen(container, media))
+      if (isFullscreen(container, media)) return leaveFullscreen(container, media)
+      if (isPictureInPicture(container, media)) {
+        return exitPictureInPicture(container, media).then(() => enterFullscreen(container, media))
       }
       return enterFullscreen(container, media)
     },
   }),
   attach({ target, signal, set }) {
     const { media, container } = target
-    set({ fullscreenAvailability: isFullscreenEnabled(media) ? 'available' : 'unsupported' })
+    const syncAvailability = () => set({
+      fullscreenAvailability: isFullscreenEnabled(container, media) ? 'available' : 'unsupported',
+    })
+    syncAvailability()
 
     const sync = () => set({ fullscreen: isFullscreen(container, media) })
     sync()
 
-    const doc = (container?.ownerDocument ?? (media instanceof Node ? media.ownerDocument : null) ?? document) as Document
+    const doc = docOf(container, media)
     const mediaTarget = media as EventTarget
     const abort = { signal }
     doc.addEventListener('fullscreenchange', sync, abort)
@@ -206,5 +159,6 @@ export const fullscreenFeature = definePlayerFeature({
     mediaTarget.addEventListener('webkitpresentationmodechanged', sync, abort)
     mediaTarget.addEventListener('webkitbeginfullscreen', sync, abort)
     mediaTarget.addEventListener('webkitendfullscreen', sync, abort)
+    mediaTarget.addEventListener('loadedmetadata', syncAvailability, abort)
   },
 })

@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vite-plus/test'
 
 import { parseSubtitleCues, stripAssFormatting } from '../../../src/lib/engine/subtitle-cues'
 import {
   DEFAULT_SUBTITLE_SETTINGS,
+  MAX_DROPPED_SUBTITLE_FILES,
+  MAX_EXTERNAL_SUBTITLE_BYTES,
   clampSubtitleBackgroundOpacity,
   clampSubtitleFontScale,
   clampSubtitleOffset,
@@ -84,15 +86,29 @@ describe('dropped subtitle file helpers', () => {
     expect(subtitleLabelFromFilename('Frieren.zh-Hans.ass')).toEqual({ label: 'Frieren.zh-Hans', language: 'zh-Hans' })
     expect(subtitleLabelFromFilename('movie.pt-BR.vtt')).toEqual({ label: 'movie.pt-BR', language: 'pt-BR' })
     expect(subtitleLabelFromFilename('fansub.jpn.srt')).toEqual({ label: 'fansub.jpn', language: 'ja' })
+    expect(subtitleLabelFromFilename('film.fre.srt')).toEqual({ label: 'film.fre', language: 'fr' })
+    expect(subtitleLabelFromFilename('film.ger.srt')).toEqual({ label: 'film.ger', language: 'de' })
+    expect(subtitleLabelFromFilename('show.chs.ass')).toEqual({ label: 'show.chs', language: 'zh-Hans' })
+    expect(subtitleLabelFromFilename('show.cht.ass')).toEqual({ label: 'show.cht', language: 'zh-Hant' })
+    expect(subtitleLabelFromFilename('show.sc.ass')).toEqual({ label: 'show.sc', language: 'zh-Hans' })
+    expect(subtitleLabelFromFilename('show.tc.ass')).toEqual({ label: 'show.tc', language: 'zh-Hant' })
+    expect(subtitleLabelFromFilename('episode.en-US.vtt')).toEqual({ label: 'episode.en-US', language: 'en-US' })
+    expect(subtitleLabelFromFilename('hearing.sdh.srt')).toEqual({ label: 'hearing.sdh', language: 'und' })
     expect(subtitleLabelFromFilename('custom-subs.srt')).toEqual({ label: 'custom-subs', language: 'und' })
   })
 
-  it('reads dropped subtitle files and skips non-subtitle files', async () => {
+  it('reads dropped subtitle files, skips non-subtitles and oversized files, and enforces file count caps', async () => {
     const srt = new File(['1\n00:00:01,000 --> 00:00:03,000\nHello\n'], 'Movie.en.srt', { type: 'application/x-subrip' })
     const ass = new File(['[Events]\nDialogue: 0,0:00:01.00,0:00:03.00,Default,,0,0,0,,Hi\n'], 'Movie.ja.ass', { type: '' })
     const mkv = new File(['not-a-subtitle'], 'Movie.mkv', { type: 'video/x-matroska' })
+    const oversized = {
+      name: 'huge.srt',
+      type: 'application/x-subrip',
+      size: MAX_EXTERNAL_SUBTITLE_BYTES + 1,
+      text: () => { throw new Error('oversized file should not be read') },
+    } as unknown as File
 
-    const tracks = await readDroppedSubtitleFiles([mkv, srt, ass], 'test-drop')
+    const tracks = await readDroppedSubtitleFiles([mkv, oversized, srt, ass], 'test-drop')
     expect(tracks).toHaveLength(2)
     expect(tracks[0]).toMatchObject({
       format: 'srt',
@@ -106,5 +122,11 @@ describe('dropped subtitle file helpers', () => {
       language: 'ja',
       label: 'Movie.ja',
     })
+
+    const many = Array.from({ length: MAX_DROPPED_SUBTITLE_FILES + 5 }, (_, index) =>
+      new File([`${index}\n00:00:01,000 --> 00:00:02,000\nLine ${index}\n`], `sub-${index}.en.srt`, { type: 'application/x-subrip' }),
+    )
+    const capped = await readDroppedSubtitleFiles(many, 'cap')
+    expect(capped).toHaveLength(MAX_DROPPED_SUBTITLE_FILES)
   })
 })

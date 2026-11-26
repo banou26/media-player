@@ -3,14 +3,13 @@ import type { ReactNode } from 'react'
 import type { ExternalSubtitleFormat, MediaChapter, SubtitleCue } from '../engine'
 import type { SubtitlePosition } from '../utils/external-subtitles'
 import type { BrowseSubtitles, DownloadedRange, TrackChoice, VolumeNormalizerControl } from './source-feature'
-import type { DelegatedSelection, DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
-import type { ExposePlayerOptions, RemoteExternalSubtitleTrack, ServedPlayer } from '../remote'
+import type { DelegatedTracks, ExternalThumbnails, PassThroughPictureInPicture, PlayerMedia } from './media'
+import type { ExposePlayerOptions } from '../remote'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 import { useContainerAttach, useMediaAttach } from '@videojs/react'
 
-import { parseSubtitleCues } from '../engine'
 import { Player, usePlayer } from './player'
 import { usePlayback } from './hooks/use-playback'
 import { useFrameStep } from './hooks/use-frame-step'
@@ -18,6 +17,8 @@ import { useSeekThumbnails } from './hooks/use-thumbnails'
 import { usePictureInPicture } from './hooks/use-picture-in-picture'
 import { usePassThroughPictureInPicture } from './hooks/use-pass-through-picture-in-picture'
 import { useVolumeNormalizer } from './hooks/use-volume-normalizer'
+import { useServedPlayer } from './hooks/use-served-player'
+import { useRemoteTracks } from './hooks/use-remote-tracks'
 import { createPlaybackTap } from '../audio/playback-tap'
 import Chrome from './components/chrome'
 import { SubtitleCueOverlay } from './components/cue-overlay'
@@ -26,13 +27,9 @@ import {
   clampSubtitleBackgroundOpacity,
   clampSubtitleFontScale,
   clampSubtitleOffset,
-  externalTrackLabel,
-  isExternalTrackId,
-  rawExternalTrackId,
   readDroppedSubtitleFiles,
   toExternalTrackId,
 } from '../utils/external-subtitles'
-import { languageOf, playsIn } from '../language'
 
 /**
  * The source, read a range at a time: the player never downloads the whole file. Both fields travel
@@ -79,20 +76,6 @@ export type SourceSwitch = EpisodeStep
 export type { BrowseSubtitles }
 /** One-shot request to activate external subtitle track `id` whenever `seq` changes. */
 export type ExternalSubtitleSelection = { id: string, seq: number }
-
-const resolveStep = (
-  served: EventTarget,
-  override: boolean | string | null | undefined,
-  prop: EpisodeStep | null | undefined,
-  event: 'previousrequest' | 'nextrequest' | 'sourceswitchrequest' | 'subtitlesbrowserequest',
-): EpisodeStep | null | undefined => {
-  if (override === undefined) return prop
-  if (override === false || override === null) return null
-  return {
-    ...typeof override === 'string' && override ? { title: override } : {},
-    request: () => served.dispatchEvent(new Event(event)),
-  }
-}
 
 /** An external subtitle track loaded outside the media container and rendered via `SubtitleRenderer`. */
 export type ExternalSubtitleTrack = {
@@ -422,11 +405,6 @@ export type MediaPlayerRemoteOptions =
 
 export type MediaPlayerOptions = MediaPlayerLocalOptions | MediaPlayerRemoteOptions
 
-// a label is read as a name, never as a tag
-const trackOf = (selection: DelegatedSelection, id: string) => ({ title: selection.options.find((option) => option.id === id)?.label })
-
-const afterSwitch = (result: void | Promise<void>, then: () => void) => result instanceof Promise ? result.then(then) : then()
-
 const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, children?: ReactNode }) => {
   // Narrowed on the field that carries the difference: a remote arm brings its own media and, by
   // construction, no bytes. Both halves stay null-safe so the engine hooks below can be called
@@ -490,145 +468,33 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   //
   // Imported lazily, so `osra` is a dependency of `@banou/media-player/remote` and not of every app
   // that renders a player without ever exposing one.
-  const { expose } = options
-  // What `expose` serves beside the media, the same object for the player's life. Its `onHostFullscreen` is how a
-  // mirror made with `fullscreen: true` takes the fullscreen over.
-  const [embedderFullscreen, setEmbedderFullscreen] = useState<boolean | null>(null)
-  const [endingOffered, setEndingOffered] = useState(true)
-  const [embedderAutoplayNext, setEmbedderAutoplayNext] = useState<boolean | null>(null)
-  const [autoplayNext, setAutoplayNext] = useState(options.autoplayNext)
-  const [embedderPrevious, setEmbedderPrevious] = useState<boolean | string | null | undefined>(undefined)
-  const [embedderNext, setEmbedderNext] = useState<boolean | string | null | undefined>(undefined)
-  const [embedderSourceSwitch, setEmbedderSourceSwitch] = useState<boolean | string | null | undefined>(undefined)
-  const [embedderBrowseSubtitles, setEmbedderBrowseSubtitles] = useState<boolean | string | null | undefined>(undefined)
-  const [embedderSubtitles, setEmbedderSubtitles] = useState<RemoteExternalSubtitleTrack[] | null>(null)
-  const [embedderSubtitlesRevision, setEmbedderSubtitlesRevision] = useState(0)
-  const pendingSubtitleLoads = useRef(new Map<string, { resolve: (content: string) => void, reject: (error: Error) => void }>())
-  const [served] = useState<ServedPlayer & { chapters: MediaChapter[], endingOffered: boolean, autoplayNext: boolean | null }>(
-    () => Object.assign(new EventTarget(), {
-      chapters: [],
-      endingOffered: true,
-      autoplayNext: null,
-      onHostFullscreen: setEmbedderFullscreen,
-      onEndingOffered: setEndingOffered,
-      // each write applies, even one equal to the last: the viewer may have flipped the switch since
-      onAutoplayNext: (on: boolean | null) => {
-        setEmbedderAutoplayNext(on)
-        if (on !== null) setAutoplayNext(on)
-      },
-      onPreviousEpisode: (step: boolean | string | null | undefined) => setEmbedderPrevious(step),
-      onNextEpisode: (step: boolean | string | null | undefined) => setEmbedderNext(step),
-      onSourceSwitch: (value: boolean | string | null | undefined) => setEmbedderSourceSwitch(value),
-      onBrowseSubtitles: (value: boolean | string | null | undefined) => setEmbedderBrowseSubtitles(value),
-      onSelectExternalSubtitle: (trackId: string) => onSelectExternalSubtitleRef.current(trackId),
-      onExternalSubtitles: (tracks: RemoteExternalSubtitleTrack[] | null) => {
-        if (tracks === null) {
-          for (const { reject } of pendingSubtitleLoads.current.values()) {
-            reject(new Error('External subtitle host disconnected'))
-          }
-          pendingSubtitleLoads.current.clear()
-        } else {
-          const ids = new Set(tracks.map((track) => track.id))
-          for (const [trackId, entry] of [...pendingSubtitleLoads.current.entries()]) {
-            if (!ids.has(trackId)) {
-              pendingSubtitleLoads.current.delete(trackId)
-              entry.reject(new Error('External subtitle track was removed'))
-            }
-          }
-        }
-        setEmbedderSubtitles(tracks)
-        setEmbedderSubtitlesRevision((rev) => rev + 1)
-      },
-      onProvideExternalSubtitle: (trackId: string, content: string | null, error?: string) => {
-        const pending = pendingSubtitleLoads.current.get(trackId)
-        if (!pending) return
-        pendingSubtitleLoads.current.delete(trackId)
-        if (content !== null && !error) pending.resolve(content)
-        else pending.reject(new Error(error ?? 'External subtitle track failed to load'))
-      },
-    }),
-  )
-  useEffect(() => () => {
-    for (const { reject } of pendingSubtitleLoads.current.values()) reject(new Error('Player unmounted'))
-    pendingSubtitleLoads.current.clear()
-  }, [])
-  const exposeOptions = expose === true ? {} : expose || undefined
-  const latestExpose = useRef(exposeOptions)
-  latestExpose.current = exposeOptions
-  const exposeId = exposeOptions ? exposeOptions.id : undefined
-  const exposeOrigin = exposeOptions ? exposeOptions.origin : undefined
-  const exposeChannel = exposeOptions ? exposeOptions.channel : undefined
-  useEffect(() => {
-    if (!expose || !media) return
-    let stop: (() => void) | undefined
-    let dropped = false
-    import('../remote')
-      .then(({ exposePlayer }) => {
-        if (dropped) return
-        stop = exposePlayer(media, { ...latestExpose.current, player: served })
-      })
-      .catch(() => {})
-    return () => { dropped = true; stop?.() }
-  }, [media, !!expose, exposeId, exposeOrigin, exposeChannel])
-
   // by value, since a caller's inline `chapters` is a new array on every render
   const playerChapters = usePlayer((state) => state.chapters)
   const chaptersKey = JSON.stringify(playerChapters)
-  // after the commit, so a mirror that hears the ending is no longer offered finds the button already gone
-  useEffect(() => {
-    served.chapters = playerChapters
-    served.endingOffered = endingOffered
-    served.dispatchEvent(new Event('chapterschange'))
-  }, [chaptersKey, endingOffered])
-
-  const autoplayNextProp = options.autoplayNext
-  useEffect(() => { if (embedderAutoplayNext === null) setAutoplayNext(autoplayNextProp) }, [autoplayNextProp, embedderAutoplayNext])
+  const {
+    endingOffered,
+    autoplayNext,
+    setAutoplayNext,
+    fullscreen,
+    episodeNavigation,
+    sourceSwitch,
+    browseSubtitles,
+    remoteExternalSubtitles,
+    embedderSubtitlesRevision,
+  } = useServedPlayer({
+    expose: options.expose,
+    media,
+    playerChapters,
+    chaptersKey,
+    autoplayNextProp: options.autoplayNext,
+    fullscreen: options.fullscreen,
+    episodeNavigation: options.episodeNavigation,
+    sourceSwitch: options.sourceSwitch,
+    browseSubtitles: options.browseSubtitles,
+    onSelectExternalSubtitleRef,
+  })
   const onAutoplayNextChange = useRef(options.onAutoplayNextChange)
   onAutoplayNextChange.current = options.onAutoplayNextChange
-  useEffect(() => {
-    served.autoplayNext = autoplayNext ?? null
-    served.dispatchEvent(new Event('autoplaynextchange'))
-  }, [autoplayNext])
-
-  const fullscreen = options.fullscreen ?? (embedderFullscreen === null ? undefined : {
-    active: embedderFullscreen,
-    request: () => served.dispatchEvent(new Event('fullscreenrequest')),
-  })
-
-  const episodeNavigation = useMemo<EpisodeNavigation | undefined>(() => {
-    const previous = resolveStep(served, embedderPrevious, options.episodeNavigation?.previous, 'previousrequest')
-    const next = resolveStep(served, embedderNext, options.episodeNavigation?.next, 'nextrequest')
-    return previous !== undefined || next !== undefined ? { previous, next } : undefined
-  }, [embedderPrevious, embedderNext, options.episodeNavigation, served])
-
-  const sourceSwitch = useMemo<SourceSwitch | undefined>(
-    () => resolveStep(served, embedderSourceSwitch, options.sourceSwitch, 'sourceswitchrequest') ?? undefined,
-    [embedderSourceSwitch, options.sourceSwitch, served],
-  )
-
-  const browseSubtitles = useMemo<BrowseSubtitles | undefined>(
-    () => resolveStep(served, embedderBrowseSubtitles, options.browseSubtitles, 'subtitlesbrowserequest') ?? undefined,
-    [embedderBrowseSubtitles, options.browseSubtitles, served],
-  )
-
-  const remoteExternalSubtitles = useMemo<ExternalSubtitleTrack[] | undefined>(() => {
-    if (!embedderSubtitles) return undefined
-    return embedderSubtitles.map((track) => ({
-      id: track.id,
-      language: track.language,
-      label: track.label,
-      format: track.format,
-      ...track.content !== undefined ? { content: track.content } : {},
-      load: track.content !== undefined
-        ? undefined
-        : () => new Promise<string>((resolve, reject) => {
-          const previous = pendingSubtitleLoads.current.get(track.id)
-          if (previous) previous.reject(new Error('Replaced by a newer subtitle load request'))
-          pendingSubtitleLoads.current.set(track.id, { resolve, reject })
-          served.dispatchEvent(new CustomEvent('subtitleloadrequest', { detail: { trackId: track.id } }))
-        }),
-    }))
-  }, [embedderSubtitles, served])
 
   const baseExternal = remoteExternalSubtitles ?? options.externalSubtitles
   const allExternalSubtitles = useMemo(() => {
@@ -793,179 +659,16 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({ browseSubtitles: browseSubtitles ?? null })
   }, [setSourceState, browseSubtitles])
 
-  // A delegated track list writes the same store fields the engine writes, so the menus never learn
-  // which arm they are showing. When `externalSubtitles` are also given on the remote arm, native
-  // and external choices share one menu with mutual exclusion and cues render in `subtitleOverlay`.
-  const subtitles = remote?.subtitles?.selection
-  const audio = remote?.audioTracks?.selection
-  const remoteExternal = remote ? allExternalSubtitles : undefined
-  const [activeExternalId, setActiveExternalId] = useState<string | null>(null)
-  const [externalCues, setExternalCues] = useState<SubtitleCue[]>([])
-  const remoteCueCacheRef = useRef(new Map<string, { raw?: string, cues: SubtitleCue[] }>())
-  const remoteSubGenRef = useRef(0)
-  const prevRemoteNativeIdRef = useRef<string | null | undefined>(undefined)
-
-  useEffect(() => {
-    remoteCueCacheRef.current.clear()
-    remoteSubGenRef.current++
-  }, [embedderSubtitlesRevision])
-
-  useEffect(() => {
-    remoteCueCacheRef.current.clear()
-    remoteSubGenRef.current++
-    setActiveExternalId(null)
-    setExternalCues([])
-    prevRemoteNativeIdRef.current = undefined
-  }, [remote?.media])
-
-  useEffect(() => {
-    if (!remote) return
-    if (subtitles?.selectedId !== prevRemoteNativeIdRef.current) {
-      prevRemoteNativeIdRef.current = subtitles?.selectedId
-      if (subtitles?.selectedId != null) {
-        remoteSubGenRef.current++
-        setActiveExternalId(null)
-        setExternalCues([])
-      }
-    }
-  }, [remote, subtitles?.selectedId])
-
-  useEffect(() => {
-    if (!remote || !activeExternalId) return
-    const rawId = rawExternalTrackId(activeExternalId)
-    const currentTrack = remoteExternal?.find((track) => track.id === rawId)
-    if (!currentTrack) {
-      remoteSubGenRef.current++
-      setActiveExternalId(null)
-      setExternalCues([])
-      return
-    }
-    if (currentTrack.content !== undefined) {
-      const cached = remoteCueCacheRef.current.get(currentTrack.id)
-      if (!cached || cached.raw !== currentTrack.content) {
-        const cues = parseSubtitleCues(currentTrack.content, currentTrack.format)
-        remoteCueCacheRef.current.set(currentTrack.id, { raw: currentTrack.content, cues })
-        setExternalCues(cues)
-      }
-    }
-  }, [remote, remoteExternal, activeExternalId])
-
-  // `select`'s promise reaches the menu, which is the only place that can hold the popover open, keep the tick off an
-  // unfinished switch, and show a failure, and a promise nothing awaits is an unhandled rejection.
-  const latest = useRef({ options, audio, subtitles, externalSubtitles: remoteExternal, activeExternalId, media: remote?.media })
-  latest.current = { options, audio, subtitles, externalSubtitles: remoteExternal, activeExternalId, media: remote?.media }
-  useEffect(() => {
-    if (!remote) return
-    const mergedTracks: TrackChoice[] = [
-      ...(subtitles?.options.map(({ id, label, disabled }): TrackChoice => ({ id, label, disabled, kind: 'native' })) ?? []),
-      ...(remoteExternal?.map((track): TrackChoice => ({
-        id: toExternalTrackId(track.id),
-        label: externalTrackLabel(track),
-        kind: 'external',
-      })) ?? []),
-    ]
-    if (!subtitles && !mergedTracks.length) {
-      setSourceState({
-        subtitleTracks: [],
-        selectedSubtitleTrack: undefined,
-        subtitleOffLabel: undefined,
-        selectSubtitleTrack: () => {},
-      })
-      return
-    }
-    const notifyLanguage = (language: string | null | undefined, audioTrackTitle?: string) => {
-      const now = latest.current
-      if (language !== undefined) now.options.onPreferredSubtitleLanguageChange?.(language)
-      if (language && playsIn({ title: audioTrackTitle }, language)) now.options.onAlwaysShowSubtitlesChange?.(true)
-    }
-    const audioTitle = () => {
-      const now = latest.current
-      return now.audio ? trackOf(now.audio, now.audio.selectedId ?? '')?.title : undefined
-    }
-    setSourceState({
-      subtitleTracks: mergedTracks,
-      selectedSubtitleTrack: activeExternalId ?? subtitles?.selectedId ?? undefined,
-      selectSubtitleTrack: (id) => {
-        if (!flushingExternalSelectRef.current) pendingExternalSelectRef.current = null
-        const now = latest.current
-        const gen = ++remoteSubGenRef.current
-        if (id == null) {
-          setActiveExternalId(null)
-          setExternalCues([])
-          if (!now.subtitles) {
-            notifyLanguage(null)
-            return
-          }
-          return afterSwitch(now.subtitles.select(null), () => notifyLanguage(null))
-        }
-        if (isExternalTrackId(id)) {
-          const rawId = rawExternalTrackId(id)
-          const track = now.externalSubtitles?.find((entry) => entry.id === rawId)
-          if (!track) return Promise.reject(new Error('External subtitle track not found'))
-          const wasOff = now.activeExternalId === null && (now.subtitles?.selectedId ?? null) === null
-          const activate = (cues: SubtitleCue[]) => {
-            const current = latest.current
-            if (current.subtitles && current.subtitles.selectedId !== null) {
-              void Promise.resolve(current.subtitles.select(null)).catch(() => {})
-            }
-            setActiveExternalId(id)
-            setExternalCues(cues)
-            const language = languageOf({ language: track.language, title: track.label })
-              ?? (wasOff ? track.label.trim() || 'und' : undefined)
-            notifyLanguage(language, audioTitle())
-          }
-          const cached = remoteCueCacheRef.current.get(track.id)
-          if (track.content !== undefined) {
-            const cues = cached && cached.raw === track.content
-              ? cached.cues
-              : parseSubtitleCues(track.content, track.format)
-            remoteCueCacheRef.current.set(track.id, { raw: track.content, cues })
-            activate(cues)
-            return
-          }
-          if (cached) {
-            activate(cached.cues)
-            return
-          }
-          if (!track.load) return Promise.reject(new Error('External subtitle track has no content or loader'))
-          return track.load().then((raw) => {
-            if (remoteSubGenRef.current !== gen || latest.current.media !== now.media) return
-            const cues = parseSubtitleCues(raw, track.format)
-            remoteCueCacheRef.current.set(track.id, { raw, cues })
-            activate(cues)
-          })
-        }
-        if (!now.subtitles) return
-        const picked = String(id)
-        const track = trackOf(now.subtitles, picked)
-        const wasOff = now.activeExternalId === null && now.subtitles.selectedId === null
-        return afterSwitch(now.subtitles.select(picked), () => {
-          setActiveExternalId(null)
-          setExternalCues([])
-          const language = languageOf(track) ?? (wasOff ? track?.title : undefined)
-          notifyLanguage(language, audioTitle())
-        })
-      },
-      subtitleOffLabel: subtitles?.offLabel,
-    })
-  }, [setSourceState, !!remote, subtitles, remoteExternal, activeExternalId])
-
-  useEffect(() => {
-    if (!audio) return
-    setSourceState({
-      audioTracks: audio.options.map(({ id, label, disabled }) => ({ id, label, disabled })),
-      selectedAudioTrack: audio.selectedId ?? undefined,
-      selectAudioTrack: (id) => afterSwitch(audio.select(String(id)), () => {
-        const language = languageOf(trackOf(audio, String(id)))
-        if (language !== undefined) latest.current.options.onPreferredAudioLanguageChange?.(language)
-      }),
-    })
-  }, [setSourceState, audio])
-
-  const quality = remote?.quality?.selection ?? null
-  useEffect(() => {
-    setSourceState({ quality })
-  }, [setSourceState, quality])
+  const { externalCues } = useRemoteTracks({
+    remote,
+    allExternalSubtitles,
+    embedderSubtitlesRevision,
+    options,
+    setSourceState,
+    onSubtitleSelect: () => {
+      if (!flushingExternalSelectRef.current) pendingExternalSelectRef.current = null
+    },
+  })
 
   /*
    * Guarded, and its own effect, for the reason the ones above are.

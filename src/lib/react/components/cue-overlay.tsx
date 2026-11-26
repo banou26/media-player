@@ -3,7 +3,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react'
 import type { SubtitleCue } from '../../engine/subtitle-cues'
 import type { SubtitlePosition } from '../../utils/external-subtitles'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { css } from '@emotion/react'
 
 import { activeSubtitleCues } from '../../engine/subtitle-cues'
@@ -14,11 +14,14 @@ export interface SubtitleCueMedia {
   readonly currentTime: number
   readonly paused?: boolean
   readonly playbackRate?: number
+  readonly readyState?: number
+  readonly ended?: boolean
   addEventListener(type: string, listener: EventListenerOrEventListenerObject): void
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void
 }
 
 const DEFAULT_POSITION: SubtitlePosition = { x: 0.5, y: 1 }
+const MAX_EXTRAPOLATION_SEC = 0.5
 
 const containerStyle = css`
   position: absolute;
@@ -121,9 +124,12 @@ export const SubtitleCueOverlay = ({
     let anchorTime = media.currentTime || 0
     let anchorAt = performance.now()
     let rate = media.playbackRate || 1
-    let paused = media.paused ?? true
+    let paused = (media.paused ?? true) || (media.ended ?? false)
+    let stalled = false
     let lastKey = ''
     let frame = 0
+
+    const isStopped = () => paused || stalled || (media.ended ?? false)
 
     const paintAt = (time: number) => {
       const visible = activeSubtitleCues(cues, time - offsetRef.current)
@@ -134,45 +140,79 @@ export const SubtitleCueOverlay = ({
     }
     paintRef.current = paintAt
 
-    const sync = () => {
-      anchorTime = media.currentTime || 0
-      anchorAt = performance.now()
-      rate = media.playbackRate || 1
-      paused = media.paused ?? true
-      paintAt(anchorTime)
-    }
-
-    const tick = () => {
-      frame = 0
-      if (!paused) {
-        const elapsed = (performance.now() - anchorAt) / 1000
-        paintAt(anchorTime + elapsed * rate)
-        frame = requestAnimationFrame(tick)
-      }
-    }
-
-    const onPlayState = () => {
-      sync()
-      if (!paused && !frame) frame = requestAnimationFrame(tick)
-      else if (paused && frame) {
+    const schedule = () => {
+      if (!isStopped() && !frame) frame = requestAnimationFrame(tick)
+      else if (isStopped() && frame) {
         cancelAnimationFrame(frame)
         frame = 0
       }
     }
 
+    const sync = () => {
+      const nextTime = media.currentTime || 0
+      if (stalled && Math.abs(nextTime - anchorTime) > 1e-4 && !(media.ended ?? false)) {
+        stalled = false
+      }
+      anchorTime = nextTime
+      anchorAt = performance.now()
+      rate = media.playbackRate || 1
+      paused = (media.paused ?? true) || (media.ended ?? false)
+      paintAt(anchorTime)
+      schedule()
+    }
+
+    const tick = () => {
+      frame = 0
+      if (!isStopped()) {
+        const elapsed = Math.min(Math.max(0, (performance.now() - anchorAt) / 1000), MAX_EXTRAPOLATION_SEC)
+        paintAt(anchorTime + elapsed * rate)
+        frame = requestAnimationFrame(tick)
+      }
+    }
+
+    const onPlayState = () => sync()
+    const onPlay = () => {
+      stalled = false
+      sync()
+    }
+    const onStall = () => {
+      stalled = true
+      if (frame) {
+        cancelAnimationFrame(frame)
+        frame = 0
+      }
+      sync()
+    }
+    const onResume = () => {
+      stalled = false
+      sync()
+    }
+
     const events = ['timeupdate', 'seeked', 'ratechange', 'loadedmetadata'] as const
     for (const event of events) media.addEventListener(event, sync)
-    media.addEventListener('play', onPlayState)
+    media.addEventListener('play', onPlay)
     media.addEventListener('pause', onPlayState)
+    media.addEventListener('waiting', onStall)
+    media.addEventListener('stalled', onStall)
+    media.addEventListener('ended', onStall)
+    media.addEventListener('playing', onResume)
+    media.addEventListener('canplay', onResume)
+    media.addEventListener('canplaythrough', onResume)
 
-    onPlayState()
+    sync()
 
     return () => {
       paintRef.current = null
       if (frame) cancelAnimationFrame(frame)
       for (const event of events) media.removeEventListener(event, sync)
-      media.removeEventListener('play', onPlayState)
+      media.removeEventListener('play', onPlay)
       media.removeEventListener('pause', onPlayState)
+      media.removeEventListener('waiting', onStall)
+      media.removeEventListener('stalled', onStall)
+      media.removeEventListener('ended', onStall)
+      media.removeEventListener('playing', onResume)
+      media.removeEventListener('canplay', onResume)
+      media.removeEventListener('canplaythrough', onResume)
     }
   }, [cues, media])
 
@@ -181,6 +221,37 @@ export const SubtitleCueOverlay = ({
       paintRef.current(media.currentTime || 0)
     }
   }, [media, offset])
+
+  const clearDrag = useCallback((pointerId?: number) => {
+    const drag = dragRef.current
+    if (!drag) return
+    if (pointerId !== undefined && drag.pointerId !== pointerId) return
+    dragRef.current = null
+    setDragging(false)
+    try {
+      boxRef.current?.releasePointerCapture(drag.pointerId)
+    } catch {
+      // Ignore when capture was not active.
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!active.length) clearDrag()
+  }, [active.length, clearDrag])
+
+  useEffect(() => {
+    if (!dragging) return
+    const onWindowPointerEnd = (event: PointerEvent) => clearDrag(event.pointerId)
+    const onWindowBlur = () => clearDrag()
+    window.addEventListener('pointerup', onWindowPointerEnd)
+    window.addEventListener('pointercancel', onWindowPointerEnd)
+    window.addEventListener('blur', onWindowBlur)
+    return () => {
+      window.removeEventListener('pointerup', onWindowPointerEnd)
+      window.removeEventListener('pointercancel', onWindowPointerEnd)
+      window.removeEventListener('blur', onWindowBlur)
+    }
+  }, [dragging, clearDrag])
 
   if (!active.length) return null
 
@@ -237,13 +308,7 @@ export const SubtitleCueOverlay = ({
     const drag = dragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
     event.stopPropagation()
-    dragRef.current = null
-    setDragging(false)
-    try {
-      boxRef.current?.releasePointerCapture(event.pointerId)
-    } catch {
-      // Ignore when capture was not active.
-    }
+    clearDrag(event.pointerId)
   }
 
   const boxStyle: CSSProperties & Record<string, string | number> = {

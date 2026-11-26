@@ -706,6 +706,7 @@ export const usePlayback = (
           onRecovered: () => { if (!cancelled) player.setSourceState({ playbackError: null }) },
           onSeek: (fraction) => onSeekRef.current?.(fraction),
           onOutput: (output) => onOutputRef.current?.(output),
+          simpleMode: simpleModeRef.current,
           onSimpleCues: (cues) => { if (!cancelled) onSimpleCuesRef.current?.(cues) },
           onSubtitleStreams: (subtitles) => {
             if (cancelled) return

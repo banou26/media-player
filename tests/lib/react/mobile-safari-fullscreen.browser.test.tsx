@@ -5,6 +5,7 @@ import { render } from 'vitest-browser-react'
 import { playerAssets } from '../../../src/asset-urls'
 import { usePlayer } from '../../../src/lib/react/player'
 import MediaPlayer from '../../../src/lib/react/video-player'
+import { createFakeRemoteMedia } from './remote-media.fixture'
 
 type WebKitVideo = HTMLVideoElement & {
   webkitSupportsFullscreen?: boolean
@@ -368,5 +369,50 @@ describe('Mobile Safari fullscreen on @banou/media-player', () => {
     button.click()
     expect(hostRequest).toHaveBeenCalledTimes(1)
     expect(enter).not.toHaveBeenCalled()
+  })
+
+  it('reports fullscreenAvailability as unsupported in restricted iframes with fullscreenEnabled disabled', async () => {
+    stubDescriptor(Document.prototype, 'fullscreenEnabled', { get: () => false, configurable: true })
+    stubDescriptor(Document.prototype, 'webkitFullscreenEnabled', { get: () => false, configurable: true })
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitSetPresentationMode', { value: undefined, writable: true, configurable: true })
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitEnterFullscreen', { value: undefined, writable: true, configurable: true })
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitEnterFullScreen', { value: undefined, writable: true, configurable: true })
+
+    const seen: string[] = []
+    const Probe = () => {
+      const availability = usePlayer((state) => state.fullscreenAvailability)
+      if (seen.at(-1) !== availability) seen.push(availability)
+      return null
+    }
+
+    const container = document.createElement('div')
+    container.style.cssText = 'position: fixed; inset: 0 auto auto 0; width: 390px; height: 220px;'
+    document.body.append(container)
+    restores.push(() => container.remove())
+    await render(<MediaPlayer {...playerAssets}><Probe /></MediaPlayer>, { container })
+    await expect.poll(() => seen.includes('unsupported'), { timeout: 3000 }).toBe(true)
+    expect(seen).not.toContain('available')
+  })
+
+  it('reports fullscreenAvailability as unsupported on remote proxy media when document fullscreen is disabled on iPhone', async () => {
+    stubIPhoneFullscreen()
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitSetPresentationMode', { value: undefined, writable: true, configurable: true })
+    stubDescriptor(HTMLVideoElement.prototype, 'webkitEnterFullscreen', { value: () => {}, writable: true, configurable: true })
+
+    const seen: string[] = []
+    const Probe = () => {
+      const availability = usePlayer((state) => state.fullscreenAvailability)
+      if (seen.at(-1) !== availability) seen.push(availability)
+      return null
+    }
+
+    const remoteMedia = createFakeRemoteMedia({ duration: 60 })
+    const container = document.createElement('div')
+    container.style.cssText = 'position: fixed; inset: 0 auto auto 0; width: 390px; height: 220px;'
+    document.body.append(container)
+    restores.push(() => container.remove())
+    await render(<MediaPlayer media={remoteMedia}><Probe /></MediaPlayer>, { container })
+    await expect.poll(() => seen.includes('unsupported'), { timeout: 3000 }).toBe(true)
+    expect(seen).not.toContain('available')
   })
 })
