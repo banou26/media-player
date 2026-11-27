@@ -2,7 +2,16 @@ import { makeThumbnailer } from 'libav-wasm'
 
 import { terminateRemuxer } from './playback'
 
-export type ThumbnailImage = { url: string, startTime: number, endTime: number }
+type ThumbnailSpan = { startTime: number, endTime: number }
+type UrlThumbnail = ThumbnailSpan & { url: string, blob?: undefined }
+
+/**
+ * One seekbar preview, covering `startTime` up to `endTime`, given as a url or as the image itself.
+ *
+ * A `blob` is decoded and painted onto a canvas rather than shown through an object url, so it works
+ * under a CSP whose `img-src` refuses `blob:`. An empty `url` is a gap with no preview.
+ */
+export type ThumbnailImage = UrlThumbnail | (ThumbnailSpan & { blob: Blob, url?: undefined })
 
 export type ThumbnailGeneratorOptions = {
   publicPath: string
@@ -112,7 +121,7 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
 
     slots = buildSlots(metadata.indexes)
 
-    let thumbnails: ThumbnailImage[] = []
+    let thumbnails: UrlThumbnail[] = []
     let destroyed = false
 
     /*

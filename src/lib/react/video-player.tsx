@@ -240,6 +240,13 @@ type CommonOptions = {
   externalSubtitleSelection?: ExternalSubtitleSelection
   /** Invoked when the viewer drops supported subtitle files onto the player. */
   onExternalSubtitleDrop?: (tracks: ExternalSubtitleTrack[]) => void
+  /**
+   * The source's own storyboard, for the seekbar's hover previews.
+   *
+   * Required for a media the player does not own, which has no bytes to generate from. On the local
+   * arm it replaces generation: no thumbnail worker starts and nothing is read for previews.
+   */
+  thumbnails?: ExternalThumbnails
 }
 
 /**
@@ -375,8 +382,6 @@ export type MediaPlayerRemoteOptions =
     read?: never
     size?: never
 
-    /** The source's own storyboard, since there are no bytes to generate previews from. */
-    thumbnails?: ExternalThumbnails
     /** The source renders these; the player draws the menu and reports the pick. */
     subtitles?: DelegatedTracks
     audioTracks?: DelegatedTracks
@@ -413,7 +418,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const local = remote ? null : options as MediaPlayerLocalOptions
   // `title` is common to both arms, so it is read off `options`. Everything else here belongs to the
   // local arm and is absent when the media is remote.
-  const { title, chapters } = options
+  const { title, chapters, thumbnails: externalThumbnails } = options
   const {
     size, downloadedRanges, publicPath, libavWorkerUrl, read, thumbnailRead, thumbnailsEnabled, readsDownload,
   } = local ?? ({} as Partial<MediaPlayerLocalOptions>)
@@ -589,11 +594,11 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
   const { thumbnails: generatedThumbnails, requestThumbnail } = useSeekThumbnails({
     publicPath,
     workerUrl: libavWorkerUrl,
-    length: thumbnailsEnabled === false ? undefined : size,
+    length: thumbnailsEnabled === false || externalThumbnails ? undefined : size,
     read: thumbnailRead ?? read,
     downloadedRanges,
   })
-  const thumbnails = remote?.thumbnails?.all ?? generatedThumbnails
+  const thumbnails = externalThumbnails?.all ?? generatedThumbnails
   const {
     toggle: togglePictureInPicture,
     mode: pictureInPictureMode,
@@ -619,7 +624,7 @@ const PlayerRoot = ({ options, children }: { options: MediaPlayerOptions, childr
     setSourceState({ title, size, downloadedRanges, hasMedia })
   }, [setSourceState, title, size, downloadedRanges, hasMedia])
 
-  const thumbnailAt = remote?.thumbnails?.at
+  const thumbnailAt = externalThumbnails?.at
   useEffect(() => {
     setSourceState({
       thumbnails,

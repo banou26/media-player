@@ -178,7 +178,7 @@ const style = css`
     margin-left: calc(var(--thumbnail-half) * -1);
     pointer-events: none;
 
-    img {
+    img, canvas {
       border-radius: calc(.4 * var(--mp-unit));
       box-shadow: 0 0 calc(1 * var(--mp-unit)) rgba(0, 0, 0, .5);
 
@@ -233,6 +233,25 @@ const style = css`
 
 /** Movement from the press, in px, past which a gesture is a scrub rather than a click. */
 const SCRUB_THRESHOLD_PX = 4
+
+/** Paints the image itself, because an `<img>` would need a `blob:` url a strict `img-src` refuses. */
+const BlobThumbnail = ({ blob }: { blob: Blob }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  useEffect(() => {
+    let current = true
+    createImageBitmap(blob).then((bitmap) => {
+      const canvas = canvasRef.current
+      if (current && canvas) {
+        canvas.width = bitmap.width
+        canvas.height = bitmap.height
+        canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+      }
+      bitmap.close()
+    }, () => {})
+    return () => { current = false }
+  }, [blob])
+  return <canvas ref={canvasRef}/>
+}
 
 export const ProgressBar = () => {
   const player = usePlayer()
@@ -573,7 +592,9 @@ export const ProgressBar = () => {
         {
           thumbnail?.url
             ? <img src={thumbnail.url}/>
-            : undefined
+            : thumbnail?.blob
+              ? <BlobThumbnail blob={thumbnail.blob}/>
+              : undefined
         }
       </div>
     </div>
