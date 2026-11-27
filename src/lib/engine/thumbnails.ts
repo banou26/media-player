@@ -2,16 +2,17 @@ import { makeThumbnailer } from 'libav-wasm'
 
 import { terminateRemuxer } from './playback'
 
-type ThumbnailSpan = { startTime: number, endTime: number }
-type UrlThumbnail = ThumbnailSpan & { url: string, blob?: undefined }
+/** A preview the generator made, covering `startTime` up to `endTime`. An empty `url` is a gap with no preview. */
+export type GeneratedThumbnail = { url: string, startTime: number, endTime: number }
 
 /**
- * One seekbar preview, covering `startTime` up to `endTime`, given as a url or as the image itself.
+ * One seekbar preview a caller supplies, as a url or as the image itself.
  *
  * A `blob` is decoded and painted onto a canvas rather than shown through an object url, so it works
- * under a CSP whose `img-src` refuses `blob:`. An empty `url` is a gap with no preview.
+ * under a CSP whose `img-src` refuses `blob:`. `url` is typed on the blob form only so either form can
+ * be read as `thumbnail.url`.
  */
-export type ThumbnailImage = UrlThumbnail | (ThumbnailSpan & { blob: Blob, url?: undefined })
+export type ThumbnailImage = GeneratedThumbnail | { blob: Blob, url?: undefined, startTime: number, endTime: number }
 
 export type ThumbnailGeneratorOptions = {
   publicPath: string
@@ -19,7 +20,7 @@ export type ThumbnailGeneratorOptions = {
   length: number
   /** The same reader playback uses, so generation shares its fetch order rather than competing. */
   read: (offset: number, size: number) => Promise<ArrayBuffer>
-  onThumbnails: (thumbnails: ThumbnailImage[]) => void
+  onThumbnails: (thumbnails: GeneratedThumbnail[]) => void
   /** Seconds between thumbnails. Widened automatically on long content to stay under MAX_THUMBNAILS. */
   interval?: number
   width?: number
@@ -121,7 +122,7 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
 
     slots = buildSlots(metadata.indexes)
 
-    let thumbnails: UrlThumbnail[] = []
+    let thumbnails: GeneratedThumbnail[] = []
     let destroyed = false
 
     /*
@@ -168,7 +169,7 @@ export const createThumbnailGenerator = async (options: ThumbnailGeneratorOption
 
     // the slider assumes a gapless storyboard, so gaps get sentinels the UI hides
     const emit = () => {
-      const display: ThumbnailImage[] = []
+      const display: GeneratedThumbnail[] = []
       for (const [i, t] of thumbnails.entries()) {
         if (t.startTime - (display.at(-1)?.endTime ?? 0) > 0.01) {
           display.push({ url: '', startTime: display.at(-1)?.endTime ?? 0, endTime: t.startTime })

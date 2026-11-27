@@ -61,6 +61,7 @@ export type { SubtitlePosition, SubtitleSettings } from './utils/external-subtit
 export type {
   AudioStream,
   ExternalSubtitleFormat,
+  GeneratedThumbnail,
   MediaChapter,
   MediaIndex,
   PictureInPictureController,

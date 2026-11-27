@@ -1,4 +1,4 @@
-import type { ThumbnailGenerator, ThumbnailImage } from '../../engine'
+import type { GeneratedThumbnail, ThumbnailGenerator } from '../../engine'
 import type { DownloadedRange } from '../source-feature'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,7 +25,7 @@ export type UseSeekThumbnailsOptions = {
 }
 
 export type SeekThumbnails = {
-  thumbnails: ThumbnailImage[]
+  thumbnails: GeneratedThumbnail[]
   /**
    * Where the viewer is pointing on the seekbar, so that preview is decoded next.
    *
@@ -39,7 +39,7 @@ export type SeekThumbnails = {
 export const useSeekThumbnails = ({
   publicPath, workerUrl, length, read, downloadedRanges,
 }: UseSeekThumbnailsOptions): SeekThumbnails => {
-  const [thumbnails, setThumbnails] = useState<ThumbnailImage[]>([])
+  const [thumbnails, setThumbnails] = useState<GeneratedThumbnail[]>([])
   const generatorRef = useRef<ThumbnailGenerator | null>(null)
   const readRef = useRef(read)
   readRef.current = read

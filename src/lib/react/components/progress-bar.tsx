@@ -238,16 +238,27 @@ const SCRUB_THRESHOLD_PX = 4
 const BlobThumbnail = ({ blob }: { blob: Blob }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
     let current = true
-    createImageBitmap(blob).then((bitmap) => {
-      const canvas = canvasRef.current
-      if (current && canvas) {
-        canvas.width = bitmap.width
-        canvas.height = bitmap.height
-        canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
-      }
-      bitmap.close()
-    }, () => {})
+    // emptied first, so neither a decode in flight nor a failed one leaves the last preview up
+    const clear = () => {
+      canvas.width = 0
+      canvas.height = 0
+    }
+    clear()
+    createImageBitmap(blob)
+      .then((bitmap) => {
+        try {
+          if (!current) return
+          canvas.width = bitmap.width
+          canvas.height = bitmap.height
+          canvas.getContext('2d')!.drawImage(bitmap, 0, 0)
+        } finally {
+          bitmap.close()
+        }
+      })
+      .catch(() => { if (current) clear() })
     return () => { current = false }
   }, [blob])
   return <canvas ref={canvasRef}/>
@@ -592,7 +603,7 @@ export const ProgressBar = () => {
         {
           thumbnail?.url
             ? <img src={thumbnail.url}/>
-            : thumbnail?.blob
+            : thumbnail && 'blob' in thumbnail
               ? <BlobThumbnail blob={thumbnail.blob}/>
               : undefined
         }

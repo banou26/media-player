@@ -1,6 +1,7 @@
 import type { ThumbnailImage } from '../../../src/lib/engine'
+import type { ExternalThumbnails } from '../../../src/lib/react/media'
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render } from 'vitest-browser-react'
 
 import MediaPlayer from '../../../src/lib/react/video-player'
@@ -15,11 +16,14 @@ import { createFakeRemoteMedia } from './remote-media.fixture'
  */
 const FIXTURE = '/test-video.mkv'
 const RED = [255, 0, 0, 255]
+const BLUE = [0, 0, 255, 255]
 
+const containers: HTMLElement[] = []
 const sized = () => {
   const container = document.createElement('div')
   container.style.cssText = 'width: 960px; height: 540px;'
   document.body.append(container)
+  containers.push(container)
   return { container }
 }
 
@@ -38,26 +42,29 @@ const httpSource = async () => {
   }
 }
 
-const redCanvas = () => {
+const filled = (color: string) => {
   const canvas = new OffscreenCanvas(16, 9)
   const context = canvas.getContext('2d')!
-  context.fillStyle = 'rgb(255, 0, 0)'
+  context.fillStyle = color
   context.fillRect(0, 0, 16, 9)
   return canvas
 }
 
-const redBlob = () => redCanvas().convertToBlob({ type: 'image/png' })
+const colorBlob = (color: string) => filled(color).convertToBlob({ type: 'image/png' })
 
 const redDataUrl = () => {
   const canvas = document.createElement('canvas')
   canvas.width = 16
   canvas.height = 9
-  canvas.getContext('2d')!.drawImage(redCanvas(), 0, 0)
+  canvas.getContext('2d')!.drawImage(filled('rgb(255, 0, 0)'), 0, 0)
   return canvas.toDataURL('image/png')
 }
 
-const at = (image: { url: string } | { blob: Blob }) =>
-  vi.fn((time: number): ThumbnailImage => ({ ...image, startTime: Math.floor(time), endTime: Math.floor(time) + 1 }))
+/** A storyboard answering every time with the same image, or with none. */
+const storyboard = (image?: { url: string } | { blob: Blob }) => ({
+  at: vi.fn((time: number): ThumbnailImage | undefined =>
+    image && { ...image, startTime: Math.floor(time), endTime: Math.floor(time) + 1 }),
+})
 
 const hoverAt = (bar: Element, fraction: number) => {
   const { left, right, top, bottom } = bar.getBoundingClientRect()
@@ -78,10 +85,8 @@ const hoverUntil = async (container: Element, selector: string) => {
   return container.querySelector(`.thumbnail ${selector}`)!
 }
 
-const paintedPixel = async (canvas: HTMLCanvasElement) => {
-  await expect.poll(() => canvas.width, { timeout: 5_000 }).toBe(16)
-  return [...canvas.getContext('2d')!.getImageData(8, 4, 1, 1).data]
-}
+const pixel = (canvas: HTMLCanvasElement) =>
+  canvas.width ? [...canvas.getContext('2d')!.getImageData(8, 4, 1, 1).data] : []
 
 /** Every `blob:` url given to an `<img>` anywhere in the document, however it got there. */
 const watchBlobImages = () => {
@@ -102,28 +107,78 @@ const watchBlobImages = () => {
   return { seen, stop: () => observer.disconnect() }
 }
 
-describe('a storyboard the caller supplies', () => {
-  afterEach(() => { vi.restoreAllMocks() })
+/**
+ * Holds the decode of chosen blobs until released, and spies on every bitmap handed out, so a test can
+ * order two decodes or unmount while one is in flight.
+ */
+const gateDecodes = () => {
+  const native = window.createImageBitmap.bind(window)
+  const gates = new Map<Blob, PromiseWithResolvers<void>>()
+  const closes: ReturnType<typeof vi.fn>[] = []
+  vi.spyOn(window, 'createImageBitmap').mockImplementation((async (source: ImageBitmapSource) => {
+    await gates.get(source as Blob)?.promise
+    const bitmap = await native(source)
+    const close = bitmap.close.bind(bitmap)
+    const spy = vi.fn(close)
+    bitmap.close = spy
+    closes.push(spy)
+    return bitmap
+  }) as typeof window.createImageBitmap)
+  return {
+    hold: (blob: Blob) => { gates.set(blob, Promise.withResolvers<void>()) },
+    release: (blob: Blob) => gates.get(blob)!.resolve(),
+    closes,
+  }
+}
 
-  it('replaces generation on the local arm: previews come from `at` and nothing is read for them', async () => {
+const rejections: unknown[] = []
+const onRejection = (event: PromiseRejectionEvent) => { rejections.push(event.reason) }
+
+describe('a storyboard the caller supplies', () => {
+  beforeEach(() => {
+    rejections.length = 0
+    window.addEventListener('unhandledrejection', onRejection)
+  })
+  afterEach(() => {
+    window.removeEventListener('unhandledrejection', onRejection)
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    for (const container of containers.splice(0)) container.remove()
+  })
+
+  it('replaces generation on the local arm: no thumbnail worker starts and nothing is read for previews', async () => {
+    const libavWorkers: string[] = []
+    const Native = Worker
+    vi.stubGlobal('Worker', class extends Native {
+      constructor(url: string | URL, options?: WorkerOptions) {
+        super(url, options)
+        if (String(url).includes('libav-worker')) libavWorkers.push(String(url))
+      }
+    })
     const source = await httpSource()
     const thumbnailRead = vi.fn(source.read)
-    const thumbnailAt = at({ blob: await redBlob() })
+    const thumbnails = storyboard({ blob: await colorBlob('rgb(255, 0, 0)') })
+    // without the normalizer, whose analysis would read through `thumbnailRead` too
+    const { normalizerWorkletUrl: _, ...assets } = playerAssets
     const screen = await render(
-      <MediaPlayer {...source} {...playerAssets} thumbnailRead={thumbnailRead} thumbnails={{ at: thumbnailAt }} />,
+      <MediaPlayer {...source} {...assets} thumbnailRead={thumbnailRead} thumbnails={thumbnails} />,
       sized(),
     )
 
     const canvas = await hoverUntil(screen.container, 'canvas') as HTMLCanvasElement
-    expect(await paintedPixel(canvas)).toEqual(RED)
-    expect(thumbnailAt).toHaveBeenCalled()
+    await expect.poll(() => pixel(canvas), { timeout: 5_000 }).toEqual(RED)
+    expect(thumbnails.at).toHaveBeenCalled()
+    // the playback worker, and time for a generator that was going to boot to have done so
+    await expect.poll(() => libavWorkers.length, { timeout: 10_000 }).toBe(1)
+    await new Promise((done) => setTimeout(done, 1_000))
+    expect(libavWorkers, 'a thumbnail worker started').toHaveLength(1)
     expect(thumbnailRead, 'the thumbnail generator read the file').not.toHaveBeenCalled()
   }, 60_000)
 
   it('still shows a url preview through an `<img>`, as before', async () => {
     const url = redDataUrl()
     const screen = await render(
-      <MediaPlayer media={createFakeRemoteMedia({ duration: 600 })} thumbnails={{ at: at({ url }) }} />,
+      <MediaPlayer media={createFakeRemoteMedia({ duration: 600 })} thumbnails={storyboard({ url })} />,
       sized(),
     )
 
@@ -132,23 +187,120 @@ describe('a storyboard the caller supplies', () => {
     expect(screen.container.querySelector('.thumbnail canvas')).toBeNull()
   }, 30_000)
 
-  it('paints a blob preview without ever turning it into a `blob:` url', async () => {
-    const blob = await redBlob()
+  it('paints a blob preview without ever creating a `blob:` url', async () => {
+    const blob = await colorBlob('rgb(255, 0, 0)')
     const createObjectURL = vi.spyOn(URL, 'createObjectURL')
     const images = watchBlobImages()
     const screen = await render(
-      <MediaPlayer media={createFakeRemoteMedia({ duration: 600 })} thumbnails={{ at: at({ blob }) }} />,
+      <MediaPlayer media={createFakeRemoteMedia({ duration: 600 })} thumbnails={storyboard({ blob })} />,
       sized(),
     )
 
     try {
       const preview = await hoverUntil(screen.container, ':is(canvas, img)')
-      expect(createObjectURL.mock.calls.filter(([object]) => object === blob)).toEqual([])
+      expect(createObjectURL).not.toHaveBeenCalled()
       expect(images.seen).toEqual([])
       expect(preview).toBeInstanceOf(HTMLCanvasElement)
-      expect(await paintedPixel(preview as HTMLCanvasElement)).toEqual(RED)
+      await expect.poll(() => pixel(preview as HTMLCanvasElement), { timeout: 5_000 }).toEqual(RED)
+      expect(createObjectURL).not.toHaveBeenCalled()
     } finally {
       images.stop()
     }
+  }, 30_000)
+
+  it('clears the last preview when the next blob cannot be decoded, without an unhandled rejection', async () => {
+    const media = createFakeRemoteMedia({ duration: 600 })
+    const screen = await render(
+      <MediaPlayer media={media} thumbnails={storyboard({ blob: await colorBlob('rgb(255, 0, 0)') })} />,
+      sized(),
+    )
+    const canvas = await hoverUntil(screen.container, 'canvas') as HTMLCanvasElement
+    await expect.poll(() => pixel(canvas), { timeout: 5_000 }).toEqual(RED)
+
+    const decode = vi.spyOn(window, 'createImageBitmap')
+    await screen.rerender(
+      <MediaPlayer media={media} thumbnails={storyboard({ blob: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }) })} />,
+    )
+    await expect.poll(() => decode.mock.results.length, { timeout: 5_000 }).toBe(1)
+    await decode.mock.results[0]!.value.catch(() => {})
+    await new Promise((done) => setTimeout(done, 100))
+    expect(screen.container.querySelector('.thumbnail canvas')).toBe(canvas)
+    expect(canvas.width).toBe(0)
+    expect(rejections).toEqual([])
+  }, 30_000)
+
+  it('shows the latest blob when an earlier decode finishes after it', async () => {
+    const red = await colorBlob('rgb(255, 0, 0)')
+    const blue = await colorBlob('rgb(0, 0, 255)')
+    const gate = gateDecodes()
+    gate.hold(red)
+    const media = createFakeRemoteMedia({ duration: 600 })
+    const screen = await render(<MediaPlayer media={media} thumbnails={storyboard({ blob: red })} />, sized())
+    const canvas = await hoverUntil(screen.container, 'canvas') as HTMLCanvasElement
+
+    await screen.rerender(<MediaPlayer media={media} thumbnails={storyboard({ blob: blue })} />)
+    await expect.poll(() => pixel(canvas), { timeout: 5_000 }).toEqual(BLUE)
+    gate.release(red)
+    await expect.poll(() => gate.closes.length, { timeout: 5_000 }).toBe(2)
+    await new Promise((done) => setTimeout(done, 100))
+    expect(pixel(canvas)).toEqual(BLUE)
+    for (const close of gate.closes) expect(close).toHaveBeenCalledOnce()
+  }, 30_000)
+
+  it('empties the last preview while the next blob is still decoding', async () => {
+    const red = await colorBlob('rgb(255, 0, 0)')
+    const blue = await colorBlob('rgb(0, 0, 255)')
+    const gate = gateDecodes()
+    gate.hold(blue)
+    const media = createFakeRemoteMedia({ duration: 600 })
+    const screen = await render(<MediaPlayer media={media} thumbnails={storyboard({ blob: red })} />, sized())
+    const canvas = await hoverUntil(screen.container, 'canvas') as HTMLCanvasElement
+    await expect.poll(() => pixel(canvas), { timeout: 5_000 }).toEqual(RED)
+
+    await screen.rerender(<MediaPlayer media={media} thumbnails={storyboard({ blob: blue })} />)
+    await expect.poll(() => canvas.width, { timeout: 5_000 }).toBe(0)
+    gate.release(blue)
+    await expect.poll(() => pixel(canvas), { timeout: 5_000 }).toEqual(BLUE)
+  }, 30_000)
+
+  it('switches between a blob, a url and no preview', async () => {
+    const red = await colorBlob('rgb(255, 0, 0)')
+    const blue = await colorBlob('rgb(0, 0, 255)')
+    const url = redDataUrl()
+    const media = createFakeRemoteMedia({ duration: 600 })
+    const screen = await render(<MediaPlayer media={media} thumbnails={storyboard({ blob: red })} />, sized())
+    const preview = () => screen.container.querySelector('.thumbnail')!.firstElementChild
+    const show = (thumbnails: ExternalThumbnails) => screen.rerender(<MediaPlayer media={media} thumbnails={thumbnails} />)
+
+    await hoverUntil(screen.container, 'canvas')
+    await expect.poll(() => pixel(preview() as HTMLCanvasElement), { timeout: 5_000 }).toEqual(RED)
+
+    await show(storyboard({ url }))
+    await expect.poll(() => preview()?.getAttribute('src'), { timeout: 5_000 }).toBe(url)
+
+    await show(storyboard())
+    await expect.poll(() => preview(), { timeout: 5_000 }).toBeNull()
+
+    await show(storyboard({ blob: blue }))
+    await expect.poll(() => preview() instanceof HTMLCanvasElement, { timeout: 5_000 }).toBe(true)
+    await expect.poll(() => pixel(preview() as HTMLCanvasElement), { timeout: 5_000 }).toEqual(BLUE)
+  }, 30_000)
+
+  it('closes a bitmap whose decode finishes after the player unmounted', async () => {
+    const red = await colorBlob('rgb(255, 0, 0)')
+    const gate = gateDecodes()
+    gate.hold(red)
+    const screen = await render(
+      <MediaPlayer media={createFakeRemoteMedia({ duration: 600 })} thumbnails={storyboard({ blob: red })} />,
+      sized(),
+    )
+    await hoverUntil(screen.container, 'canvas')
+
+    await screen.unmount()
+    gate.release(red)
+    await expect.poll(() => gate.closes.length, { timeout: 5_000 }).toBe(1)
+    await new Promise((done) => setTimeout(done, 100))
+    expect(gate.closes[0]).toHaveBeenCalledOnce()
+    expect(rejections).toEqual([])
   }, 30_000)
 })

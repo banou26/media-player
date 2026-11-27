@@ -11,7 +11,7 @@ export { parseSubtitleCues, activeSubtitleCues, stripAssFormatting } from './sub
 export type { SubtitleCue } from './subtitle-cues'
 
 export { createThumbnailGenerator } from './thumbnails'
-export type { ThumbnailGenerator, ThumbnailGeneratorOptions, ThumbnailImage } from './thumbnails'
+export type { GeneratedThumbnail, ThumbnailGenerator, ThumbnailGeneratorOptions, ThumbnailImage } from './thumbnails'
 
 export { getTimeRanges, updateSourceBuffer } from './source-buffer'
 export type { TimeRange } from './source-buffer'
