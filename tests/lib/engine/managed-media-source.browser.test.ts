@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { LABELS } from '../../../src/lib/labels'
 import { startPlayback } from '../../../src/lib/engine'
@@ -7,6 +7,7 @@ import { playerAssets } from '../../../src/asset-urls'
 const SHORT_FILE = '/test-video.mkv'
 const SHORT_GOP_FILE = '/short-gop-tone.mkv'
 const MINUTE_FILE = '/picture-time.mkv'
+const LANGUAGES_FILE = '/languages.mkv'
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms))
 
 const cleanups: (() => void)[] = []
@@ -37,7 +38,7 @@ type InstalledManagedEnv = {
  * backed by the browser's MSE engine, and refuses `sourceopen` unless `video.disableRemotePlayback`
  * is already `true` when the source URL is assigned to `video.src`.
  */
-const installManagedMediaSource = (): InstalledManagedEnv => {
+const installManagedMediaSource = (options?: { rejectAudioCodecs?: readonly string[] }): InstalledManagedEnv => {
   const nativeDesc = Object.getOwnPropertyDescriptor(window, 'MediaSource')!
   const NativeMediaSource = nativeDesc.value as typeof MediaSource
   const urlDesc = Object.getOwnPropertyDescriptor(URL, 'createObjectURL')!
@@ -52,6 +53,16 @@ const installManagedMediaSource = (): InstalledManagedEnv => {
 
   class ManagedMediaSourceShim extends NativeMediaSource {
     #streaming = true
+
+    static override isTypeSupported(type: string) {
+      const reject = options?.rejectAudioCodecs
+      if (reject?.length) {
+        const codecsMatch = /codecs="([^"]+)"/i.exec(type)
+        const tokens = codecsMatch?.[1]?.split(',').map((codec) => codec.trim()) ?? []
+        if (tokens.some((codec) => reject.includes(codec))) return false
+      }
+      return NativeMediaSource.isTypeSupported(type)
+    }
 
     constructor() {
       super()
@@ -336,5 +347,33 @@ describe('ManagedMediaSource fallback on engines without MediaSource', () => {
       read: source.read,
       ...playerAssets,
     })).rejects.toMatchObject({ label: LABELS.codecsUnsupported })
+  }, 30_000)
+
+  it('transcodes Opus to AAC under ManagedMediaSource when the engine rejects Opus and FLAC in MP4', async () => {
+    installManagedMediaSource({ rejectAudioCodecs: ['opus', 'flac'] })
+    const source = await httpSource(LANGUAGES_FILE)
+    const video = document.createElement('video')
+    video.muted = true
+    const subtitles = document.createElement('div')
+    document.body.append(video, subtitles)
+    cleanups.push(() => { video.remove(); subtitles.remove() })
+
+    const errors: unknown[] = []
+    const controller = await startPlayback({
+      videoElement: video,
+      subtitleContainer: subtitles,
+      length: source.size,
+      read: source.read,
+      audioStreamIndex: 3,
+      ...playerAssets,
+      onError: (error) => errors.push(error),
+    })
+    cleanups.push(() => controller.destroy())
+
+    expect(controller.audioMimeType).toBe('mp4a.40.2')
+    await expect.poll(() => video.buffered.length > 0 && video.buffered.end(0) >= 1, { timeout: 15_000 }).toBe(true)
+    await video.play()
+    await expect.poll(() => video.currentTime, { timeout: 10_000 }).toBeGreaterThan(0.1)
+    expect(errors).toEqual([])
   }, 30_000)
 })

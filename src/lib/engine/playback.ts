@@ -146,6 +146,30 @@ const SOURCE_OPEN_TIMEOUT = 15_000
 // MSE fires SourceBuffer `error` ahead of the media thread's element `error` event.
 const INIT_ERROR_SETTLE_MS = 500
 const isAppleWebKit = () => globalThis.navigator?.vendor === 'Apple Computer, Inc.'
+// Measured 2026-11-29 across 20 codecs: decodingInfo agrees with MediaSource.isTypeSupported 20/20
+// in Chromium 151 and Firefox 151, while Safari 27.2's MediaSource.isTypeSupported returns true for
+// VP9 Profiles 1 and 3 (vp09.01/03) and AV1 High/Professional (av01.1/2) before CoreMedia fails
+// decode with MediaError code 3; navigator.mediaCapabilities.decodingInfo reports those false while
+// returning true for decodable profiles down to 64x64.
+const isVideoCodecSupported = async (videoCodec: string): Promise<boolean> => {
+  const mediaCapabilities = globalThis.navigator?.mediaCapabilities
+  if (typeof mediaCapabilities?.decodingInfo !== 'function') return true
+  try {
+    const info = await mediaCapabilities.decodingInfo({
+      type: 'media-source',
+      video: {
+        contentType: `video/mp4; codecs="${videoCodec}"`,
+        width: 64,
+        height: 64,
+        bitrate: 100_000,
+        framerate: 24,
+      },
+    })
+    return info?.supported !== false
+  } catch {
+    return true
+  }
+}
 // WebKit's GPUProcess blocks its main thread across two CoreAudio HAL cycles (~160 to 190 ms) on
 // AudioQueuePause/Stop when tearing down an active player. Assigning the next MediaSource queues an
 // async CreateManager behind Destroy, while the first appendBuffer calls synchronous AddTrack; if
@@ -289,7 +313,9 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
     if (!metadata.info.output.videoMimeType) throw labelledError('The video codec in this file could not be identified')
     const codecs = [metadata.info.output.videoMimeType, metadata.info.output.audioMimeType].filter(Boolean).join(',')
     const mime = `video/mp4; codecs="${codecs}"`
-    if (!MediaSource.isTypeSupported(mime)) throw labelledError('This browser cannot play the codecs in this file: {codecs}', { codecs })
+    if (!MediaSource.isTypeSupported(mime) || !(await isVideoCodecSupported(metadata.info.output.videoMimeType))) {
+      throw labelledError('This browser cannot play the codecs in this file: {codecs}', { codecs })
+    }
 
     let outstandingError = false
     // 'Cancelled' covers both an aborted task and a read that gave up, so it is only noise mid-seek

@@ -793,7 +793,7 @@ export const NORMALIZER_FIXTURES = {
   'normalizer-aac.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k'],
   'normalizer-aac.mp4': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart'],
   'normalizer-aac44.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-b:a', '192k', '-ar', '44100'],
-  'normalizer-opus.webm': ['-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-g', '48', '-c:a', 'libopus', '-b:a', '160k'],
+  'normalizer-opus.webm': ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', '-deadline', 'realtime', '-cpu-used', '8', '-g', '48', '-c:a', 'libopus', '-b:a', '160k'],
   'normalizer-flac.mkv': ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'flac'],
 }
 
@@ -920,16 +920,51 @@ const writeWav = async (path, left, right) => {
   await writeFile(path, Buffer.concat([header, data]))
 }
 
+const expectedPixFmt = (codecs) => {
+  const index = codecs.indexOf('-pix_fmt')
+  return index >= 0 ? codecs[index + 1] : undefined
+}
+
+const matchesPixFmt = async (path, expected) => {
+  if (!expected) return true
+  try {
+    const { stdout } = await run('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=pix_fmt',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      path,
+    ])
+    return stdout.trim() === expected
+  } catch {
+    return false
+  }
+}
+
+const isFreshNormalizerFixture = async (name, codecs) => {
+  const path = PUBLIC_DIR + name
+  if (!(await exists(path))) return false
+  return matchesPixFmt(path, expectedPixFmt(codecs))
+}
+
 export const ensureNormalizerFixtures = async () => {
-  const paths = Object.keys(NORMALIZER_FIXTURES).map((name) => PUBLIC_DIR + name)
   const wav = PUBLIC_DIR + 'normalizer-signal.wav'
-  if ((await Promise.all([wav, ...paths].map(exists))).every(Boolean)) return wav
+  const dialogueWav = PUBLIC_DIR + 'normalizer-dialogue.wav'
+  const eventsJson = PUBLIC_DIR + 'normalizer-events.json'
+  const entries = Object.entries(NORMALIZER_FIXTURES)
+  const missingBase = !(await Promise.all([wav, dialogueWav, eventsJson].map(exists))).every(Boolean)
+  const fresh = await Promise.all(entries.map(([name, codecs]) => isFreshNormalizerFixture(name, codecs)))
+  if (!missingBase && fresh.every(Boolean)) return wav
   await mkdir(PUBLIC_DIR, { recursive: true })
-  const { left, right, dialogue, events } = normalizerSignal()
-  await writeWav(wav, left, right)
-  await writeWav(PUBLIC_DIR + 'normalizer-dialogue.wav', dialogue, dialogue)
-  await writeFile(PUBLIC_DIR + 'normalizer-events.json', JSON.stringify(events, null, 1))
-  for (const [name, codecs] of Object.entries(NORMALIZER_FIXTURES)) {
+  if (missingBase) {
+    const { left, right, dialogue, events } = normalizerSignal()
+    await writeWav(wav, left, right)
+    await writeWav(dialogueWav, dialogue, dialogue)
+    await writeFile(eventsJson, JSON.stringify(events, null, 1))
+  }
+  for (let i = 0; i < entries.length; i++) {
+    if (!missingBase && fresh[i]) continue
+    const [name, codecs] = entries[i]
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',
       '-f', 'lavfi', '-i', `testsrc=size=160x90:rate=24:duration=${NORMALIZER_SECONDS}`,
