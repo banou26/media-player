@@ -145,6 +145,43 @@ const MAX_APPEND_ATTEMPTS = 5
 const SOURCE_OPEN_TIMEOUT = 15_000
 // MSE fires SourceBuffer `error` ahead of the media thread's element `error` event.
 const INIT_ERROR_SETTLE_MS = 500
+const isAppleWebKit = () => globalThis.navigator?.vendor === 'Apple Computer, Inc.'
+// WebKit's GPUProcess blocks its main thread across two CoreAudio HAL cycles (~160 to 190 ms) on
+// AudioQueuePause/Stop when tearing down an active player. Assigning the next MediaSource queues an
+// async CreateManager behind Destroy, while the first appendBuffer calls synchronous AddTrack; if
+// AddTrack runs before CreateManager creates the renderer, GPUProcess terminates WebContent.
+const WEBKIT_REBUILD_SETTLE_MS = 500
+const WEBKIT_SOURCEOPEN_SETTLE_MS = 50
+// Module-level because WebKit shares one GPUProcess main thread across every `<video>` in the process.
+let lastElementResetAt = Number.NEGATIVE_INFINITY
+
+const computeWebKitInitAppendDelay = (now: number, lastResetAt: number): number => {
+  const elapsed = now - lastResetAt
+  const remaining = Number.isFinite(lastResetAt) && elapsed >= 0 ? WEBKIT_REBUILD_SETTLE_MS - elapsed : 0
+  return Math.max(remaining, WEBKIT_SOURCEOPEN_SETTLE_MS)
+}
+
+const waitForAppleWebKitRenderer = (
+  videoElement: HTMLMediaElement,
+  mediaSource: MediaSource,
+  resetAt: number,
+  isAborted: () => boolean,
+): Promise<void> => {
+  if (!isAppleWebKit()) return Promise.resolve()
+  const delay = computeWebKitInitAppendDelay(performance.now(), resetAt)
+  if (delay <= 0 || isAborted() || mediaSource.readyState !== 'open') return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      videoElement.removeEventListener('error', done)
+      mediaSource.removeEventListener('sourceclose', done)
+      resolve()
+    }
+    const timer = setTimeout(done, delay)
+    videoElement.addEventListener('error', done, { once: true })
+    mediaSource.addEventListener('sourceclose', done, { once: true })
+  })
+}
 /*
  * How far past the playhead a range may start and still count as the one holding it, which decides how
  * much to read and never whether to fetch.
@@ -302,6 +339,10 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
         else if (!hasProp) videoElement.removeAttribute('disableremoteplayback')
       })
     }
+    if (videoElement.hasAttribute('src')) {
+      lastElementResetAt = performance.now()
+    }
+    const resetAt = lastElementResetAt
     const mediaSourceUrl = URL.createObjectURL(mediaSource)
     teardown.push(() => URL.revokeObjectURL(mediaSourceUrl))
     videoElement.src = mediaSourceUrl
@@ -321,12 +362,15 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
      * Pushed AFTER the revoke so the reversed teardown runs it FIRST.
      */
     teardown.push(() => {
-      // Prototype call so internal teardown does not look like an explicit viewer pause to wrapper hooks.
-      try { HTMLMediaElement.prototype.pause.call(videoElement) } catch {}
-      videoElement.removeAttribute('src')
-      // no src and no <source> children means the load algorithm goes straight to NETWORK_EMPTY
-      // without firing `error`, so this cannot manufacture the failure it exists to prevent
-      videoElement.load()
+      if (videoElement.getAttribute('src') === mediaSourceUrl) {
+        // Prototype call so internal teardown does not look like an explicit viewer pause to wrapper hooks.
+        try { HTMLMediaElement.prototype.pause.call(videoElement) } catch {}
+        videoElement.removeAttribute('src')
+        // no src and no <source> children means the load algorithm goes straight to NETWORK_EMPTY
+        // without firing `error`, so this cannot manufacture the failure it exists to prevent
+        videoElement.load()
+        lastElementResetAt = performance.now()
+      }
     })
     // Pushed AFTER the load() reset so reversed teardown detaches the error listener first.
     videoElement.addEventListener('error', onElementError)
@@ -360,24 +404,36 @@ export const startPlayback = async (options: PlaybackOptions): Promise<PlaybackC
       mediaSource.addEventListener('error', onFail, { once: true })
     })
 
+    await waitForAppleWebKitRenderer(
+      videoElement,
+      mediaSource,
+      resetAt,
+      () => elementFailed || destroyed || !!videoElement.error,
+    )
+    if (!elementFailed && !videoElement.error && !destroyed && mediaSource.readyState !== 'open') {
+      throw labelledError('The MediaSource closed before a SourceBuffer could be created')
+    }
+
     const { appendBuffer, unbufferRange, endOfStream } = updateSourceBuffer(sourceBuffer, mediaSource)
-    try {
-      await appendBuffer(metadata.data)
-    } catch (error) {
-      // MSE fires SourceBuffer `error` before the media thread delivers the element `error` event,
-      // so wait briefly for it before deciding this was a plain append failure.
-      if (!elementFailed && !videoElement.error) {
-        await new Promise<void>((resolve) => {
-          const done = () => {
-            clearTimeout(timer)
-            videoElement.removeEventListener('error', done)
-            resolve()
-          }
-          const timer = setTimeout(done, INIT_ERROR_SETTLE_MS)
-          videoElement.addEventListener('error', done, { once: true })
-        })
+    if (!elementFailed && !videoElement.error && !destroyed) {
+      try {
+        await appendBuffer(metadata.data)
+      } catch (error) {
+        // MSE fires SourceBuffer `error` before the media thread delivers the element `error` event,
+        // so wait briefly for it before deciding this was a plain append failure.
+        if (!elementFailed && !videoElement.error) {
+          await new Promise<void>((resolve) => {
+            const done = () => {
+              clearTimeout(timer)
+              videoElement.removeEventListener('error', done)
+              resolve()
+            }
+            const timer = setTimeout(done, INIT_ERROR_SETTLE_MS)
+            videoElement.addEventListener('error', done, { once: true })
+          })
+        }
+        if (!elementFailed && !videoElement.error) throw error
       }
-      if (!elementFailed && !videoElement.error) throw error
     }
     if (videoElement.error) onElementError()
 
